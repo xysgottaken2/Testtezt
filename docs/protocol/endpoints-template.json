@@ -1,0 +1,26 @@
+{
+  "_comment": "Template para commitar quando endpoints forem VERIFIED — não inventar. Copiar este arquivo para docs/research/endpoints-verified.json e preencher.",
+  "generatedAt": "ISO-8601 quando gerado",
+  "apk": {
+    "package": "com.activision.callofduty.warzone",
+    "versionCode": "UNKNOWN até apk-inspect.sh",
+    "versionName": "UNKNOWN",
+    "sha256_short": "primeiros 16 chars, não full",
+    "source": "/tmp/wzm/warzone.xapk (fora do repo)"
+  },
+  "scannedFiles": 0,
+  "findings": [
+    {
+      "hostname": "example.cdn.activision.com",
+      "protocol": "HTTPS",
+      "port": 443,
+      "category": "manifest_cdn | auth | matchmaking | demonware | telemetry | game_server | other",
+      "whereFound": "jadx-output/com/example/Foo.java:42 ou strings libgame.so offset 0x1234",
+      "method": "endpoint-scanner.js + strings",
+      "versionBuild": "1.0.0 (versionName)",
+      "evidence": "trecho redigido, sem token, ex: https://example.cdn.../manifest.json",
+      "confidence": "VERIFIED — encontrado em código | VERIFIED — observado em execução (logcat/pcap) | PROBABLE | HYPOTHESIS | UNKNOWN"
+    }
+  ],
+  "confidenceRules": "WARZONE_VERIFIED só se observado em execução (logcat/pcap/SYN). Código morto != VERIFIED."
+}
