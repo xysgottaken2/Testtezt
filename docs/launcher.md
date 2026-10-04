@@ -1,6 +1,32 @@
 # WZM Offline Launcher — Android
 
-> **Status:** MVP 0.1.0 — base funcional instalável no S23 Ultra, pronta para evoluir. CDNI real ainda não implementado (stub).
+> **Status:** MVP 0.1.0 — **build CI VERIFIED (APK gerado)** — base funcional instalável no S23 Ultra. CDNI real ainda não implementado (stub).
+
+## 0. Build verificado (CI)
+
+| Campo | Valor |
+|---|---|
+| Workflow | `.github/workflows/android-build.yml` (job `build`) |
+| Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
+| Run (verde) | https://github.com/xysgottaken2/Testtezt/actions/runs/37177649488 |
+| Artifact | **`wzm-offline-launcher-debug`** (30 dias de retenção) — `app-debug.apk` + `app-debug.apk.sha256` |
+| SHA-256 do APK | `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` |
+| Tamanho | `15573665` bytes (~14,9 MiB) |
+| Data | 2026-10-04 |
+
+> `[VERIFIED]` em CI: compilação Kotlin/Compose, **13 testes JVM** (10 em `ServerTest` + 3 em `WzmLauncherConfigTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, empacotamento do APK, SHA-256 e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[PENDING DEVICE]` ainda não verificado em hardware: instalação no S23 Ultra, abertura sem crash, botões na UI e `startActivity` do WZM — depende do device do usuário.
+
+### Correções de build descobertas (para não repetir)
+
+| Sintoma no CI | Causa | Correção |
+|---|---|---|
+| `Plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '1.9.22'] was not found` | esse plugin só existe a partir do **Kotlin 2.0.0** | com Kotlin 1.9.22 usar `composeOptions.kotlinCompilerExtensionVersion` |
+| `The 'android.useAndroidX' property is not enabled` | deps AndroidX (Compose/Lifecycle) exigem a flag | `android/gradle.properties` com `android.useAndroidX=true` |
+| `Platform declaration clash: getStatus()` | propriedade `status` + `fun getStatus()` geram a mesma assinatura JVM | campo privado `currentStatus` + `fun getStatus()` |
+| Logs do CI inacessíveis deste ambiente (blob bloqueado) | — | pipeline emite `::error::`/`::notice::` (annotations) e artifact `android-test-logs` |
+
+Compatibilidade VERIFIED: Kotlin `1.9.22` ↔ Compose Compiler `1.5.8` ↔ AGP `8.5.2` ↔ Gradle `8.7` ↔ JDK `17` ↔ compileSdk `34`.
 
 ---
 
@@ -40,19 +66,21 @@ Requer:
 - Android SDK com `platforms;android-34` e `build-tools;34.0.0`
 - Gradle 8.7 (wrapper em `android/gradle/wrapper/` — se jar for placeholder, `gradle wrapper --gradle-version 8.7` regenera)
 
-### GitHub Actions (recomendado)
-Workflow `.github/workflows/android-build.yml` já faz:
+### GitHub Actions (recomendado — VERIFIED)
+
+Workflow `.github/workflows/android-build.yml`:
 
 1. `checkout`
-2. `setup-java@v4` (Temurin 17, cache gradle)
-3. `setup-android@v3`
-4. `setup-gradle@v3` (8.7)
-5. `chmod +x gradlew` + `gradle wrapper` se jar ausente
-6. `./gradlew :app:testDebugUnitTest`
+2. `setup-java@v4` (Temurin 17)
+3. SDK Android via `sdkmanager` preinstalado (`platforms;android-34`, `build-tools;34.0.0`) + `android/local.properties`
+4. `gradle/actions/setup-gradle@v3` (Gradle 8.7)
+5. Wrapper estrito (`gradle wrapper --gradle-version 8.7` se `gradle-wrapper.jar` estiver vazio; falha se não gerar)
+6. `./gradlew :app:testDebugUnitTest` (log completo em `gradle-test.log`; falha vira annotations + artifact `android-test-logs`)
 7. `./gradlew :app:assembleDebug`
-8. `sha256sum app-debug.apk` + `upload-artifact@v4` com nome `wzm-offline-launcher-debug`
+8. `sha256sum app-debug.apk` + **annotation com o hash** + `upload-artifact@v4` nome `wzm-offline-launcher-debug`
+9. Guarda anti-commit: falha se houver `*.apk/*.xapk/*.shard` fora de `android/app/build/`
 
-Artefato disponível em **Actions → android-build → Artifacts**.
+Artefato disponível em **Actions → android-build → Artifacts → wzm-offline-launcher-debug**.
 
 ---
 
@@ -108,15 +136,16 @@ Todos os estados refletem instantaneamente na UI via `StateFlow`.
 
 ## 6. O que já funciona (MVP)
 
-- [x] Projeto Android compilável (Kotlin, AGP 8.5.2, Gradle 8.7, minSdk 24, target 34, Compose)
+- [x] Projeto Android compilável **e compilado em CI** (Kotlin 1.9.22, AGP 8.5.2, Gradle 8.7, Compose Compiler 1.5.8, minSdk 24, target 34)
+- [x] APK debug gerado e publicado como artifact (`wzm-offline-launcher-debug`, sha256 `ca21f32d…`, 15.573.665 bytes)
 - [x] `EmbeddedLocalServer` em `127.0.0.1:18081`, background thread, shutdown limpo
 - [x] `ServerController` com estados `PARADO/INICIANDO/ONLINE/PARANDO/ERRO`, `isRunning()`, `getPort()`, mutex
 - [x] `WzmLauncher` detecta instalação, `getInstalledVersion()`, `launch()` via `PackageManager` dinâmico (sem hardcode Activity)
 - [x] `LauncherConfig` centralizado
 - [x] `OfflineContentServer` interface stub
 - [x] UI Compose com status, 3 botões, logs roláveis
-- [x] Testes unitários: `ServerTest` (7 casos), `WzmLauncherConfigTest` (3), `HealthEndpointTest` instrumented
-- [x] GitHub Actions `android-build.yml` com `assembleDebug` + artifact + SHA256 + checagem de assets proprietários
+- [x] Testes unitários JVM: `ServerTest` (10 casos: estado inicial, start, double start, stop, double stop, `/health` 200 OK via socket, `/` HTML, `/__hits` + `/__reset`, config de porta, bind só em loopback), `WzmLauncherConfigTest` (3 casos); `HealthEndpointTest` instrumented para device
+- [x] GitHub Actions `android-build.yml` verde: `testDebugUnitTest` + `assembleDebug` + artifact `wzm-offline-launcher-debug` + SHA256 + checagem de assets proprietários
 - [x] `docs/launcher.md` + README
 
 ---
@@ -138,8 +167,12 @@ Launcher é ferramenta **local/offline de preservação**. Não faz: roubo de cr
 
 ## 9. Troubleshooting
 
-- **Build falha `SDK not found`:** instale `Android SDK 34` via `sdkmanager "platforms;android-34" "build-tools;34.0.0"` ou use GitHub Actions.
-- **Wrapper jar missing:** `gradle wrapper --gradle-version 8.7` em `android/` (CI faz automaticamente).
+- **Build falha `SDK not found`:** instale `Android SDK 34` via `sdkmanager "platforms;android-34" "build-tools;34.0.0"` ou use GitHub Actions (que já faz isso).
+- **Wrapper jar missing/vazio:** `gradle wrapper --gradle-version 8.7` em `android/` (CI faz automaticamente e falha se não gerar).
+- **`Plugin org.jetbrains.kotlin.plugin.compose not found`:** não aplique esse plugin com Kotlin 1.9.x (só existe em 2.0+); use `composeOptions.kotlinCompilerExtensionVersion`.
+- **`android.useAndroidX is not enabled`:** mantenha `android/gradle.properties` com `android.useAndroidX=true`.
+- **`Platform declaration clash`:** não declare `val status` junto de `fun getStatus()` na mesma classe (mesma assinatura JVM).
 - **`/health` não responde:** verifique `adb logcat | grep WZM` e se servidor está `ONLINE`; teste `curl http://127.0.0.1:18081/health` **dentro** do device (`adb shell`).
 - **WZM não abre:** verifique `adb shell pm list packages | grep warzone` e `LauncherConfig.WZM_PACKAGE`.
+- **Como ver o log do CI sem baixar artifact:** os passos `Report Gradle failure as annotations` / `Announce APK SHA256` publicam trechos legíveis em **check-runs/annotations** (útil quando o blob de logs está inacessível).
 

@@ -177,6 +177,19 @@ Workflow CI roda em todo PR: checkout → deps → build → testes → artifact
 
 Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar, endpoints `/health`/`/__hits`, o que funciona e o que ainda não (CDNI stub).
 
+**APK instalável (CI VERIFIED, 2026-10-04):**
+
+| Item | Valor |
+|---|---|
+| Artifact | `wzm-offline-launcher-debug` (Actions → run verde `37177649488` → Artifacts) |
+| Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
+| SHA-256 | `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` |
+| Tamanho | 15.573.665 bytes (~14,9 MiB) |
+| Package | `com.wzm.launcher.debug` (debug) |
+| Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
+
+Servidor embutido escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 OK`, `GET /` → página, `GET /__hits`, `POST /__reset`). Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.callofduty.warzone` (sem Activity hardcoded, sem modificar o APK do jogo).
+
 ---
 
 ## 🧭 Roadmap
