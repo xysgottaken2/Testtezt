@@ -32,6 +32,12 @@ class CdnVpnService : VpnService() {
         const val ACTION_STOP = "com.wzm.launcher.cdn.action.STOP"
         const val EXTRA_WZM_PACKAGE = "wzm_package"
 
+        /** Quantas consultas DNS do túnel aparecem por extenso no log (depois, 1x por nome). */
+        const val DNS_QUERY_LOG_BUDGET = 12
+
+        /** Intervalo do vigia (os limiares de inatividade são 60 s). */
+        const val WATCHDOG_INTERVAL_MS = 20_000L
+
         fun start(context: Context, wzmPackage: String) {
             val intent = Intent(context, CdnVpnService::class.java)
                 .setAction(ACTION_START)
@@ -63,6 +69,13 @@ class CdnVpnService : VpnService() {
 
     private val dnsResponder = DnsResponder()
     private lateinit var upstreamDns: UpstreamDns
+    private var watchdogThread: Thread? = null
+
+    /** Vigia de atividade: distingue "não usou o túnel" de "usou e falhou" (M3.3). */
+    private val watchdog = TunActivityWatchdog()
+
+    /** Quantas consultas DNS são registradas por extenso antes de passar a logar 1x por nome. */
+    private var dnsQueryLogBudget = DNS_QUERY_LOG_BUDGET
 
     /** Evita repetir a mesma linha de log (pacotes repetidos geram milhares de eventos). */
     private val loggedOnce: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
@@ -108,11 +121,15 @@ class CdnVpnService : VpnService() {
             .addDnsServer(CdnRouterConfig.VPN_DNS)
             .addRoute(CdnRouterConfig.VPN_ROUTE, CdnRouterConfig.VPN_ROUTE_PREFIX)
 
+        var perAppApplied = false
+        var perAppError: String? = null
         if (wzmPackage.isNullOrBlank()) {
+            perAppError = "sem pacote alvo no intent (o túnel DNS valeria para TODOS os apps)"
             RequestLog.add("VPN", "AVISO: sem pacote alvo; o túnel DNS valeria para todos os apps")
         } else {
             try {
                 builder.addAllowedApplication(wzmPackage)
+                perAppApplied = true
                 RequestLog.add("VPN", "per-app: somente $wzmPackage usará o túnel")
             } catch (e: PackageManager.NameNotFoundException) {
                 val message = "pacote $wzmPackage não encontrado: ${e.message}"
@@ -122,6 +139,13 @@ class CdnVpnService : VpnService() {
                 return
             }
         }
+
+        // Cabeçalho de diagnóstico da sessão (M3.3): prova qual app entrou na VPN, se é a
+        // primeira execução e quais destinos o túnel espera. Sem isso, dois testes no mesmo
+        // device ficam indistinguíveis (foi o que aconteceu em 2026-10-04).
+        val target = wzmPackage ?: "(sem pacote alvo)"
+        SessionReport.lines(AndroidDiagnostics.sessionFacts(this, target, perAppApplied, perAppError))
+            .forEach { line -> RequestLog.add("DIAG", line) }
 
         val descriptor = try {
             builder.establish()
@@ -149,6 +173,16 @@ class CdnVpnService : VpnService() {
         )
         running = true
         worker = Thread({ loop() }, "cdn-tun-loop").also { it.isDaemon = true; it.start() }
+        watchdog.start(System.currentTimeMillis())
+        watchdogThread = Thread({ watchdogLoop() }, "cdn-diag-watchdog").also { it.isDaemon = true; it.start() }
+        AndroidDiagnostics.tunnelInterfaceLines().forEach { line -> RequestLog.add("DIAG", line) }
+        AndroidDiagnostics.vpnNetworkLines(this).forEach { line -> RequestLog.add("DIAG", line) }
+        RequestLog.add(
+            "DIAG",
+            "túnel pronto: se o app alvo resolver um host CDNI, o destino esperado é " +
+                "${CdnRouterConfig.REDIRECT_TO}:${CdnRouterConfig.LOCAL_HTTPS_PORT} (bounce) e as consultas " +
+                "DNS devem aparecer na tag DNS; inatividade e resumo saem a cada ${WATCHDOG_INTERVAL_MS / 1000} s"
+        )
         CdnRouterController.onVpnStateChanged(true)
         RequestLog.add(
             "VPN",
@@ -181,82 +215,91 @@ class CdnVpnService : VpnService() {
     }
 
     private fun handlePacket(packet: ByteArray, length: Int, output: FileOutputStream) {
-        if (!TunnelPackets.isValid(packet, length)) {
-            logThrottled("TUN", "pacote não-IPv4/inválido descartado (${length} B)")
+        val view = TunDiagnostics.view(packet, length)
+        if (view == null) {
+            RequestLog.incTunDiscard()
+            logThrottled("TUN", TunDiscardReason.PACOTE_INVALIDO.line(null, "lido=${length} B"))
             return
         }
-        when (TunnelPackets.protocol(packet)) {
-            TunnelPackets.PROTO_UDP -> handleUdp(packet, length, output)
-            TunnelPackets.PROTO_TCP -> handleTcp(packet, length, output)
-            else -> logThrottled(
-                "TUN",
-                "protocolo ${TunnelPackets.protocol(packet)} de ${TunnelPackets.srcAddress(packet)} -> " +
-                    "${TunnelPackets.dstAddress(packet)} descartado (túnel existe só para DNS/CDNI)"
-            )
+        RequestLog.incTunPacket()
+        watchdog.onPacket(System.currentTimeMillis())
+        if (view.isRedirectDest) RequestLog.incTunToRedirect()
+        when (view.protocol) {
+            TunnelPackets.PROTO_UDP -> handleUdp(packet, length, view, output)
+            TunnelPackets.PROTO_TCP -> handleTcp(packet, length, view, output)
+            else -> {
+                RequestLog.incTunDiscard()
+                logThrottled("TUN", TunDiscardReason.PROTO_NAO_SUPORTADO.line(view))
+            }
         }
     }
 
-    private fun handleUdp(packet: ByteArray, length: Int, output: FileOutputStream) {
-        val offset = TunnelPackets.transportOffset(packet)
-        val srcAddress = TunnelPackets.srcAddress(packet)
-        val dstAddress = TunnelPackets.dstAddress(packet)
-        val srcPort = TunnelPackets.srcPort(packet, offset)
-        val dstPort = TunnelPackets.dstPort(packet, offset)
-        if (dstPort != CdnRouterConfig.DNS_PORT) {
-            logThrottled("TUN", "UDP ${srcAddress}:${srcPort} -> ${dstAddress}:${dstPort} descartado (não é DNS)")
+    private fun handleUdp(packet: ByteArray, length: Int, view: TunPacketView, output: FileOutputStream) {
+        if (!view.isDnsPort) {
+            RequestLog.incTunDiscard()
+            logThrottled("TUN", TunDiscardReason.UDP_PORTA_NAO_DNS.line(view))
             return
         }
         val payloadOffset = TunnelPackets.udpPayloadOffset(packet)
         if (length <= payloadOffset) return
         val dnsPayload = packet.copyOfRange(payloadOffset, length)
         RequestLog.incDnsQuery()
+        val question = DnsMessage.parseQuery(dnsPayload, dnsPayload.size)
+        val name = question?.name ?: "?"
+        if (dnsQueryLogBudget > 0) {
+            dnsQueryLogBudget--
+            RequestLog.add(
+                "DNS",
+                "consulta DNS no túnel: $name (tipo ${question?.qType ?: -1}) de " +
+                    "${view.srcAddress}:${view.srcPort} -> ${view.dstAddress}:${view.dstPort}"
+            )
+        }
 
         val intercepted = dnsResponder.answer(dnsPayload, dnsPayload.size)
         if (intercepted != null) {
             RequestLog.incDnsIntercepted()
-            val question = DnsMessage.parseQuery(dnsPayload, dnsPayload.size)
+            watchdog.onCdnDns(System.currentTimeMillis())
             RequestLog.add(
                 "DNS",
-                "${question?.name ?: "?"} (tipo ${question?.qType ?: -1}) -> ${CdnRouterConfig.REDIRECT_TO} [interceptado]"
+                "$name (tipo ${question?.qType ?: -1}) -> ${CdnRouterConfig.REDIRECT_TO} " +
+                    "[DNS CDNI recebido e interceptado]"
             )
-            writePacket(output, TunnelPackets.buildUdpPacket(dstAddress, dstPort, srcAddress, srcPort, intercepted))
+            writePacket(
+                output,
+                TunnelPackets.buildUdpPacket(
+                    view.dstAddress, view.dstPort, view.srcAddress, view.srcPort, intercepted
+                )
+            )
             return
         }
 
-        val question = DnsMessage.parseQuery(dnsPayload, dnsPayload.size)
         val upstream = upstreamDns.exchange(dnsPayload, dnsPayload.size)
         if (upstream == null) {
-            logThrottled("DNS", "sem resposta para ${question?.name ?: "consulta desconhecida"} (encaminhamento falhou)")
+            logThrottled("DNS", "sem resposta para $name (encaminhamento falhou)")
             return
         }
-        // Diagnóstico: registra (uma vez por nome) que a consulta NÃO era do CDNI e foi encaminhada.
-        // Foi a ausência desse dado que deixou dúvida na evidência do device de 2026-10-04
-        // (5 conexões TCP com dnsIntercepted=0) — ver docs/research/m3-cdni-integration.md §6.1.
+        RequestLog.incDnsForwarded()
         logThrottled(
             "DNS",
-            "${question?.name ?: "consulta"} (tipo ${question?.qType ?: -1}) -> encaminhado ao DNS real " +
+            "$name (tipo ${question?.qType ?: -1}) -> encaminhado ao DNS real " +
                 "(não é host CDNI; resposta ${upstream.size} B)"
         )
-        writePacket(output, TunnelPackets.buildUdpPacket(dstAddress, dstPort, srcAddress, srcPort, upstream))
+        writePacket(
+            output,
+            TunnelPackets.buildUdpPacket(view.dstAddress, view.dstPort, view.srcAddress, view.srcPort, upstream)
+        )
     }
 
-    private fun handleTcp(packet: ByteArray, length: Int, output: FileOutputStream) {
-        val offset = TunnelPackets.transportOffset(packet)
-        val srcAddress = TunnelPackets.srcAddress(packet)
-        val dstAddress = TunnelPackets.dstAddress(packet)
-        val srcPort = TunnelPackets.srcPort(packet, offset)
-        val dstPort = TunnelPackets.dstPort(packet, offset)
-        val isSyn = TunnelPackets.hasFlag(packet, offset, TunnelPackets.FLAG_SYN)
-
-        if (dstAddress == CdnRouterConfig.VPN_ADDRESS || dstAddress == CdnRouterConfig.LOOPBACK_ADDRESS) {
-            // O destino é um endereço LOCAL do aparelho: devolver o pacote à interface faz a pilha
-            // TCP do kernel entregá-lo ao nosso listener :443 (garante o caminho mesmo quando a
-            // tabela de rotas da VPN vence a tabela `local`).
-            if (isSyn) {
+    private fun handleTcp(packet: ByteArray, length: Int, view: TunPacketView, output: FileOutputStream) {
+        if (view.isLocalDest) {
+            // Endereço LOCAL do aparelho (túnel ou loopback): devolver o pacote ao TUN faz a pilha
+            // TCP do kernel entregá-lo ao nosso listener HTTPS (bounce).
+            RequestLog.incTunBounce()
+            if (view.isSyn) {
                 RequestLog.add(
                     "CDNI",
-                    "TCP SYN ${srcAddress}:${srcPort} -> ${dstAddress}:${dstPort} " +
-                        "(devolvido à pilha local p/ o listener HTTPS)"
+                    "TCP SYN ${view.srcAddress}:${view.srcPort} -> ${view.dstAddress}:${view.dstPort} " +
+                        "(devolvido ao TUN -> listener HTTPS, bounce #${RequestLog.counters.value.tunBounces})"
                 )
             }
             writePacket(output, packet, length)
@@ -265,15 +308,33 @@ class CdnVpnService : VpnService() {
 
         val reset = TunnelPackets.buildTcpReset(packet, length)
         if (reset != null) {
-            if (isSyn) {
+            RequestLog.incTunDiscard()
+            if (view.isSyn) {
                 logThrottled(
                     "TUN",
-                    "TCP ${dstAddress}:${dstPort} sem atendimento local -> RST (nada é inventado)"
+                    TunDiscardReason.TCP_SEM_ATENDIMENTO.line(view, "respondido com RST (nada é inventado)")
                 )
             }
             writePacket(output, reset)
         } else {
-            logThrottled("TUN", "TCP ${dstAddress}:${dstPort} ignorado")
+            RequestLog.incTunDiscard()
+            logThrottled("TUN", "TCP ${view.dstAddress}:${view.dstPort} ignorado (sem RST seguro para este pacote)")
+        }
+    }
+
+    /** Vigia de atividade: roda a cada [WATCHDOG_INTERVAL_MS] e escreve no log o que faltou. */
+    private fun watchdogLoop() {
+        while (running) {
+            try {
+                Thread.sleep(WATCHDOG_INTERVAL_MS)
+            } catch (_: InterruptedException) {
+                return
+            }
+            if (!running) return
+            val now = System.currentTimeMillis()
+            for (event in watchdog.poll(now)) {
+                RequestLog.add("DIAG", watchdog.messageFor(event, RequestLog.counters.value, now))
+            }
         }
     }
 
@@ -295,6 +356,7 @@ class CdnVpnService : VpnService() {
     private fun shutdown(reason: String) {
         if (running || tunnel != null) {
             RequestLog.add("VPN", "encerrando roteador local: $reason")
+            RequestLog.add("DIAG", "resumo final da sessão: " + TunDiagnostics.summaryLine(RequestLog.counters.value))
         }
         running = false
         try {
@@ -306,6 +368,8 @@ class CdnVpnService : VpnService() {
         writeStream = null
         worker?.interrupt()
         worker = null
+        watchdogThread?.interrupt()
+        watchdogThread = null
         CdnRouterController.onVpnStateChanged(false)
         try {
             stopForeground(STOP_FOREGROUND_REMOVE)

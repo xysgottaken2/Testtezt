@@ -34,6 +34,7 @@ required=(
   "warzone-offline/tools/apk-analysis/tls-trust-scan.py"
   "docs/research/m3.2-apk-tls-trust-investigation.md"
   "docs/research/m3-cdni-integration.md"
+  "docs/research/m3.3-diferenca-entre-os-testes.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )

@@ -16,18 +16,31 @@ data class RequestCounters(
     val httpRequests: Int = 0,
     val unknownRequests: Int = 0,
     val tlsOk: Int = 0,
-    val tlsFailed: Int = 0
+    val tlsFailed: Int = 0,
+    // ---- M3.3: visibilidade do que passa ou não pelo túnel ----
+    /** Pacotes IPv4 lidos do TUN (qualquer protocolo). */
+    val tunPackets: Int = 0,
+    /** Pacotes destinados exatamente ao endereço do túnel (10.111.222.1). */
+    val tunToRedirect: Int = 0,
+    /** Pacotes devolvidos ao TUN (bounce) para a pilha local entregar ao listener. */
+    val tunBounces: Int = 0,
+    /** Pacotes descartados (cada descarte tem motivo no log). */
+    val tunDiscards: Int = 0,
+    /** Consultas DNS que NÃO eram do CDNI e foram encaminhadas ao DNS real. */
+    val dnsForwarded: Int = 0
 ) {
     /** Linha única com todos os contadores (UI e cabeçalho de exportação). */
     fun summary(): String =
         "DNS: $dnsQueries consultas / $dnsIntercepted interceptadas • " +
             "TCP: $tcpConnections conexões • HTTP: $httpRequests requests / $unknownRequests desconhecidos • " +
-            "TLS: $tlsOk ok / $tlsFailed falhas"
+            "TLS: $tlsOk ok / $tlsFailed falhas • " +
+            "TUN: $tunPackets pacotes / $tunToRedirect p/ 10.111.222.1 / $tunBounces bounce / $tunDiscards descartes • " +
+            "DNS encaminhado: $dnsForwarded"
 
     /** Versão curta para os cards. */
     fun compact(): String =
         "DNS ${dnsQueries}/${dnsIntercepted} • TCP $tcpConnections • HTTP $httpRequests/$unknownRequests • " +
-            "TLS $tlsOk/$tlsFailed"
+            "TLS $tlsOk/$tlsFailed • TUN $tunPackets/$tunToRedirect/$tunBounces/$tunDiscards"
 }
 
 /**
@@ -71,6 +84,11 @@ object RequestLog {
     private val unknownRequests = AtomicInteger(0)
     private val tlsOk = AtomicInteger(0)
     private val tlsFailed = AtomicInteger(0)
+    private val tunPackets = AtomicInteger(0)
+    private val tunToRedirect = AtomicInteger(0)
+    private val tunBounces = AtomicInteger(0)
+    private val tunDiscards = AtomicInteger(0)
+    private val dnsForwarded = AtomicInteger(0)
 
     @Volatile
     private var sink: LogSink? = null
@@ -97,6 +115,11 @@ object RequestLog {
     fun incUnknownRequest() { unknownRequests.incrementAndGet(); publishCounters() }
     fun incTlsOk() { tlsOk.incrementAndGet(); publishCounters() }
     fun incTlsFailed() { tlsFailed.incrementAndGet(); publishCounters() }
+    fun incTunPacket() { tunPackets.incrementAndGet(); publishCounters() }
+    fun incTunToRedirect() { tunToRedirect.incrementAndGet(); publishCounters() }
+    fun incTunBounce() { tunBounces.incrementAndGet(); publishCounters() }
+    fun incTunDiscard() { tunDiscards.incrementAndGet(); publishCounters() }
+    fun incDnsForwarded() { dnsForwarded.incrementAndGet(); publishCounters() }
 
     private fun publishCounters() {
         _counters.value = RequestCounters(
@@ -106,13 +129,19 @@ object RequestLog {
             httpRequests = httpRequests.get(),
             unknownRequests = unknownRequests.get(),
             tlsOk = tlsOk.get(),
-            tlsFailed = tlsFailed.get()
+            tlsFailed = tlsFailed.get(),
+            tunPackets = tunPackets.get(),
+            tunToRedirect = tunToRedirect.get(),
+            tunBounces = tunBounces.get(),
+            tunDiscards = tunDiscards.get(),
+            dnsForwarded = dnsForwarded.get()
         )
     }
 
     fun resetCounters() {
         dnsQueries.set(0); dnsIntercepted.set(0); tcpConnections.set(0); httpRequests.set(0)
         unknownRequests.set(0); tlsOk.set(0); tlsFailed.set(0)
+        tunPackets.set(0); tunToRedirect.set(0); tunBounces.set(0); tunDiscards.set(0); dnsForwarded.set(0)
         publishCounters()
     }
 
@@ -158,7 +187,10 @@ object RequestLog {
             append(
                 "# contadores: dnsQueries=${current.dnsQueries} dnsIntercepted=${current.dnsIntercepted} " +
                     "tcpConnections=${current.tcpConnections} httpRequests=${current.httpRequests} " +
-                    "unknownRequests=${current.unknownRequests} tlsOk=${current.tlsOk} tlsFailed=${current.tlsFailed}\n"
+                    "unknownRequests=${current.unknownRequests} tlsOk=${current.tlsOk} tlsFailed=${current.tlsFailed} " +
+                    "tunPackets=${current.tunPackets} tunToRedirect=${current.tunToRedirect} " +
+                    "tunBounces=${current.tunBounces} tunDiscards=${current.tunDiscards} " +
+                    "dnsForwarded=${current.dnsForwarded}\n"
             )
             append("# linhas: ${buffer.size} (buffer máximo: $MAX_ENTRIES)\n")
             append("# privacidade: não são registrados corpos de requisição nem cabeçalhos (sem cookies/tokens)\n")

@@ -46,7 +46,11 @@ object CdnRouterController {
             _status.value = _status.value.copy(httpsRunning = false, serverError = message)
             return false
         }
-        val created = LocalHttpsServer(tlsMaterial = material)
+        val appContext = context.applicationContext
+        val created = LocalHttpsServer(
+            tlsMaterial = material,
+            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) }
+        )
         val started = created.start()
         server = if (started) created else null
         _status.value = _status.value.copy(

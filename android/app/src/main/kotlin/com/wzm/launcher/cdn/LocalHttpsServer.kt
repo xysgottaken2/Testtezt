@@ -26,7 +26,12 @@ class LocalHttpsServer(
     private val relay: TcpRelay = TcpRelay(),
     private val log: (String, String) -> Unit = { tag, message -> RequestLog.add(tag, message) },
     private val tlsContextOverride: SSLContext? = null,
-    private val maxConcurrentConnections: Int = 8
+    private val maxConcurrentConnections: Int = 8,
+    /**
+     * Dono (UID/pacote) do socket cliente — em Android usa `getConnectionOwnerUid` (M3.3).
+     * Responde "o processo está mesmo na VPN per-app?" com evidência, não com suposição.
+     */
+    private val ownerDescription: (Socket) -> String = { "dono=NAO_RESOLVIDO (sem lookup neste ambiente)" }
 ) {
 
     data class BindEndpoint(val address: String, val port: Int) {
@@ -83,16 +88,34 @@ class LocalHttpsServer(
                 bound += endpoint
                 log("CDNI", "HTTPS local escutando em ${endpoint.address}:${endpoint.port}")
             } catch (e: Exception) {
+                val failure = ListenerFailures.classify(e.javaClass.simpleName, e.message)
                 log(
                     "CDNI",
-                    "não foi possível escutar em ${endpoint.address}:${endpoint.port}: " +
-                        "${e.javaClass.simpleName}: ${e.message}"
+                    "listener NÃO subiu em ${endpoint.address}:${endpoint.port}: motivo=${failure.code} " +
+                        "(${e.javaClass.simpleName}: ${e.message}) — ${failure.hint}"
                 )
             }
         }
         if (bound.isEmpty()) {
             log("CDNI", "NENHUM listener HTTPS local ativo — o boot do WZM não terá para onde ir")
             return false
+        }
+        val tunnelBound = bound.any {
+            it.address == CdnRouterConfig.VPN_ADDRESS && it.port == CdnRouterConfig.LOCAL_HTTPS_PORT
+        }
+        val loopbackBound = bound.any { it.address == CdnRouterConfig.LOOPBACK_ADDRESS }
+        log(
+            "CDNI",
+            "listeners ativos=[${bound.joinToString()}] direto-pelo-tunel(10.111.222.1:443)=$tunnelBound " +
+                "loopback(127.0.0.1:443)=$loopbackBound"
+        )
+        if (!tunnelBound) {
+            log(
+                "CDNI",
+                "SEM listener em 10.111.222.1:443: o cliente que conectar no IP devolvido pelo DNS " +
+                    "não será atendido por essa via — só o caminho 127.0.0.1:443 pode completar " +
+                    "(motivo=ENDERECO_INDISPONIVEL no bind do endereço do túnel)"
+            )
         }
         boundEndpoints = bound
         running = true
@@ -129,13 +152,17 @@ class LocalHttpsServer(
                 break
             }
             val peer = client.remoteSocketAddress?.toString() ?: "?"
-            // "via" ajuda a distinguir o caminho usado pelo cliente (evidência do device de 2026-10-04:
-            // as conexões chegaram em 127.0.0.1:443, ou seja, pelo loopback, e não pelo endereço do túnel).
-            val via = if (endpoint.address == CdnRouterConfig.LOOPBACK_ADDRESS) "loopback" else "túnel"
+            // "via" diz por qual endereço a conexão entrou; "dono" diz qual processo conectou.
+            // O teste de 2026-10-04 registrou 5 conexões em 127.0.0.1:443 sem dono identificado —
+            // por isso o par via+dono passou a ser obrigatório no log (M3.3).
+            val via = ListenerFailures.via(endpoint.address)
+            val owner = runCatching { ownerDescription(client) }
+                .getOrElse { "dono=NAO_RESOLVIDO (${it.javaClass.simpleName})" }
             RequestLog.incTcpConnection()
             log(
                 "CDNI",
-                "conexão TCP recebida de $peer em $endpoint (via $via, total ${RequestLog.counters.value.tcpConnections})"
+                "tentativa de conexão em $endpoint (via $via): peer=$peer $owner — " +
+                    "total=${RequestLog.counters.value.tcpConnections}"
             )
             if (!connections.tryAcquire()) {
                 log("CDNI", "conexões simultâneas no limite ($maxConcurrentConnections) — conexão descartada")

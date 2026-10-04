@@ -247,6 +247,11 @@ Exemplo de leitura no próprio device:
 adb shell 'curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/requests'
 ```
 
+**Diagnóstico de sessão (M3.3):** como dois testes no mesmo device deram resultados diferentes
+(5 conexões em um, 0 no outro), o launcher passou a registrar dono da conexão, rota/interfaces aplicadas,
+inatividade do túnel e motivo de cada descarte — sem alterar o roteamento. Investigação completa, hipóteses
+e protocolo de reprodução: [docs/research/m3.3-diferenca-entre-os-testes.md](research/m3.3-diferenca-entre-os-testes.md).
+
 **Bloqueio conhecido (§6 do doc M3):** apps com `targetSdk ≥ 24` não confiam em CA instalada pelo usuário;
 o WZM provavelmente recusará o certificado no handshake (logado como `[TLS] FALHA … cliente RECUSOU …`).
 Isso **não** é contornado: nada de root, patch de trust ou alteração do APK do jogo.
@@ -261,13 +266,18 @@ em primeiro plano).
 
 | Recurso | Detalhe |
 |---|---|
-| Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[LAUNCHER]` |
-| Conexões TCP | cada uma traz o listener usado e o caminho: `via loopback` ou `via túnel` (explica a evidência de 5 conexões em `127.0.0.1:443`) |
+| Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]` |
+| Conexões TCP | cada tentativa traz o listener, o caminho (`via loopback`/`via túnel`) e o **dono** da conexão: `dono=uid=<n> (<pacote>)` — sem isso não se sabe se quem conectou foi o WZM ou outro app (M3.3) |
+| Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
 | Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
-| DNS | consultas interceptadas e também as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
+| DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
+| Silêncio do túnel (M3.3) | aviso único de `[DIAG] nenhum pacote recebido no TUN…` e de `[DIAG] nenhuma consulta DNS dos hosts CDNI…` — o "não aconteceu nada" passa a ser explícito no log |
+| Descarte de pacote | `[TUN] pacote descartado: motivo=<CODIGO> …` (`FORA_DA_ROTA`, `UDP_PORTA_NAO_DNS`, `PROTO_NAO_SUPORTADO`, `TCP_SEM_ATENDIMENTO`, `PACOTE_INVALIDO`) |
+| Bind dos listeners | `[CDNI] listener NÃO subiu em …: motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e aviso explícito quando o endereço do túnel fica sem listener |
+| Resumo do túnel | `[DIAG] resumo do túnel: pacotes=… para-10.111.222.1=… devolvidos-bounce=… descartados=… dns-total=… dns-cdni-interceptado=… dns-encaminhado=… tcp-conexoes=… tls-ok=… tls-falha=…` (a cada 20 s e no fim) |
 | Status/código HTTP | linha `[HTTP]` dedicada: `GET /path -> 200 OK (resposta N B, cliente=…)`; desconhecidos aparecem como `404 Not Found` |
 | Timestamps | `[HH:mm:ss.SSS]` em cada linha (fuso local do aparelho) |
-| Contadores | `DNS: consultas/interceptadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas` |
+| Contadores | `DNS: consultas/interceptadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas • TUN: pacotes/p-10.111.222.1/bounce/descartes • DNS encaminhado` |
 | Filtros | chips por tag + contagem de linhas visíveis |
 | Leitura | fonte monoespaçada, cor por tag, toggle **auto-rolar** (desligue para ler enquanto chegam linhas novas) |
 | LIMPAR LOGS | com confirmação; apaga buffer, contadores e o arquivo persistido |
@@ -281,7 +291,7 @@ Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
 ```
 # WZM Offline Launcher — RequestLog do roteador CDNI local
 # exportado em: 2026-10-04T14:22:31.512-03:00
-# contadores: dnsQueries=3 dnsIntercepted=1 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0
+# contadores: dnsQueries=3 dnsIntercepted=1 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 tunPackets=12 tunToRedirect=5 tunBounces=5 tunDiscards=7 dnsForwarded=2
 # linhas: 12 (buffer máximo: 400)
 # privacidade: não são registrados corpos de requisição nem cabeçalhos (sem cookies/tokens)
 ```

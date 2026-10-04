@@ -105,6 +105,37 @@ class RequestLogTest {
         assertTrue(counters.compact().contains("TLS 1/1"))
     }
 
+    /** M3.3: o log precisa provar o que passou (ou não) pelo túnel, com contadores próprios. */
+    @Test
+    fun countersTrackTunnelActivity() {
+        RequestLog.clear()
+        RequestLog.incTunPacket()
+        RequestLog.incTunPacket()
+        RequestLog.incTunToRedirect()
+        RequestLog.incTunBounce()
+        RequestLog.incTunDiscard()
+        RequestLog.incDnsForwarded()
+
+        val counters = RequestLog.counters.value
+        assertEquals(2, counters.tunPackets)
+        assertEquals(1, counters.tunToRedirect)
+        assertEquals(1, counters.tunBounces)
+        assertEquals(1, counters.tunDiscards)
+        assertEquals(1, counters.dnsForwarded)
+
+        val summary = counters.summary()
+        assertTrue(summary.contains("TUN: 2 pacotes"))
+        assertTrue(summary.contains("1 p/ 10.111.222.1"))
+        assertTrue(summary.contains("1 bounce"))
+        assertTrue(summary.contains("1 descartes"))
+        assertTrue(summary.contains("DNS encaminhado: 1"))
+        assertTrue(counters.compact().contains("TUN 2/1/1/1"))
+
+        val export = RequestLog.exportText()
+        assertTrue("o export precisa levar os contadores do túnel", export.contains("tunPackets=2"))
+        assertTrue(export.contains("dnsForwarded=1"))
+    }
+
     @Test
     fun clearResetsLinesAndCounters() {
         RequestLog.add("DNS", "$marker antes")

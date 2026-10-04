@@ -177,7 +177,8 @@ class LocalHttpsServerTest {
 
         val snapshot = RequestLog.snapshot()
         assertTrue("o servidor precisa registrar a falha de handshake", snapshot.contains("FALHA no handshake TLS"))
-        assertTrue("log deve citar a conexão TCP aceita", snapshot.contains("conexão TCP recebida"))
+        assertTrue("log deve citar a tentativa de conexão", snapshot.contains("tentativa de conexão em"))
+        assertTrue("log precisa dizer o dono da conexão", snapshot.contains("dono="))
         assertTrue("conexão precisa indicar o caminho usado", snapshot.contains("via loopback"))
 
         val counters = RequestLog.counters.value

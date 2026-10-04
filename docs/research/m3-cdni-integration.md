@@ -144,23 +144,40 @@ dentro das nossas regras (sem root, sem patch do APK, sem bypass de pinning).
 
 | Medida | Valor | Significado |
 |---|---|---|
-| `tcpConnections` | **5** | o WZM abriu 5 conexões contra o servidor local |
+| `tcpConnections` | **5** | houve 5 conexões aceitas no servidor local (**dono não registrado na época**) |
 | listener | **127.0.0.1:443** | chegou pelo loopback (não pelo endereço do túnel `10.111.222.1`) |
 | TLS | **5 × `SSLV3_ALERT_CERTIFICATE_UNKNOWN`** | o cliente alcançou o listener e **recusou a cadeia de certificados** |
 | `httpRequests` | 0 | nenhuma requisição HTTP completou (sem TLS não há HTTP) |
 | `tlsOk` / `tlsFailed` | 0 / 5 | nenhum handshake aceito |
 | `dnsIntercepted` | 0 | nesta tentativa o WZM **não** usou o DNS do túnel (anomalia analisada em §1.1 do doc M3.2) |
 
-Leitura: **M3 comprovado ponta a ponta no device** — o tráfego do jogo chega ao servidor embarcado e é
-registrado. O único bloqueio restante é confiança TLS, e o launcher passa a classificar a falha no log
-(`motivo=CLIENTE_RECUSOU_CERTIFICADO`), incluindo isso nos testes automatizados.
+Leitura (**revisada em M3.3** — ver `docs/research/m3.3-diferenca-entre-os-testes.md`):
+
+* **VERIFIED:** houve 5 conexões TCP aceitas no listener de loopback e o cliente foi recusado no TLS
+  (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`);
+* **HYPOTHESIS (não comprovado):** que essas 5 conexões tenham vindo do WZM. Até 2026-10-04 o log não
+  registrava o **dono** (UID) da conexão, e o listener de `127.0.0.1:443` é alcançável por **qualquer**
+  app do aparelho — não só pelo app incluído na VPN per-app;
+* **VERIFIED:** em uma segunda execução no mesmo device, `tcpConnections=0`, `dnsIntercepted=0` e somente
+  consultas para `dns.adguard.com` apareceram — ou seja, o roteamento **não** é determinístico entre
+  execuções e isso precisa ser explicado com evidência, não presumido.
 
 Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteamento):
 
-* cada conexão TCP é registrada com `via loopback` ou `via túnel` (explica o `127.0.0.1:443` observado);
-* falhas de TLS ganham `motivo=<CÓDIGO>` classificado por `TlsTrust` (com dica acionável);
-* consultas DNS **encaminhadas** (que não são do CDNI) passam a ser registradas uma vez por nome — para
-  descobrir por que `dnsIntercepted=0` na tentativa do device.
+* cada tentativa de conexão registra `via loopback|túnel` **e** `dono=uid=<n> (<pacote>)`
+  (`ConnectivityManager.getConnectionOwnerUid`, API 29+) — resolve a autoria das conexões;
+* cabeçalho de sessão `[DIAG]` com número da execução, app/versão/UID alvo e se `addAllowedApplication`
+  foi aceito (per-app) — responde "o processo está mesmo na VPN?";
+* vigia de túnel: aviso único de `nenhum pacote recebido no TUN` e de `nenhuma consulta DNS dos hosts CDNI`
+  (o silêncio do teste B passa a ser uma linha explícita, não uma ausência);
+* cada pacote do TUN é contado e, quando descartado, registrado com `motivo=<CODIGO>`
+  (`FORA_DA_ROTA`, `UDP_PORTA_NAO_DNS`, `PROTO_NAO_SUPORTADO`, `TCP_SEM_ATENDIMENTO`, `PACOTE_INVALIDO`);
+* falhas de bind dos listeners ganham `motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e, quando o
+  endereço do túnel fica sem listener, o log diz explicitamente que só o caminho `127.0.0.1:443` pode
+  completar;
+* falhas de TLS continuam com `motivo=<CÓDIGO>` classificado por `TlsTrust` (com dica acionável);
+* consultas DNS **encaminhadas** (que não são do CDNI) continuam registradas uma vez por nome — agora com
+  contador próprio no card/export (`dns-encaminhado`).
 
 ## 7. Como validar no device (passo a passo)
 
