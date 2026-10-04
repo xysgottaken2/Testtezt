@@ -138,6 +138,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Announce APK SHA256 (annotation legível via API)
+        if: success()
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          SHA=$(cut -d' ' -f1 "$APK.sha256")
+          SIZE=$(stat -c%s "$APK")
+          echo "APK sha256=$SHA size=$SIZE"
+          echo "::notice title=wzm-offline-launcher-debug::sha256=$SHA size=$SIZE bytes"
+
       - name: Check no proprietary assets in repo
         run: |
           echo "Checking for forbidden proprietary files..."
