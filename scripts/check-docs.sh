@@ -21,8 +21,12 @@ required=(
   "docs/protocol/template.md"
   "docs/protocol/cdni-build-selector.md"
   "docs/protocol/cdni-offline-page.md"
+  "docs/protocol/cdni-meta.md"
+  "docs/protocol/manifest-json.md"
   "docs/protocol/endpoints-template.json"
   "docs/protocol/examples/synthetic-example.md"
+  "docs/research/m2.2-assets-cdni-investigation.md"
+  "warzone-offline/tools/asset-tools/cdni-probe.sh"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
