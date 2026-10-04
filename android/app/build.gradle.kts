@@ -1,7 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    // Compose Compiler Gradle plugin (org.jetbrains.kotlin.plugin.compose) NÃO é aplicado:
+    // ele só existe a partir do Kotlin 2.0.0. Com Kotlin 1.9.22 usamos composeOptions abaixo.
 }
 
 android {
@@ -46,7 +47,8 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.13"
+        // 1.5.8 é a versão do Compose Compiler pareada com Kotlin 1.9.22 (VERIFIED na doc Android)
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
     packaging {
         resources {

@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -25,124 +25,96 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Set up Android SDK (preinstalled ubuntu-latest)
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls -la "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" 2>&1 | head -n 100 || true
-          # sdkmanager is preinstalled on ubuntu-latest
-          SDKMANAGER=""
-          if command -v sdkmanager >/dev/null 2>&1; then
-            SDKMANAGER="sdkmanager"
-          elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          else
-            echo "sdkmanager not found, trying to locate"
-            find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f 2>/dev/null | head -n 5 || true
-          fi
-          echo "Using SDKMANAGER=$SDKMANAGER"
-          if [ -n "$SDKMANAGER" ]; then
-            "$SDKMANAGER" --version || true
-            echo "Accepting licenses..."
-            yes | "$SDKMANAGER" --licenses 2>&1 | tail -n 20 || true
-            echo "Ensuring platforms;android-34 and build-tools;34.0.0"
-            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -n 30 || true
-            echo "Installed:"
-            "$SDKMANAGER" --list_installed 2>&1 | head -n 50 || true
-          else
-            echo "WARNING: sdkmanager not found, relying on preinstalled SDK"
-            ls -la "$ANDROID_HOME/platforms/" 2>&1 | head -n 20 || true
-            ls -la "$ANDROID_HOME/build-tools/" 2>&1 | head -n 20 || true
-          fi
-
-      - name: Create local.properties for Gradle
-        run: |
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMANAGER=""
+          if command -v sdkmanager >/dev/null 2>&1; then SDKMANAGER="sdkmanager"; fi
+          if [ -z "$SDKMANAGER" ] && [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"; fi
+          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n 1)"; fi
+          echo "SDKMANAGER=$SDKMANAGER"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -n 10 || true
+          fi
           echo "sdk.dir=$SDK" > android/local.properties
           cat android/local.properties
-          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
-          ls -la "$SDK/platforms/" 2>&1 | head -n 20 || true
-          ls -la "$SDK/build-tools/" 2>&1 | head -n 20 || true
+          ls -la "$SDK/platforms/" || true
+          ls -la "$SDK/build-tools/" || true
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
-
-      - name: Generate Gradle Wrapper (if missing jar)
+      - name: Generate Gradle Wrapper (strict, falha se não gerar)
         working-directory: android
         run: |
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ] || [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Wrapper jar missing or placeholder — regenerating via gradle wrapper"
-            gradle wrapper --gradle-version 8.7 || echo "gradle wrapper failed, trying to continue"
+          chmod +x gradlew
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Wrapper jar missing/empty — regenerating"
+            gradle wrapper --gradle-version 8.7 --no-daemon
           fi
-          ls -lh gradle/wrapper/ || true
+          ls -lh gradle/wrapper/
+          test -s gradle/wrapper/gradle-wrapper.jar
+          echo "wrapper jar OK"
 
       - name: Run unit tests
+        id: unit_tests
         working-directory: android
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          cat local.properties 2>&1 | head -n 20 || true
-          ls -lh gradle/wrapper/ 2>&1 | head -n 20 || true
-          file gradle/wrapper/gradle-wrapper.jar 2>&1 | head -n 20 || true
-          echo "--- Gradle version ---"
-          gradle --version 2>&1 | head -n 20 || true
-          ./gradlew --version 2>&1 | head -n 20 || true
-          echo "--- Help to verify project config ---"
-          ./gradlew :app:help 2>&1 | head -n 100 || true
-          echo "--- Running testDebugUnitTest ---"
-          set -o pipefail
-          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Using ./gradlew (wrapper jar present)"
-            ./gradlew :app:testDebugUnitTest --stacktrace --info 2>&1 | tee /tmp/gradle-test.log; TEST_EXIT=${PIPESTATUS[0]}
+          set +e
+          ./gradlew :app:testDebugUnitTest --stacktrace 2>&1 | tee ../gradle-test.log
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+          echo "TEST_EXIT=$TEST_EXIT" >> "$GITHUB_ENV"
+          echo "--- last 120 lines of gradle-test.log ---"
+          tail -n 120 ../gradle-test.log || true
+          exit 0
+
+      - name: Report Gradle failure as annotations (legível via API)
+        if: env.TEST_EXIT != '0'
+        run: |
+          LOG=gradle-test.log
+          echo "== gradle-test.log (tail 80) =="
+          tail -n 80 "$LOG" 2>/dev/null || echo "(no log)"
+          if [ -f "$LOG" ]; then
+            grep -n -E "FAILURE:|What went wrong|Caused by|error:|e: |Could not|not found|Execution failed|Unsupported|FAILED|BUILD FAILED|Plugin \[id" "$LOG" \
+              | head -n 30 > /tmp/errlines.txt || true
+            n=0
+            while IFS= read -r line; do
+              n=$((n+1))
+              esc=$(printf '%s' "$line" | tr -d '\r' | cut -c1-900 | sed 's/%/%25/g')
+              echo "::error title=gradle-error-$n::$esc"
+            done < /tmp/errlines.txt
+            echo "annotations emitted: $n"
           else
-            echo "Wrapper jar missing/empty — falling back to gradle directly"
-            gradle :app:testDebugUnitTest --stacktrace --info 2>&1 | tee /tmp/gradle-test.log; TEST_EXIT=${PIPESTATUS[0]}
+            echo "::error title=gradle-log-missing::gradle-test.log not found"
           fi
-          echo "TEST_EXIT=$TEST_EXIT"
-          cp /tmp/gradle-test.log ./gradle-test.log 2>&1 || true
-          cp /tmp/gradle-test.log /tmp/gradle-test-full.log 2>&1 || true
-          echo "--- tail 200 of log ---"
-          tail -n 200 /tmp/gradle-test.log 2>&1 || true
-          echo "--- ls build ---"
-          find app/build -type f 2>/dev/null | head -n 50 | xargs ls -lh 2>&1 | head -n 100 || true
-          exit $TEST_EXIT
 
       - name: Upload test logs and reports on failure
-        if: failure()
+        if: env.TEST_EXIT != '0'
         uses: actions/upload-artifact@v4
         with:
           name: android-test-logs
           path: |
-            android/gradle-test.log
-            /tmp/gradle-test.log
+            gradle-test.log
             android/app/build/reports/
             android/app/build/test-results/
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Fail if unit tests failed
+        if: env.TEST_EXIT != '0'
+        run: |
+          echo "Unit tests failed with exit code $TEST_EXIT"
+          exit 1
+
       - name: Build debug APK
         working-directory: android
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          cat local.properties 2>&1 | head -n 20 || true
-          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Using ./gradlew (wrapper jar present)"
-            ./gradlew :app:assembleDebug --stacktrace
-          else
-            echo "Wrapper jar missing/empty — falling back to gradle directly"
-            gradle :app:assembleDebug --stacktrace
-          fi
+        run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Generate SHA256
         working-directory: android
