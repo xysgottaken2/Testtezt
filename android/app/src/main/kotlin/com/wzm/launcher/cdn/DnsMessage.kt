@@ -148,9 +148,12 @@ object DnsMessage {
     }
 
     /** Prévia hexadecimal legível (limitada) de uma mensagem — só para diagnóstico de teste. */
-    fun hexPreview(data: ByteArray, maxBytes: Int = 24): String =
-        data.take(maxBytes).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') } +
-            if (data.size > maxBytes) " … (${data.size} B)" else 
+    fun hexPreview(data: ByteArray, maxBytes: Int = 24): String {
+        val hex = data.take(maxBytes).joinToString(" ") {
+            (it.toInt() and 0xFF).toString(16).padStart(2, '0')
+        }
+        return if (data.size > maxBytes) "$hex … (${data.size} B)" else hex
+    }
 
     /**
      * Lê os registros A de uma resposta DNS (só o necessário para conferir a resposta virtual do

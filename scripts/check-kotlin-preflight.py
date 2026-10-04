@@ -8,6 +8,9 @@ Dois casos já quebraram o CI deste projeto com mensagens confusas em OUTRA linh
 2. **`/*` dentro de comentário de bloco** — Kotlin ANINHA comentários de bloco; um literal como
    `/__wzm_offline/*` dentro de um KDoc abre um comentário aninhado e o `*/` seguinte fecha apenas
    o interno → o compilador reporta "Unclosed comment" no FIM do arquivo.
+3. **Linha de código terminando em operador solto e seguida de linha vazia** — sintoma de patch
+   truncado (ex.: `... else` sem o ramo, `val x =` sem valor, `a +` sem o segundo termo); o
+   compilador reporta "Expecting an element" em outra linha e o motivo real fica escondido.
 
 Uso:
     python3 scripts/check-kotlin-preflight.py [--dir android]
@@ -102,6 +105,90 @@ def check_block_comments(path: pathlib.Path, text: str) -> list[str]:
     return problems
 
 
+DANGLING_TOKENS = ("else", "&&", "||", "=", "+", "-", "*", "/", "->", ",", "?:")
+
+
+def code_lines_without_comments_or_raw_strings(text: str) -> list[str]:
+    """Linhas do arquivo com comentários e strings raw apagados (preservando as quebras de linha)."""
+    out = list(text)
+
+    def blank(start: int, stop: int) -> None:
+        for position in range(start, min(stop, len(out))):
+            if out[position] != "\n":
+                out[position] = " "
+
+    index, size, depth = 0, len(text), 0
+    while index < size:
+        if depth > 0:
+            if text.startswith("/*", index):
+                depth += 1
+                blank(index, index + 2)
+                index += 2
+                continue
+            if text.startswith("*/", index):
+                depth -= 1
+                blank(index, index + 2)
+                index += 2
+                continue
+            blank(index, index + 1)
+            index += 1
+            continue
+        if text.startswith("//", index):
+            newline = text.find("\n", index)
+            newline = size if newline < 0 else newline
+            blank(index, newline)
+            index = newline
+            continue
+        if text.startswith(DELIMITER, index):
+            end = text.find(DELIMITER, index + 3)
+            end = size if end < 0 else end + 3
+            # preserva os delimitadores (""" ... """); só o conteúdo vira espaço
+            blank(index + 3, end - 3)
+            index = end
+            continue
+        if text[index] == '"':
+            # preserva as aspas (o delimitador); só o miolo vira espaço
+            index += 1
+            while index < size and text[index] != '"':
+                if text[index] == "\\":
+                    blank(index, index + 2)
+                    index += 2
+                    continue
+                if text[index] == "\n":
+                    break
+                blank(index, index + 1)
+                index += 1
+            if index < size and text[index] == '"':
+                index += 1
+            continue
+        if text.startswith("/*", index):
+            depth = 1
+            blank(index, index + 2)
+            index += 2
+            continue
+        index += 1
+    return "".join(out).split("\n")
+
+
+def check_dangling_lines(path: pathlib.Path, text: str) -> list[str]:
+    """Linha de código terminando em operador solto + linha seguinte vazia = patch truncado."""
+    problems: list[str] = []
+    cleaned = code_lines_without_comments_or_raw_strings(text)
+    for number, raw in enumerate(cleaned):
+        stripped = raw.rstrip()
+        if not stripped:
+            continue
+        parts = stripped.split()
+        if not parts or parts[-1] not in DANGLING_TOKENS:
+            continue
+        if number + 1 < len(cleaned) and cleaned[number + 1].strip() == "":
+            problems.append(
+                f"{path}:{number + 1}: linha termina em '{parts[-1]}' e a seguinte está vazia — "
+                "provável patch truncado (o compilador reporta o erro em outra linha)"
+            )
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", default="android", help="diretório raiz para procurar *.kt")
@@ -118,6 +205,7 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         problems.extend(check_raw_strings(path, text))
         problems.extend(check_block_comments(path, text))
+        problems.extend(check_dangling_lines(path, text))
 
     if problems:
         print(f"FALHA: {len(problems)} problema(s) de sintaxe Kotlin:", file=sys.stderr)
