@@ -12,10 +12,10 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209047416` (commit `32c4250`)** |
+| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209047416`): `d167fbadc27a2bd8d854f57be4d5548f07c5b793ff5404b567cfaf15f7d9eff2`** |
-| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.368 B (~14,9 MiB)** |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** |
+| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** |
 | Data | 2026-10-04 |
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.

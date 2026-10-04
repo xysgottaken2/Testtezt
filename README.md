@@ -205,10 +205,10 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 
 | Item | Valor |
 |---|---|
-| Artifact | `wzm-offline-launcher-debug` (Actions → run verde **`37209047416`** (M3.2) → Artifacts) |
+| Artifact | `wzm-offline-launcher-debug` (Actions → run verde **`37209458668`** (M3.2) → Artifacts) |
 | Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Referência (run `37209047416`, commit `32c4250`): `d167fbadc27a2bd8d854f57be4d5548f07c5b793ff5404b567cfaf15f7d9eff2` |
-| Tamanho | 15.678.368 bytes (~14,9 MiB) |
+| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Referência (run `37209458668`, commit `d69a731`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008` |
+| Tamanho | 15.678.140 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 
