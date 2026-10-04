@@ -55,6 +55,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    testOptions {
+        unitTests {
+            // Necessário para o teste de UI em JVM (Robolectric): o runner precisa do manifesto e dos
+            // recursos do variant debug para hospedar a Activity do Compose (§ LauncherScreenScrollTest).
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -76,6 +83,13 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("org.mockito:mockito-core:5.11.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.22")
+
+    // Teste de UI de layout na JVM (roda no CI, sem device): garante que a tela principal é rolável e
+    // que INICIAR WARZONE MOBILE continua alcançável depois do teste sintético (hotfix M3.5.1).
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.robolectric:robolectric:4.12.2")
 
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

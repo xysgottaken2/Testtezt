@@ -19,6 +19,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +29,19 @@ import com.wzm.launcher.cdn.CdnRouterStatus
 import com.wzm.launcher.server.ServerStatus
 import com.wzm.launcher.ui.theme.WzmLauncherTheme
 import com.wzm.launcher.wzm.WzmStatus
+
+/** Linhas mostradas no preview do log na tela principal (a tela VER LOGS mostra todas). */
+private const val LOG_PREVIEW_MAX_LINES = 60
+
+/**
+ * Altura FIXA do painel de preview do log (M3.5.1).
+ *
+ * Antes o painel usava `weight(1f)` dentro de um `Column` **sem rolagem**: o relatório do teste
+ * sintético aumentava a altura do conteúdo, o peso ficava com 0 dp de sobra e os controles seguintes
+ * (INICIAR WARZONE MOBILE, VER LOGS, EXPORTAR CA) saíam da tela **sem forma de alcançá-los**.
+ * Com altura fixa o painel não cresce nem empurra o resto; ele rola por dentro.
+ */
+private val LOG_PANEL_HEIGHT = 200.dp
 
 class MainActivity : ComponentActivity() {
 
@@ -59,7 +74,6 @@ class MainActivity : ComponentActivity() {
 fun LauncherScreen(vm: LauncherViewModel, onOpenLogs: () -> Unit = {}) {
     val state by vm.uiState.collectAsState()
     val consentRequest by vm.consentRequest.collectAsState()
-    val listState = rememberLazyListState()
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -75,8 +89,45 @@ fun LauncherScreen(vm: LauncherViewModel, onOpenLogs: () -> Unit = {}) {
         }
     }
 
-    LaunchedEffect(state.logs.size) {
-        if (state.logs.isNotEmpty()) listState.animateScrollToItem(state.logs.size - 1)
+    LauncherContent(
+        state = state,
+        onStartRouter = { vm.startRouter() },
+        onStopRouter = { vm.stopRouter() },
+        onSyntheticTest = { vm.runSyntheticTest() },
+        onLaunchWzm = { vm.launchWzm() },
+        onOpenLogs = onOpenLogs,
+        onInstallCa = { vm.installCa() }
+    )
+}
+
+/**
+ * Conteúdo da tela principal **sem dependência do ViewModel** (M3.5.1) — assim o layout pode ser
+ * verificado em teste de UI na JVM (Robolectric), sem VPN/ADB/device.
+ *
+ * M3.5.1 (hotfix de UI): todo o conteúdo vive num ÚNICO `LazyColumn` rolável. Nenhuma lógica de rede,
+ * CDNI, TLS, DNS ou RequestLog foi tocada — só o container e a altura do painel de log.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LauncherContent(
+    state: LauncherUiState,
+    onStartRouter: () -> Unit = {},
+    onStopRouter: () -> Unit = {},
+    onSyntheticTest: () -> Unit = {},
+    onLaunchWzm: () -> Unit = {},
+    onOpenLogs: () -> Unit = {},
+    onInstallCa: () -> Unit = {}
+) {
+    val previewListState = rememberLazyListState()
+    var logPanelExpanded by rememberSaveable { mutableStateOf(true) }
+    val previewLines = remember(state.logs) { previewLogLines(state.logs, LOG_PREVIEW_MAX_LINES) }
+
+    // Auto-rolagem apenas do preview, com índice limitado ao que é realmente exibido
+    // (`logs.size - 1` podia apontar para fora da lista de 60 linhas).
+    LaunchedEffect(previewLines.size, logPanelExpanded) {
+        if (logPanelExpanded && previewLines.isNotEmpty()) {
+            previewListState.scrollToItem(previewLines.lastIndex)
+        }
     }
 
     Scaffold(
@@ -90,110 +141,175 @@ fun LauncherScreen(vm: LauncherViewModel, onOpenLogs: () -> Unit = {}) {
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF121212))
                 .padding(padding)
-                .padding(16.dp),
+                .testTag(LauncherTestTags.CONTENT),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            StatusCard(
-                title = "Servidor stub (M2)",
-                status = when (state.serverStatus) {
-                    ServerStatus.PARADO -> "PARADO"
-                    ServerStatus.INICIANDO -> "INICIANDO"
-                    ServerStatus.ONLINE -> "ONLINE"
-                    ServerStatus.PARANDO -> "PARANDO"
-                    ServerStatus.ERRO -> "ERRO"
-                },
-                color = when (state.serverStatus) {
-                    ServerStatus.ONLINE -> Color(0xFF79C370)
-                    ServerStatus.ERRO -> Color(0xFFC13D5F)
-                    ServerStatus.INICIANDO, ServerStatus.PARANDO -> Color(0xFFFFC107)
-                    else -> Color(0xFF9AA39A)
-                },
-                detail = "127.0.0.1:18081 • /health (protótipo antigo, não é o CDNI)"
-            )
-
-            RouterCard(state.router, state.counters)
-
-            WzmStatusCard(state)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { vm.startRouter() },
-                    enabled = !state.router.httpsRunning || !state.router.vpnActive,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF79C370))
-                ) { Text("INICIAR ROTEADOR CDNI", fontSize = 12.sp) }
-                Button(
-                    onClick = { vm.stopRouter() },
-                    enabled = state.router.httpsRunning || state.router.vpnActive,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C757D))
-                ) { Text("PARAR ROTEADOR", fontSize = 12.sp) }
+            item {
+                StatusCard(
+                    title = "Servidor stub (M2)",
+                    status = when (state.serverStatus) {
+                        ServerStatus.PARADO -> "PARADO"
+                        ServerStatus.INICIANDO -> "INICIANDO"
+                        ServerStatus.ONLINE -> "ONLINE"
+                        ServerStatus.PARANDO -> "PARANDO"
+                        ServerStatus.ERRO -> "ERRO"
+                    },
+                    color = when (state.serverStatus) {
+                        ServerStatus.ONLINE -> Color(0xFF79C370)
+                        ServerStatus.ERRO -> Color(0xFFC13D5F)
+                        ServerStatus.INICIANDO, ServerStatus.PARANDO -> Color(0xFFFFC107)
+                        else -> Color(0xFF9AA39A)
+                    },
+                    detail = "127.0.0.1:18081 • /health (protótipo antigo, não é o CDNI)"
+                )
             }
 
-            OutlinedButton(
-                onClick = { vm.runSyntheticTest() },
-                enabled = state.router.httpsRunning,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta", fontSize = 11.sp) }
-            state.syntheticReport?.let { report ->
-                Text(report, color = Color(0xFFD7C36B), fontSize = 11.sp)
+            item { RouterCard(state.router, state.counters) }
+
+            item { WzmStatusCard(state) }
+
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = onStartRouter,
+                        enabled = !state.router.httpsRunning || !state.router.vpnActive,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF79C370))
+                    ) { Text("INICIAR ROTEADOR CDNI", fontSize = 12.sp) }
+                    Button(
+                        onClick = onStopRouter,
+                        enabled = state.router.httpsRunning || state.router.vpnActive,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C757D))
+                    ) { Text("PARAR ROTEADOR", fontSize = 12.sp) }
+                }
             }
 
-            Button(
-                onClick = { vm.launchWzm() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007BFF))
-            ) { Text("INICIAR WARZONE MOBILE") }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = onOpenLogs,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F4F2F))
-                ) { Text("VER LOGS", fontSize = 11.sp) }
+            item {
                 OutlinedButton(
-                    onClick = { vm.installCa() },
-                    modifier = Modifier.weight(1f)
-                ) { Text("EXPORTAR CA LOCAL", fontSize = 11.sp) }
+                    onClick = onSyntheticTest,
+                    enabled = state.router.httpsRunning,
+                    modifier = Modifier.fillMaxWidth().testTag(LauncherTestTags.SYNTHETIC_BUTTON)
+                ) { Text("TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta", fontSize = 11.sp) }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Log (launcher + CDNI)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("${state.logs.size} linhas", color = Color(0xFF6C757D), fontSize = 11.sp)
+            state.syntheticReport?.let { report ->
+                item { SyntheticReportCard(report) }
             }
-            Card(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-            ) {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(8.dp)) {
-                    items(previewLogLines(state.logs, 60)) { log ->
-                        Text(
-                            log,
-                            color = logColor(log),
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
+
+            item {
+                Button(
+                    onClick = onLaunchWzm,
+                    modifier = Modifier.fillMaxWidth().testTag(LauncherTestTags.LAUNCH_WZM),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007BFF))
+                ) { Text("INICIAR WARZONE MOBILE") }
+            }
+
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag(LauncherTestTags.ACTION_ROW)
+                ) {
+                    Button(
+                        onClick = onOpenLogs,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F4F2F))
+                    ) { Text("VER LOGS", fontSize = 11.sp) }
+                    OutlinedButton(
+                        onClick = onInstallCa,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("EXPORTAR CA LOCAL", fontSize = 11.sp) }
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Log (launcher + CDNI)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${state.logs.size} linhas", color = Color(0xFF6C757D), fontSize = 11.sp)
+                        TextButton(
+                            onClick = { logPanelExpanded = !logPanelExpanded },
+                            modifier = Modifier.testTag(LauncherTestTags.LOG_TOGGLE)
+                        ) { Text(if (logPanelExpanded) "RECOLHER" else "MOSTRAR", fontSize = 11.sp) }
                     }
                 }
             }
 
-            Text(
-                "M3: DNS + HTTPS locais roteiam prod.cdni.callofduty.com para o servidor embarcado; " +
-                    "requests reais do WZM aparecem em VER LOGS. Certificado local é NOSSO (não é da Activision).",
-                color = Color(0xFF9AA39A),
-                fontSize = 10.sp,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
+            if (logPanelExpanded) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(LOG_PANEL_HEIGHT)
+                            .testTag(LauncherTestTags.LOG_PANEL),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                    ) {
+                        if (previewLines.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize().padding(12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Sem eventos ainda — inicie o roteador CDNI.",
+                                    color = Color(0xFF9AA39A),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                state = previewListState,
+                                modifier = Modifier.fillMaxSize().padding(8.dp)
+                            ) {
+                                items(previewLines) { log ->
+                                    Text(
+                                        log,
+                                        color = logColor(log),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    "M3: DNS + HTTPS locais roteiam prod.cdni.callofduty.com para o servidor embarcado; " +
+                        "requests reais do WZM aparecem em VER LOGS. Certificado local é NOSSO (não é da Activision).",
+                    color = Color(0xFF9AA39A),
+                    fontSize = 10.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/** Relatório do teste sintético (M3.5) — o texto é longo, então vive num card próprio e rolável. */
+@Composable
+fun SyntheticReportCard(report: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag(LauncherTestTags.SYNTHETIC_REPORT),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Teste sintético do caminho CDNI", color = Color(0xFF9AA39A), fontSize = 12.sp)
+            Text(report, color = Color(0xFFD7C36B), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
