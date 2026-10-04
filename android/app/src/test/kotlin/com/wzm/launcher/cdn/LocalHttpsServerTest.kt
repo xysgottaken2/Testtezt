@@ -2,6 +2,7 @@ package com.wzm.launcher.cdn
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -116,11 +117,16 @@ class LocalHttpsServerTest {
     }
 
     @Test
-    fun servesShardCdnMeta() {
+    fun servesShardCdnMetaWithRealBody() {
+        // M3.5: o cdni.meta deixou de ser placeholder e passou a devolver o corpo REAL observado;
+        // a marcação de "servido localmente" fica no cabeçalho, não no JSON (não altera o conteúdo).
         val response = request("/wzm/shard_cdn/android/_manifest/cdni.meta")
         assertTrue(response.contains("200 OK"))
         assertTrue(response.contains("X-WZM-Offline: VERIFIED"))
-        assertTrue(response.contains("wzm-offline-local"))
+        val body = response.substringAfter("\r\n\r\n")
+        assertTrue("corpo precisa ser o cdni.meta real", CdniMetaBody.looksLikeRealBody(body))
+        assertTrue("build mínimo precisa estar presente", body.contains("\"min_buildnum\": 19854920"))
+        assertFalse("placeholder não pode mais ser servido neste path", body.contains("wzm-offline-local"))
     }
 
     @Test

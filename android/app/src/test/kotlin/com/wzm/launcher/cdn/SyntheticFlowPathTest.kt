@@ -41,11 +41,24 @@ class SyntheticFlowPathTest {
     fun buildQueryRoundTripsThroughParser() {
         val query = DnsMessage.buildQuery(CdnRouterConfig.EXACT_HOST, DnsMessage.TYPE_A, id = 0x1234)
         val question = DnsMessage.parseQuery(query, query.size)
-        assertNotNull("consulta montada precisa ser parseável", question)
+        assertNotNull("consulta montada precisa ser parseável (prévia: ${DnsMessage.hexPreview(query)})", question)
         assertEquals(CdnRouterConfig.EXACT_HOST, question!!.name)
         assertEquals(DnsMessage.TYPE_A, question.qType)
         assertEquals(0x12, query[0].toInt() and 0xFF)
         assertEquals(0x34, query[1].toInt() and 0xFF)
+    }
+
+    /** Regressão do bug que só o CI pegou: header com 13 B desloca a pergunta e o parser devolve null. */
+    @Test
+    fun buildQueryWritesExactlyTheRfc1035HeaderSize() {
+        val host = CdnRouterConfig.EXACT_HOST
+        val query = DnsMessage.buildQuery(host, DnsMessage.TYPE_A)
+        val labels = host.split('.').sumOf { it.length + 1 }
+        assertEquals("header(12) + nome($labels) + tipo/classe(4)", 12 + labels + 4, query.size)
+        // QDCOUNT = 1 exatamente nos bytes 4-5 do header e o nome começa no byte 12.
+        assertEquals(0, query[4].toInt() and 0xFF)
+        assertEquals(1, query[5].toInt() and 0xFF)
+        assertEquals(host.substringBefore('.').length, query[12].toInt() and 0xFF)
     }
 
     @Test

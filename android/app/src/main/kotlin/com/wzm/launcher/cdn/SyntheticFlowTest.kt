@@ -71,7 +71,13 @@ object SyntheticFlowTest {
         val query = DnsMessage.buildQuery(host, DnsMessage.TYPE_A)
         val question = DnsMessage.parseQuery(query, query.size)
         if (question == null) {
-            return Step("dns_bytes_virtual", ok = false, verified = true, detail = "consulta montada não foi parseada")
+            return Step(
+                "dns_bytes_virtual",
+                ok = false,
+                verified = true,
+                // a prévia é da NOSSA consulta montada (não é payload de terceiro) e evita um CI cego
+                detail = "consulta montada não foi parseada (prévia: ${DnsMessage.hexPreview(query)})"
+            )
         }
         val answer = DnsResponder().answer(query, query.size)
             ?: return Step(

@@ -125,19 +125,14 @@ object DnsMessage {
      */
     fun buildQuery(name: String, qType: Int = TYPE_A, id: Int = 0x4D35): ByteArray {
         val out = ByteArrayOutputStream(32)
-        out.write((id shr 8) and 0xFF)
-        out.write(id and 0xFF)
-        out.write(0x01) // RD=1
-        out.write(0x00)
-        out.write(0x00) // QDCOUNT = 1
-        out.write(0x01)
-        out.write(0x00)
-        out.write(0x00) // ANCOUNT = 0
-        out.write(0x00)
-        out.write(0x00)
-        out.write(0x00) // NSCOUNT = 0
-        out.write(0x00)
-        out.write(0x00) // ARCOUNT = 0
+        // Header em tamanho FIXO (12 B) — um byte a mais aqui desloca a pergunta e o parser
+        // (correto) devolve null; por isso o header é montado em array, não byte a byte.
+        val header = ByteArray(HEADER_SIZE)
+        header[0] = ((id shr 8) and 0xFF).toByte()
+        header[1] = (id and 0xFF).toByte()
+        header[2] = 0x01 // RD=1
+        header[5] = 0x01 // QDCOUNT = 1 (ANCOUNT/NSCOUNT/ARCOUNT = 0)
+        out.write(header, 0, header.size)
         for (label in name.trimEnd('.').split('.')) {
             if (label.isEmpty()) continue
             val bytes = label.toByteArray(Charsets.US_ASCII)
@@ -147,10 +142,15 @@ object DnsMessage {
         out.write(0)
         out.write((qType shr 8) and 0xFF)
         out.write(qType and 0xFF)
-        out.write(0x00) // CLASS = IN
+        out.write(0x00) // QCLASS = IN
         out.write(0x01)
         return out.toByteArray()
     }
+
+    /** Prévia hexadecimal legível (limitada) de uma mensagem — só para diagnóstico de teste. */
+    fun hexPreview(data: ByteArray, maxBytes: Int = 24): String =
+        data.take(maxBytes).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') } +
+            if (data.size > maxBytes) " … (${data.size} B)" else 
 
     /**
      * Lê os registros A de uma resposta DNS (só o necessário para conferir a resposta virtual do
