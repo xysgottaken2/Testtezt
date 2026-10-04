@@ -207,8 +207,8 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 |---|---|
 | Artifact | **`wzm-offline-launcher-debug`** — Actions → run do workflow **`build`** (o APK fica listado ao lado do artifact técnico) ou **`android-build`** → seção Artifacts (roda em todo push) |
 | Arquivo | `app-debug.apk` (raiz do artifact) + `app-debug.apk.sha256` |
-| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Última verificação automática do CI (job `verify-artifact`, run `37211074808`, commit `08167f0`): `b871fd29384c879935e86e7d4216bc809fac3a4fd4e74ef22caf4b3120f0cb42` |
-| Tamanho | 15.678.224 bytes (~14,9 MiB) |
+| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Última verificação automática do CI (job `verify-artifact`, run `37211354617`, commit `1280324`): `05696536a9ab0a1365ac30a70d3b21eb2646108eee6660956d21699dcf455ffd` |
+| Tamanho | 15.678.356 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 | Verificação | o CI baixa o artifact de volta e confere os 2 arquivos na raiz, sha256 e tamanho (`verify-artifact`) |
