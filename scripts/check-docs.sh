@@ -9,8 +9,10 @@ required=(
   "docs/research/warzone-mobile-networking.md"
   "docs/research/warzone-mobile-streaming.md"
   "docs/research/warzone-mobile-research.md"
+  "docs/research/m1-endpoint-discovery.md"
   "docs/architecture/overview.md"
   "docs/reverse-engineering/methodology.md"
+  "docs/reverse-engineering/frida-bypass.md"
   "docs/protocol/template.md"
 )
 missing=0

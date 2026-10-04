@@ -1,6 +1,7 @@
 # Warzone Mobile Offline Server — Projeto Experimental de Preservação / Interoperabilidade
 
-> **STATUS:** `M0 — Research` | Branch: `arena/01a10449-testtezt` → PR #1 `research: documentação inicial + CI skeleton`
+> **STATUS:** `M1 — Client communication` | Branch: `research/m1-endpoint-discovery` → PR #2 `research: M1 endpoint discovery + localhost redirection mechanism`  
+> **Anterior:** `M0 — Research` em `arena/01a10449-testtezt` → PR #1 merged
 > **Objetivo de longo prazo:** fazer o cliente de **Call of Duty: Warzone Mobile** entrar em uma partida local contra bots, sem depender da infraestrutura online oficial, via servidor local/privado.
 
 ```
@@ -54,6 +55,8 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [Networking & Backend](docs/research/warzone-mobile-networking.md) | Demonware, endpoints, protocolos, TLS |
 | [Asset Streaming](docs/research/warzone-mobile-streaming.md) | CDN, manifests, .shard, cache |
 | [Metodologia de Reversão](docs/reverse-engineering/methodology.md) | Ferramentas, fluxos, evidências |
+| [M1 — Endpoint Discovery](docs/research/m1-endpoint-discovery.md) | **NOVO M1:** como o cliente resolve endpoints e mecanismo para localhost |
+| [Frida / Cert Pinning](docs/reverse-engineering/frida-bypass.md) | **NOVO M1:** procedimento quando APK disponível |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |
 
@@ -137,10 +140,15 @@ LOG_LEVEL=debug
 ## 🧪 Como testar localmente (skeleton)
 
 ```bash
-npm ci
-npm run build
-npm test
-npm run dev   # sobe servidor mock em 0.0.0.0:8080
+# Server (M1 capture — genérico, sem hipótese WZM)
+cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 14 testes
+npm run dev   # sobe capture em 0.0.0.0:8080 — /health e /__capture
+
+# Launcher hosts-patch (metodologia DbD REFERENCE)
+cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
+
+# Scanner (quando APK disponível)
+node warzone-offline/tools/apk-analysis/endpoint-scanner.js /tmp/wzm/jadx-output /tmp/wzm/apktool-output/lib
 ```
 
 Workflow CI roda em todo PR: checkout → deps → build → testes → artifacts.
@@ -151,8 +159,8 @@ Workflow CI roda em todo PR: checkout → deps → build → testes → artifact
 
 | Milestone | Nome |
 |---|---|
-| M0 | Research (atual) |
-| M1 | Client communication (localhost) |
+| M0 | Research — concluído (PR #1) |
+| M1 | Client communication (localhost) — **em andamento nesta branch** |
 | M2 | Local configuration |
 | M3 | Local auth/profile |
 | M4 | Local matchmaking |
