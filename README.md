@@ -160,7 +160,7 @@ npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
 
 # Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
-cd ../../android && ./gradlew :app:testDebugUnitTest  # 60 testes JVM (servidor, launcher, roteador CDNI e RequestLog)
+cd ../../android && ./gradlew :app:testDebugUnitTest  # 70 testes JVM (servidor, launcher, roteador CDNI, RequestLog e TLS/trust)
 ./gradlew :app:assembleDebug  # APK em android/app/build/outputs/apk/debug/app-debug.apk
 # instalar no S23 Ultra:
 adb install android/app/build/outputs/apk/debug/app-debug.apk
@@ -205,10 +205,10 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 
 | Item | Valor |
 |---|---|
-| Artifact | `wzm-offline-launcher-debug` (Actions → run verde **`37206351532`** (M3 + VER LOGS) → Artifacts) |
+| Artifact | `wzm-offline-launcher-debug` (Actions → run verde **`37209047416`** (M3.2) → Artifacts) |
 | Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Referência (run `37206351532`, commit `9806083`): `e9beba63134a006879618e9fe430db55b47797481d23aa382c65d648f5348847` |
-| Tamanho | 15.675.060 bytes (~14,9 MiB) |
+| SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Referência (run `37209047416`, commit `32c4250`): `d167fbadc27a2bd8d854f57be4d5548f07c5b793ff5404b567cfaf15f7d9eff2` |
+| Tamanho | 15.678.368 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 
