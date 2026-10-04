@@ -59,6 +59,16 @@ jobs:
             ls -la "$ANDROID_HOME/build-tools/" 2>&1 | head -n 20 || true
           fi
 
+      - name: Create local.properties for Gradle
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "sdk.dir=$SDK" > android/local.properties
+          cat android/local.properties
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          ls -la "$SDK/platforms/" 2>&1 | head -n 20 || true
+          ls -la "$SDK/build-tools/" 2>&1 | head -n 20 || true
+
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -80,6 +90,10 @@ jobs:
       - name: Run unit tests
         working-directory: android
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          cat local.properties 2>&1 | head -n 20 || true
+          ls -lh gradle/wrapper/ 2>&1 | head -n 20 || true
           if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Using ./gradlew (wrapper jar present)"
             ./gradlew :app:testDebugUnitTest --stacktrace --info
@@ -88,9 +102,22 @@ jobs:
             gradle :app:testDebugUnitTest --stacktrace --info
           fi
 
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: |
+            android/app/build/reports/
+            android/app/build/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Build debug APK
         working-directory: android
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          cat local.properties 2>&1 | head -n 20 || true
           if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Using ./gradlew (wrapper jar present)"
             ./gradlew :app:assembleDebug --stacktrace
