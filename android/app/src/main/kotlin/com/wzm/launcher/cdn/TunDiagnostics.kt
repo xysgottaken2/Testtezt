@@ -269,7 +269,8 @@ object HypothesisBoard {
             if (counters.tcpConnectionsTunel > 0) {
                 "${counters.tcpConnectionsTunel} conexão(ões) aceita(s) em ${CdnRouterConfig.VPN_ADDRESS}:" +
                     "${CdnRouterConfig.LOCAL_HTTPS_PORT} — caminho que veio pelo DNS do túnel " +
-                    "(com UID quando resolvido; sem UID a autoria continua não provada)"
+                    "(com UID quando resolvido; sem UID a autoria continua não provada); conexão feita " +
+                    "pelo PRÓPRIO launcher no teste sintético prova o CAMINHO, NÃO o WZM"
             } else {
                 "nenhuma conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} até agora"
             }

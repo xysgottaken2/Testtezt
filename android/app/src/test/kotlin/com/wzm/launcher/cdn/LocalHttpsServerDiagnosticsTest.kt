@@ -94,6 +94,58 @@ class LocalHttpsServerDiagnosticsTest {
         }
     }
 
+    /**
+     * M3.5: durante o teste sintético, a conexão no listener do túnel é prova do CAMINHO feita pelo
+     * launcher (UID do launcher) — o log precisa dizer isso, e nunca atribuir a conexão ao WZM.
+     */
+    @Test
+    fun syntheticWindowMarksTunnelConnectionsAsPathOnly() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        var bound: ServerSocket? = null
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 1,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { },
+            addressAssigned = { true },
+            ownerDescription = { "dono=uid=12345 (com.wzm.launcher)" },
+            bindOverride = { _ ->
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)).also { bound = it }
+            }
+        )
+        assertTrue(server.start())
+        RequestLog.markSyntheticTestStarted()
+        try {
+            val client = Socket(CdnRouterConfig.LOOPBACK_ADDRESS, checkNotNull(bound).localPort)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=12345")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            // olha a LINHA da conexão (não o buffer inteiro): outras suítes deixam threads daemon
+            val line = RequestLog.snapshot().lines()
+                .firstOrNull { it.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443") }
+                ?: ""
+            assertTrue("a linha da conexão precisa existir: $line", line.isNotEmpty())
+            assertTrue("a janela do teste sintético é obrigatória: $line", line.contains("DURANTE o teste sintético"))
+            assertTrue("a conexão do teste é prova do caminho: $line", line.contains("prova o CAMINHO CDNI, NÃO o WZM"))
+            assertFalse("dentro da janela o log não pode atribuir a conexão ao WZM: $line", line.contains("depois do WZM iniciado"))
+        } finally {
+            RequestLog.markSyntheticTestFinished()
+            server.stop()
+        }
+        assertFalse(RequestLog.syntheticWindowOpen)
+    }
+
     @Test
     fun tunnelListenerCountsAndLogsTheTunnelPath() {
         RequestLog.clear()

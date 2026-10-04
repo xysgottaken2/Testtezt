@@ -231,7 +231,7 @@ class LocalHttpsServer(
             // M3.5: papel do listener + relação temporal com o WZM iniciado.
             // Loopback é DIAGNÓSTICO SECUNDÁRIO: não conta como evidência de tráfego do WZM.
             val now = System.currentTimeMillis()
-            val relation = RequestLog.wzmRelation(now)
+            val relation = RequestLog.connectionOrigin(now)
             if (endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO) {
                 RequestLog.incTcpConnectionLoopback(RequestLog.isBeforeWzmStart(now))
                 log(
@@ -285,7 +285,7 @@ class LocalHttpsServer(
         }
         val loopback = endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO
         val peer = client.remoteSocketAddress?.toString() ?: "?"
-        val relation = RequestLog.wzmRelation(System.currentTimeMillis())
+        val relation = RequestLog.connectionOrigin(System.currentTimeMillis())
         val roleNote = if (loopback) {
             "papel=${endpoint.role.name} (DIAGNÓSTICO: não é evidência de tráfego do WZM)"
         } else {

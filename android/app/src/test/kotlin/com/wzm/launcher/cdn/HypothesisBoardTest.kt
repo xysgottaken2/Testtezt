@@ -117,6 +117,10 @@ class HypothesisBoardTest {
         assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "conexoes_no_listener_do_tunel").level)
         assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "tls_no_listener_do_tunel").level)
         assertTrue(claim(tunnelOnly, "tls_no_listener_do_tunel").detail.contains("1 aceito"))
+        assertTrue(
+            "o claim do listener precisa negar autoria de conexão feita pelo próprio launcher",
+            claim(tunnelOnly, "conexoes_no_listener_do_tunel").detail.contains("prova o CAMINHO, NÃO o WZM")
+        )
 
         assertEquals(
             Evidence.UNKNOWN,

@@ -329,6 +329,7 @@ object RequestLog {
         buffer.clear()
         _entries.value = emptyList()
         resetCounters()
+        clearSyntheticWindow()
     }
 
     // ---- Marcador de sessão: quando o WZM foi iniciado (M3.5) ----
@@ -351,6 +352,53 @@ object RequestLog {
 
     /** `true` quando [atMillis] é anterior ao WZM iniciado (ou quando ele não foi iniciado). */
     fun isBeforeWzmStart(atMillis: Long): Boolean = wzmStartedAt?.let { atMillis < it } ?: true
+
+    // ---- Janela do teste sintético (M3.5) ----
+    // O próprio launcher conecta no listener do túnel para provar o CAMINHO; essa conexão tem o UID do
+    // launcher, não o do WZM. Sem esta marca alguém poderia ler "conexão aceita no túnel" como evidência
+    // de tráfego do jogo — por isso a janela tem precedência sobre a relação com o WZM.
+
+    @Volatile
+    private var syntheticStartedAtMs: Long = -1L
+
+    @Volatile
+    private var syntheticFinishedAtMs: Long = -1L
+
+    fun markSyntheticTestStarted(atMillis: Long = System.currentTimeMillis()) {
+        syntheticStartedAtMs = atMillis
+        syntheticFinishedAtMs = -1L
+    }
+
+    fun markSyntheticTestFinished(atMillis: Long = System.currentTimeMillis()) {
+        if (syntheticStartedAtMs > 0) syntheticFinishedAtMs = atMillis
+    }
+
+    fun clearSyntheticWindow() {
+        syntheticStartedAtMs = -1L
+        syntheticFinishedAtMs = -1L
+    }
+
+    val syntheticWindowOpen: Boolean get() = syntheticStartedAtMs > 0 && syntheticFinishedAtMs <= 0
+
+    /** `true` quando [atMillis] caiu dentro do teste sintético (janela aberta = até ser fechada). */
+    fun isDuringSyntheticTest(atMillis: Long): Boolean {
+        val start = syntheticStartedAtMs
+        if (start <= 0 || atMillis < start) return false
+        val end = syntheticFinishedAtMs
+        return end <= 0 || atMillis <= end
+    }
+
+    /**
+     * Relação da conexão para o log: durante o teste sintético a conexão é **prova do caminho**, feita
+     * pelo launcher (UID do launcher) — nunca do WZM; fora da janela vale a relação com o WZM iniciado.
+     */
+    fun connectionOrigin(atMillis: Long): String =
+        if (isDuringSyntheticTest(atMillis)) {
+            "DURANTE o teste sintético do launcher — prova o CAMINHO CDNI, NÃO o WZM " +
+                "(autoria do jogo exige dono=uid=<pacote do WZM>)"
+        } else {
+            wzmRelation(atMillis)
+        }
 
     /**
      * Relação temporal de uma conexão com o WZM iniciado — parte obrigatória do log de conexão (M3.5):

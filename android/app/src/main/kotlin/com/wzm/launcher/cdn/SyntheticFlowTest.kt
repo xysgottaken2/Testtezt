@@ -113,6 +113,26 @@ object SyntheticFlowTest {
         readTimeoutMs: Int = 4_000
     ): Report {
         RequestLog.add(TAG, "teste sintético do caminho CDNI iniciado (host=$host, alvo=${CdnRouterConfig.REDIRECT_TO}:$port)")
+        // Marca a janela: qualquer conexão no listener durante o teste é prova do CAMINHO (UID do
+        // launcher), nunca do WZM — a autoria do jogo exige dono=uid=<pacote do WZM>. A janela é
+        // fechada SEMPRE (inclusive se um passo lançar) para não "vazar" para o log do WZM.
+        RequestLog.markSyntheticTestStarted()
+        return try {
+            runSteps(context, host, port, dnsTimeoutMs, tcpTimeoutMs, readTimeoutMs)
+        } finally {
+            RequestLog.markSyntheticTestFinished()
+        }
+    }
+
+    /** Passos do teste sintético — sem a janela do log (responsabilidade de [run]). */
+    private fun runSteps(
+        context: Context?,
+        host: String,
+        port: Int,
+        dnsTimeoutMs: Int,
+        tcpTimeoutMs: Int,
+        readTimeoutMs: Int
+    ): Report {
         val steps = mutableListOf<Step>()
 
         // 1) puro: bytes reais de consulta → resposta virtual

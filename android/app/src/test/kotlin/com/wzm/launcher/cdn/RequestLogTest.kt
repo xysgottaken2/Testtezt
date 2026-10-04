@@ -242,6 +242,43 @@ class RequestLogTest {
     }
 
     @Test
+    fun syntheticWindowOverridesWzmAttribution() {
+        RequestLog.clear()
+        RequestLog.markWzmStarted(1_000L)
+
+        // fora da janela: relação normal com o WZM
+        assertTrue(RequestLog.connectionOrigin(2_000L).contains("depois do WZM iniciado"))
+
+        RequestLog.markSyntheticTestStarted(5_000L)
+        assertTrue(RequestLog.syntheticWindowOpen)
+        val during = RequestLog.connectionOrigin(6_000L)
+        assertTrue(during.contains("DURANTE o teste sintético"))
+        assertTrue("a janela precisa negar autoria do WZM", during.contains("prova o CAMINHO CDNI, NÃO o WZM"))
+        assertFalse("dentro da janela não pode haver atribuição temporal ao WZM", during.contains("depois do WZM iniciado"))
+
+        RequestLog.markSyntheticTestFinished(9_000L)
+        assertFalse(RequestLog.syntheticWindowOpen)
+        assertTrue("o instante final ainda pertence à janela", RequestLog.isDuringSyntheticTest(9_000L))
+        assertFalse(RequestLog.isDuringSyntheticTest(9_001L))
+        assertTrue(RequestLog.connectionOrigin(9_001L).contains("depois do WZM iniciado"))
+    }
+
+    @Test
+    fun clearSyntheticWindowForgetsTheWindow() {
+        RequestLog.clear()
+        RequestLog.markSyntheticTestStarted(1_000L)
+        RequestLog.markSyntheticTestFinished(2_000L)
+        RequestLog.clearSyntheticWindow()
+        assertFalse(RequestLog.syntheticWindowOpen)
+        assertFalse(RequestLog.isDuringSyntheticTest(1_500L))
+
+        RequestLog.markSyntheticTestStarted(3_000L)
+        assertTrue(RequestLog.syntheticWindowOpen)
+        RequestLog.clear()
+        assertFalse("clear() limpa a janela junto com o buffer", RequestLog.syntheticWindowOpen)
+    }
+
+    @Test
     fun wzmMarkerTellsBeforeFromAfter() {
         val now = System.currentTimeMillis()
         RequestLog.markWzmStarted(now)
