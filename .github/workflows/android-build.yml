@@ -5,11 +5,17 @@ on:
     branches: [main, "arena/**", "research/**", "feature/**"]
     paths:
       - "android/**"
+      - "scripts/generate-local-cdni-cert.sh"
+      - "scripts/check-kotlin-preflight.py"
+      - "scripts/ci-report-test-failures.py"
       - ".github/workflows/android-build.yml"
   pull_request:
     branches: [main]
     paths:
       - "android/**"
+      - "scripts/generate-local-cdni-cert.sh"
+      - "scripts/check-kotlin-preflight.py"
+      - "scripts/ci-report-test-failures.py"
       - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
