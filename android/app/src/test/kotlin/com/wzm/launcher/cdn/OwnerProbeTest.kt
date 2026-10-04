@@ -166,8 +166,11 @@ class OwnerProbeTest {
                 queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.SECURITY_EXCEPTION) }
             )
 
-            assertEquals(2, report.noPermission)
+            // Os três passos que consultam a API (loopback, túnel e tupla inexistente) receberam
+            // SEM_PERMISSAO: o resultado é inconclusivo — nunca "não é do jogo".
+            assertEquals(3, report.noPermission)
             assertEquals(0, report.resolved)
+            assertEquals(0, report.invalid)
             val expectation = report.expectation()
             assertTrue("precisa dizer que é inconclusivo: $expectation", expectation.contains("inconclusivo"))
             assertTrue(expectation.contains("VPN ATIVO"))
