@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Caminhos compartilháveis do log exportado (.txt). Ambos são diretórios privados do app:
+     nenhum acesso a armazenamento externo/compartilhado é necessário ou pedido. -->
+<paths>
+    <!-- getExternalFilesDir("logs") → /sdcard/Android/data/<pkg>/files/logs/ -->
+    <external-files-path name="exports_external" path="logs/" />
+    <!-- filesDir/logs/ (fallback quando não há armazenamento externo) -->
+    <files-path name="exports_internal" path="logs/" />
+</paths>

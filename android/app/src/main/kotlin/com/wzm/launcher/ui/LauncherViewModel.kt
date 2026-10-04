@@ -2,11 +2,14 @@ package com.wzm.launcher.ui
 
 import android.app.Application
 import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wzm.launcher.LauncherConfig
 import com.wzm.launcher.cdn.CdnRouterController
 import com.wzm.launcher.cdn.CdnRouterStatus
+import com.wzm.launcher.cdn.LogExport
+import com.wzm.launcher.cdn.LogPersistence
 import com.wzm.launcher.cdn.RequestCounters
 import com.wzm.launcher.cdn.RequestLog
 import com.wzm.launcher.server.ServerController
@@ -17,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class LauncherUiState(
     val serverStatus: ServerStatus = ServerStatus.PARADO,
@@ -43,6 +47,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var pendingVpnStart = false
 
     init {
+        // Tela "VER LOGS": restaura o log da sessão anterior e passa a persistir tudo em arquivo.
+        LogPersistence.initialize(application)
         log("Launcher iniciado (M3: roteamento CDNI local)")
         refreshWzmStatus()
         _uiState.value = _uiState.value.copy(serverStatus = serverController.getStatus())
@@ -168,10 +174,49 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ---------------- tela de logs (VER LOGS) ----------------
+
     fun clearLog() {
         RequestLog.clear()
-        log("Log limpo")
+        LogPersistence.clearFile()
+        log("Log limpo pelo usuário")
     }
+
+    /** Texto completo (cabeçalho com contadores + todas as linhas) para COPIAR LOGS. */
+    fun logTextForClipboard(): String = RequestLog.exportText()
+
+    /** SALVAR/EXPORTAR .TXT: grava em diretório do próprio app (sem permissão de armazenamento). */
+    fun saveLogFile(): File? = try {
+        val directory = LogPersistence.exportDirectory(getApplication())
+        val file = LogExport.writeText(File(directory, LogExport.fileName()), RequestLog.exportText())
+        LogPersistence.flush()
+        log("Log exportado: ${file.absolutePath} (${file.length()} B)")
+        file
+    } catch (e: Exception) {
+        log("Falha ao exportar o log: ${e.javaClass.simpleName}: ${e.message}")
+        null
+    }
+
+    /** Intent de compartilhamento do .txt exportado (FileProvider; sem permissão extra). */
+    fun shareLogIntent(file: File): Intent? = try {
+        val uri = FileProvider.getUriForFile(
+            getApplication(),
+            getApplication<Application>().packageName + ".fileprovider",
+            file
+        )
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "WZM Offline Launcher — RequestLog")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    } catch (e: Exception) {
+        log("Falha ao compartilhar o log: ${e.javaClass.simpleName}: ${e.message}")
+        null
+    }
+
+    /** Caminho do arquivo persistido, para mostrar na tela de logs. */
+    fun logFilePath(): String? = LogPersistence.sinkPath()
 
     // ---------------- WZM ----------------
 

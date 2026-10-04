@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,7 +36,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             WzmLauncherTheme {
-                LauncherScreen(viewModel)
+                // Navegação simples (sem lib): o RequestLog vive no singleton/ViewModel, então
+                // alternar entre as telas não perde nada.
+                var showLogs by rememberSaveable { mutableStateOf(false) }
+                if (showLogs) {
+                    LogsScreen(viewModel, onBack = { showLogs = false })
+                } else {
+                    LauncherScreen(viewModel, onOpenLogs = { showLogs = true })
+                }
             }
         }
     }
@@ -48,7 +56,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LauncherScreen(vm: LauncherViewModel) {
+fun LauncherScreen(vm: LauncherViewModel, onOpenLogs: () -> Unit = {}) {
     val state by vm.uiState.collectAsState()
     val consentRequest by vm.consentRequest.collectAsState()
     val listState = rememberLazyListState()
@@ -134,14 +142,15 @@ fun LauncherScreen(vm: LauncherViewModel) {
             ) { Text("INICIAR WARZONE MOBILE") }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onOpenLogs,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F4F2F))
+                ) { Text("VER LOGS", fontSize = 11.sp) }
                 OutlinedButton(
                     onClick = { vm.installCa() },
                     modifier = Modifier.weight(1f)
                 ) { Text("EXPORTAR CA LOCAL", fontSize = 11.sp) }
-                OutlinedButton(
-                    onClick = { vm.clearLog() },
-                    modifier = Modifier.weight(1f)
-                ) { Text("LIMPAR LOG", fontSize = 11.sp) }
             }
 
             Row(
@@ -158,7 +167,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
             ) {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(8.dp)) {
-                    items(state.logs) { log ->
+                    items(previewLogLines(state.logs, 60)) { log ->
                         Text(
                             log,
                             color = logColor(log),
@@ -171,20 +180,13 @@ fun LauncherScreen(vm: LauncherViewModel) {
 
             Text(
                 "M3: DNS + HTTPS locais roteiam prod.cdni.callofduty.com para o servidor embarcado; " +
-                    "requests reais do WZM aparecem no log. Certificado local é NOSSO (não é da Activision).",
+                    "requests reais do WZM aparecem em VER LOGS. Certificado local é NOSSO (não é da Activision).",
                 color = Color(0xFF9AA39A),
                 fontSize = 10.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
         }
     }
-}
-
-private fun logColor(line: String): Color = when {
-    line.contains("[CDNI?]") || line.contains("DESCONHECIDO") || line.contains("FALHA") -> Color(0xFFFF9F9F)
-    line.contains("[CDNI]") || line.contains("[DNS]") || line.contains("[TLS]") -> Color(0xFF9FE0A0)
-    line.contains("[TUN]") || line.contains("[VPN]") -> Color(0xFF9FC7FF)
-    else -> Color(0xFFE0E0E0)
 }
 
 @Composable
@@ -218,13 +220,7 @@ fun RouterCard(router: CdnRouterStatus, counters: RequestCounters) {
             Text("Roteador CDNI local", color = Color(0xFF9AA39A), fontSize = 12.sp)
             Text("HTTPS :443 — $httpsLabel", color = httpsColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Text("Túnel DNS — $vpnLabel", color = vpnColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(
-                "DNS consultas=${counters.dnsQueries} interceptadas=${counters.dnsIntercepted} • " +
-                    "HTTP=${counters.httpRequests} desconhecidos=${counters.unknownRequests} • " +
-                    "TLS ok=${counters.tlsOk} falhas=${counters.tlsFailed}",
-                color = Color(0xFFB0B8B0),
-                fontSize = 11.sp
-            )
+            Text(counters.summary(), color = Color(0xFFB0B8B0), fontSize = 11.sp)
         }
     }
 }

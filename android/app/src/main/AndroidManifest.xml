@@ -35,6 +35,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Exportação do RequestLog (.txt): compartilha somente arquivos do diretório privado
+             do app (res/xml/file_paths.xml). Nenhuma permissão de armazenamento é usada. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Roteador CDNI local (M3). O sistema é o único que pode bindar (permissão
              signature-level BIND_VPN_SERVICE); o app nunca encaminha tráfego para a internet. -->
         <service

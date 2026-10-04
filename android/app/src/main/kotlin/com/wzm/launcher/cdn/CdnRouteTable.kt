@@ -120,6 +120,7 @@ object CdnRouteTable {
                         listOf(
                             "dnsQueries" to counters.dnsQueries,
                             "dnsIntercepted" to counters.dnsIntercepted,
+                            "tcpConnections" to counters.tcpConnections,
                             "httpRequests" to counters.httpRequests,
                             "unknownRequests" to counters.unknownRequests,
                             "tlsOk" to counters.tlsOk,
@@ -136,7 +137,7 @@ object CdnRouteTable {
     private fun requestsBody(): ByteArray {
         val counters = RequestLog.counters.value
         val header = "# contadores: dnsQueries=${counters.dnsQueries} dnsIntercepted=${counters.dnsIntercepted} " +
-            "httpRequests=${counters.httpRequests} unknownRequests=${counters.unknownRequests} " +
+            "tcpConnections=${counters.tcpConnections} httpRequests=${counters.httpRequests} unknownRequests=${counters.unknownRequests} " +
             "tlsOk=${counters.tlsOk} tlsFailed=${counters.tlsFailed}\n"
         return (header + RequestLog.snapshot() + "\n").toByteArray(Charsets.UTF_8)
     }

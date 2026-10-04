@@ -34,6 +34,12 @@ class TcpRelay(
             RequestLog.incHttpRequest()
             if (!outcome.isKnown) RequestLog.incUnknownRequest()
             log(outcome.logTag, "${outcome.logMessage} [cliente=$peer]")
+            // Linha dedicada ao status HTTP (filtro "[HTTP]" na tela de logs).
+            log(
+                "HTTP",
+                "${head.method} ${head.path} -> ${outcome.status} " +
+                    "${HttpResponses.reason(outcome.status)} (resposta ${outcome.bytes.size} B, cliente=$peer)"
+            )
             try {
                 val output = BufferedOutputStream(connection.getOutputStream())
                 output.write(outcome.bytes)

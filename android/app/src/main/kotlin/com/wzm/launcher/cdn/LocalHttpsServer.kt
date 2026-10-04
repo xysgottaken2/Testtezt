@@ -128,6 +128,12 @@ class LocalHttpsServer(
                 if (running) log("CDNI", "accept em $endpoint encerrado: ${e.javaClass.simpleName}: ${e.message}")
                 break
             }
+            val peer = client.remoteSocketAddress?.toString() ?: "?"
+            RequestLog.incTcpConnection()
+            log(
+                "CDNI",
+                "conexão TCP recebida de $peer em $endpoint (total ${RequestLog.counters.value.tcpConnections})"
+            )
             if (!connections.tryAcquire()) {
                 log("CDNI", "conexões simultâneas no limite ($maxConcurrentConnections) — conexão descartada")
                 closeQuietly(client)
