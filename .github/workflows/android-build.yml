@@ -117,6 +117,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Report unit test failures as annotations (XML -> check-run, legível via API)
+        if: always()
+        run: |
+          python3 scripts/ci-report-test-failures.py \
+            --dir android/app/build/test-results/testDebugUnitTest || true
+
       - name: Fail if unit tests failed
         if: env.TEST_EXIT != '0'
         run: |

@@ -48,7 +48,8 @@ class RequestLogTest {
         RequestLog.add("HTTP", "GET /path/novo -> 404 Not Found")
 
         val lines = RequestLog.lines()
-        assertEquals(2, RequestLog.filterTags(lines, null).size)
+        assertEquals(4, lines.size)
+        assertEquals(4, RequestLog.filterTags(lines, null).size) // null = sem filtro
         assertEquals(1, RequestLog.filterTags(lines, "DNS").size)
         assertEquals(1, RequestLog.filterTags(lines, "CDNI").size)
         assertEquals(1, RequestLog.filterTags(lines, "CDNI?").size)
@@ -108,10 +109,13 @@ class RequestLogTest {
         RequestLog.add("CDNI", "a".repeat(RequestLog.MAX_LINE_CHARS + 100))
         RequestLog.add("CDNI", "duas\nlinhas\r\naqui")
         val lines = RequestLog.lines()
-        assertEquals(1, lines[0].split("[CDNI]").size - 1) // tag uma vez só
-        assertTrue(lines[0].endsWith("…"))
-        assertTrue(lines[0].length <= RequestLog.MAX_LINE_CHARS + 40)
-        assertFalse(lines[1].contains("\n"))
+        assertEquals(2, lines.size)
+        // Regex explícita (o comportamento de split(String) varia entre versões da stdlib)
+        val tagOccurrences = Regex("\\[CDNI]").findAll(lines[0]).count()
+        assertEquals("a tag [CDNI] deve aparecer uma vez na linha", 1, tagOccurrences)
+        assertTrue("linha não truncada: ${lines[0].takeLast(10)}", lines[0].endsWith("…"))
+        assertTrue("linha longa demais: ${lines[0].length}", lines[0].length <= RequestLog.MAX_LINE_CHARS + 40)
+        assertFalse("quebra de linha não sanitizada: ${lines[1]}", lines[1].contains("\n"))
         assertEquals("CDNI", RequestLog.tagOf(lines[1]))
     }
 
