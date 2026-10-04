@@ -30,6 +30,7 @@ required=(
   "warzone-offline/tools/asset-tools/cdni-probe.sh"
   "warzone-offline/tools/asset-tools/shard-reference-scanner.py"
   "warzone-offline/tools/asset-tools/shard-cdn-check.sh"
+  "warzone-offline/tools/asset-tools/run-external-apk.sh"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )

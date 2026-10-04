@@ -36,13 +36,37 @@ Testes já verdes: `warzone-offline/server` 14 + `warzone-offline/launcher` 12.
 
 ---
 
-## 3. Passo a passo quando o arquivo chegar
+## 3. Passo a passo quando o arquivo chegar (M2.2.1 adaptado: externo sem commit)
 
-### 3.1. Isolar fora do repo
+> **APK/XAPK real está só no S23 do usuário** (`/storage/emulated/0/Download/...`), não no workspace. Use sempre caminho externo e `--out-dir` fora do repo. Wrapper `run-external-apk.sh` valida e nunca copia para `Testtezt/`.
+
+#### 3.0. Atalho recomendado — wrapper único (S23 Termux ou PC)
 
 ```bash
+# S23 Termux (APK já em Download):
+bash warzone-offline/tools/asset-tools/run-external-apk.sh \
+  --apk /storage/emulated/0/Download/warzone-3.10.0.19854920.xapk \
+  --out-dir /storage/emulated/0/Download/wzm-out --check-cdn
+
+# PC com arquivo temporário fora do repo (após adb pull):
+adb pull /data/app/com.activision.callofduty.warzone-*/base.apk /tmp/wzm/warzone.apk
+bash warzone-offline/tools/asset-tools/run-external-apk.sh --apk /tmp/wzm/warzone.apk --out-dir /tmp/wzm/out
+
+# Só ZIP list (sem extrair):
+bash warzone-offline/tools/asset-tools/run-external-apk.sh --apk /storage/.../warzone.xapk --out-dir /tmp/wzm/out --zip-only
+# Saídas: apk-metadata.json, physical-shards.json, shard-refs.json em OUT-DIR externo — compartilhe só os JSONs.
+```
+
+O wrapper recusa `--apk` ou `--out-dir` dentro do repo e nunca escreve `*.apk/*.shard` em `Testtezt/` (`.gitignore` + validação).
+
+### 3.1. Isolar fora do repo (manual, equivalente ao wrapper)
+
+```bash
+# S23: já está em /storage/emulated/0/Download/warzone-3.10.0.19854920.xapk  # não mover para Testtezt
+# PC:
 mkdir -p /tmp/wzm
-cp /caminho/legal/warzone.xapk /tmp/wzm/warzone.xapk  # NUNCA cp para ~/Testtezt
+# se for XAPK, já está em /storage/... ; para PC:
+adb pull /data/app/com.activision.callofduty.warzone-*/base.apk /tmp/wzm/warzone.apk  # NUNCA cp para ~/Testtezt
 cd /tmp/wzm
 sha256sum warzone.xapk | tee warzone.xapk.sha256  # hash para doc, não conteúdo
 unzip -l warzone.xapk | head -n 100 | tee xapk-contents.txt  # apenas lista
