@@ -73,6 +73,9 @@ jobs:
       - name: Preflight — sintaxe Kotlin (aspas raw + comentário aninhado)
         run: python3 scripts/check-kotlin-preflight.py --dir android
 
+      - name: Preflight — literais Kotlin fechados na mesma linha
+        run: python3 scripts/check-kotlin-literals.py android
+
       - name: Generate local CDNI certificate (throwaway, not versioned)
         run: |
           bash scripts/generate-local-cdni-cert.sh

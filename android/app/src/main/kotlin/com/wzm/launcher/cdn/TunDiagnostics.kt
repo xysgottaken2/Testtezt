@@ -385,7 +385,7 @@ object HypothesisBoard {
                     "houve tráfego no UID do alvo e há fluxo verificado no TUN"
                 !facts.uidTrafficAvailable ->
                     "sem contabilidade por UID (TrafficStats indisponível) — não é possível separar \"app sem rede\" " +
-                        "de \"tráfego fora do túnel\"
+                        "de \"tráfego fora do túnel\""
                 else -> "contabilidade por UID ainda sem variação legível"
             }
         ),
