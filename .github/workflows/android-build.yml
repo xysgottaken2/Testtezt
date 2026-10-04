@@ -27,8 +27,37 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Android SDK (preinstalled ubuntu-latest)
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls -la "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" 2>&1 | head -n 100 || true
+          # sdkmanager is preinstalled on ubuntu-latest
+          SDKMANAGER=""
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="sdkmanager"
+          elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            echo "sdkmanager not found, trying to locate"
+            find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f 2>/dev/null | head -n 5 || true
+          fi
+          echo "Using SDKMANAGER=$SDKMANAGER"
+          if [ -n "$SDKMANAGER" ]; then
+            "$SDKMANAGER" --version || true
+            echo "Accepting licenses..."
+            yes | "$SDKMANAGER" --licenses 2>&1 | tail -n 20 || true
+            echo "Ensuring platforms;android-34 and build-tools;34.0.0"
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -n 30 || true
+            echo "Installed:"
+            "$SDKMANAGER" --list_installed 2>&1 | head -n 50 || true
+          else
+            echo "WARNING: sdkmanager not found, relying on preinstalled SDK"
+            ls -la "$ANDROID_HOME/platforms/" 2>&1 | head -n 20 || true
+            ls -la "$ANDROID_HOME/build-tools/" 2>&1 | head -n 20 || true
+          fi
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
@@ -50,11 +79,25 @@ jobs:
 
       - name: Run unit tests
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest --stacktrace --info
+        run: |
+          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Using ./gradlew (wrapper jar present)"
+            ./gradlew :app:testDebugUnitTest --stacktrace --info
+          else
+            echo "Wrapper jar missing/empty — falling back to gradle directly"
+            gradle :app:testDebugUnitTest --stacktrace --info
+          fi
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Using ./gradlew (wrapper jar present)"
+            ./gradlew :app:assembleDebug --stacktrace
+          else
+            echo "Wrapper jar missing/empty — falling back to gradle directly"
+            gradle :app:assembleDebug --stacktrace
+          fi
 
       - name: Generate SHA256
         working-directory: android
