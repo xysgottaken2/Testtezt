@@ -22,9 +22,13 @@ class OwnerProbeTest {
         val socketCalls = mutableListOf<Socket>()
     }
 
-    /** Socket conectado de verdade a um listener local — para o passo ter endereços utilizáveis. */
+    /**
+     * Socket conectado de verdade a um listener local — para o passo ter endereços utilizáveis.
+     * O backlog é folgado de propósito: o probe abre mais de uma conexão e uma fila cheia faria a
+     * segunda ser recusada (o que criaria um "pulado" que não é do probe).
+     */
     private fun connectedPair(): Pair<ServerSocket, Socket> {
-        val listener = ServerSocket(0, 1, InetSocketAddress("127.0.0.1", 0).address)
+        val listener = ServerSocket(0, 16, InetSocketAddress("127.0.0.1", 0).address)
         val client = Socket("127.0.0.1", listener.localPort)
         return listener to client
     }
@@ -189,6 +193,12 @@ class OwnerProbeTest {
         assertFalse(report.steps[0].ran)
         assertFalse(report.steps[1].ran)
         assertTrue(report.steps[0].skippedReason!!.contains("não foi possível conectar"))
-        assertEquals("nenhum passo útil → inconclusivo", 0, report.resolved + report.invalid)
+        assertTrue("o passo da tupla inexistente não depende de socket", report.steps[2].ran)
+        assertEquals("nenhuma autoria resolvida", 0, report.resolved)
+        assertEquals(
+            "o único resultado é a tupla inexistente (INVALID_UID) — nada de resultado fabricado",
+            1,
+            report.invalid
+        )
     }
 }
