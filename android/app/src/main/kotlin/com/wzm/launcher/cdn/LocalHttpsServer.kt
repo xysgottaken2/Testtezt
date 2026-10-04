@@ -33,6 +33,12 @@ class LocalHttpsServer(
      */
     private val ownerDescription: (Socket) -> String = { "dono=NAO_RESOLVIDO (sem lookup neste ambiente)" },
     /**
+     * Origem da conexão (M4.1): veredito sobre **quem provavelmente abriu** esta conexão, com o
+     * nível de confiança. Pura delegação — quem monta os fatos é [CdnRouterController].
+     * `null` = não foi possível montar os fatos (nesse caso o log segue sem o veredito).
+     */
+    private val originReport: ((Socket, EndpointRole) -> LoopbackOrigin.Report?)? = null,
+    /**
      * Tentativas LIMITADAS de bind em endereço que ainda não existe (EADDRNOTAVAIL enquanto a
      * interface tun sobe). Nunca é um retry cego: cada tentativa é logada e há um teto.
      */
@@ -228,6 +234,12 @@ class LocalHttpsServer(
             val via = ListenerFailures.via(endpoint.address)
             val owner = runCatching { ownerDescription(client) }
                 .getOrElse { "dono=NAO_RESOLVIDO (${it.javaClass.simpleName})" }
+            // M4.1: veredito de origem (com nível de confiança) — o loopback é alcançável por qualquer
+            // app e não passa pelo túnel; sem isso, uma conexão em 127.0.0.1:443 fica sem qualquer
+            // indicação de autoria no log.
+            val origin = runCatching { originReport?.invoke(client, endpoint.role) }.getOrNull()
+            if (origin != null) RequestLog.incLoopbackOrigin(origin.verdict)
+            val originSuffix = if (origin == null) "" else " · ${origin.text}"
             // M3.5: papel do listener + relação temporal com o WZM iniciado.
             // Loopback é DIAGNÓSTICO SECUNDÁRIO: não conta como evidência de tráfego do WZM.
             val now = System.currentTimeMillis()
@@ -237,7 +249,7 @@ class LocalHttpsServer(
                 log(
                     "CDNI",
                     "tentativa de conexão em $endpoint (via $via, papel=${endpoint.role.name}, " +
-                        "DIAGNÓSTICO SECUNDÁRIO): peer=$peer $owner · epochMs=$now · $relation — " +
+                        "DIAGNÓSTICO SECUNDÁRIO): peer=$peer $owner$originSuffix · epochMs=$now · $relation — " +
                         "este caminho NÃO conta como evidência de tráfego do WZM"
                 )
             } else {
@@ -245,7 +257,7 @@ class LocalHttpsServer(
                 log(
                     "CDNI",
                     "conexão aceita em $endpoint (via $via, papel=${endpoint.role.name}): peer=$peer " +
-                        "$owner · epochMs=$now · $relation · total-no-túnel=" +
+                        "$owner$originSuffix · epochMs=$now · $relation · total-no-túnel=" +
                         "${RequestLog.counters.value.tcpConnectionsTunel}"
                 )
             }

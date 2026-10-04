@@ -88,70 +88,59 @@ object AndroidDiagnostics {
      * `ConnectivityManager.getConnectionOwnerUid` existe desde a API 29; tentamos as duas
      * orientações do par local/remoto porque a API não documenta qual delas o netd indexa.
      */
-    fun connectionOwner(context: Context, socket: Socket): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return "dono=INDISPONIVEL (getConnectionOwnerUid exige API 29+)"
-        }
-        val manager = context.getSystemService(ConnectivityManager::class.java)
-            ?: return "dono=INDISPONIVEL (ConnectivityManager ausente)"
-        val local = toInet(socket.localSocketAddress)
-        val remote = toInet(socket.remoteSocketAddress)
-        val attempts = buildList {
-            if (local != null && remote != null) {
-                add(local to remote)
-                add(remote to local)
-            }
-        }
-        if (attempts.isEmpty()) return "dono=NAO_RESOLVIDO (endereços indisponíveis)"
-        for ((first, second) in attempts) {
-            val uid = runCatching { manager.getConnectionOwnerUid(6 /* IPPROTO_TCP */, first, second) }
-                .getOrNull() ?: continue
-            if (uid == Process.INVALID_UID) continue
-            val packages = runCatching { context.packageManager.getPackagesForUid(uid) }
-                .getOrNull()?.joinToString(",") ?: "?"
-            return "dono=uid=$uid ($packages)"
-        }
-        return "dono=NAO_RESOLVIDO (getConnectionOwnerUid devolveu INVALID_UID)"
-    }
-
-    private fun toInet(address: SocketAddress?): InetSocketAddress? =
-        (address as? InetSocketAddress)?.takeIf { it.address != null }
+    fun connectionOwner(context: Context, socket: Socket): String =
+        ConnectionOwnership.describe(ConnectionOwnership.querySocket(context, socket))
 
     /**
-     * Dono (UID/pacote) de um fluxo observado no TUN — responde "esse pacote é do WZM?"
-     * com a API pública que o próprio sistema usa para firewall/VPN (API 29+).
-     *
-     * Em per-app VPN o socket do app continua na tabela de conexões do sistema, então a consulta
-     * costuma resolver no SYN. Quando não resolve, o log diz `NAO_RESOLVIDO` — nunca se presume autoria.
+     * Fatos para o veredito de origem (M4.1) de uma conexão aceita no listener: peer, uid resolvido
+     * (ou não), janela de portas efêmeras deste processo e a marca do teste sintético.
+     */
+    fun loopbackOriginFacts(
+        context: Context,
+        socket: Socket,
+        roleLoopback: Boolean,
+        targetUid: Int?,
+        nowMs: Long = System.currentTimeMillis()
+    ): LoopbackOrigin.Facts? {
+        val remote = ConnectionOwnership.toInet(socket.remoteSocketAddress) ?: return null
+        val peerAddress = remote.address?.hostAddress ?: return null
+        val owner = ConnectionOwnership.querySocket(context, socket)
+        return LoopbackOrigin.Facts(
+            roleLoopback = roleLoopback,
+            peerAddress = peerAddress,
+            peerPort = remote.port,
+            ownerUidResolvido = owner.uid,
+            launcherUid = Process.myUid(),
+            targetUid = targetUid,
+            duranteTesteSintetico = RequestLog.isDuringSyntheticTest(nowMs),
+            portVerdict = SelfPorts.verdictFor(remote.port)
+        )
+    }
+
+    /**
+     * Dono (UID/pacote) de um fluxo observado no TUN — responde "esse pacote é do WZM?" com a API
+     * pública que o sistema usa para firewall/VPN (API 29+). Delega a classificação a
+     * [ConnectionOwnership], que documenta o duplo significado de `INVALID_UID`.
      */
     fun connectionOwnerForFlow(context: Context, header: PacketHeader): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return "dono=INDISPONIVEL (getConnectionOwnerUid exige API 29+)"
-        }
         val srcPort = header.srcPort ?: return "dono=NAO_RESOLVIDO (sem porta de origem)"
         val dstPort = header.dstPort ?: return "dono=NAO_RESOLVIDO (sem porta de destino)"
-        val sourceAddress = runCatching { InetAddress.getByName(header.srcAddress) }.getOrNull()
-            ?: return "dono=NAO_RESOLVIDO (endereço de origem inválido)"
-        val destinationAddress = runCatching { InetAddress.getByName(header.dstAddress) }.getOrNull()
-            ?: return "dono=NAO_RESOLVIDO (endereço de destino inválido)"
-        val manager = context.getSystemService(ConnectivityManager::class.java)
-            ?: return "dono=INDISPONIVEL (ConnectivityManager ausente)"
         val protocol = when {
-            header.isTcp -> 6
-            header.isUdp -> 17
-            else -> return "dono=NAO_RESOLVIDO (protocolo ${header.protocolCode} não suportado pela consulta)"
+            header.isTcp -> ConnectionOwnership.PROTOCOL_TCP
+            header.isUdp -> ConnectionOwnership.PROTOCOL_UDP
+            else -> return "dono=NAO_RESOLVIDO (protocolo ${header.protocolCode} nao suportado pela consulta)"
         }
-        val local = InetSocketAddress(sourceAddress, srcPort)
-        val remote = InetSocketAddress(destinationAddress, dstPort)
-        val orientations = listOf(local to remote, remote to local)
-        for ((first, second) in orientations) {
-            val uid = runCatching { manager.getConnectionOwnerUid(protocol, first, second) }.getOrNull() ?: continue
-            if (uid == Process.INVALID_UID) continue
-            val packages = runCatching { context.packageManager.getPackagesForUid(uid) }
-                .getOrNull()?.joinToString(",") ?: "?"
-            return "dono=uid=$uid ($packages)"
-        }
-        return "dono=NAO_RESOLVIDO (fluxo ainda não está na tabela do sistema)"
+        val sourceAddress = runCatching { InetAddress.getByName(header.srcAddress) }.getOrNull()
+            ?: return "dono=NAO_RESOLVIDO (endereco de origem invalido)"
+        val destinationAddress = runCatching { InetAddress.getByName(header.dstAddress) }.getOrNull()
+            ?: return "dono=NAO_RESOLVIDO (endereco de destino invalido)"
+        val result = ConnectionOwnership.query(
+            context,
+            protocol,
+            InetSocketAddress(sourceAddress, srcPort),
+            InetSocketAddress(destinationAddress, dstPort)
+        )
+        return ConnectionOwnership.describe(result)
     }
 
     /** `true` quando o endereço está atribuído a alguma interface do device. */

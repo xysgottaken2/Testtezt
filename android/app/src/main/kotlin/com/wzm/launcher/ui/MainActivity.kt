@@ -203,6 +203,11 @@ fun LauncherContent(
                 item { SyntheticReportCard(report) }
             }
 
+            // M4.1: resultado do teste de controle de autoria (só aparece depois de rodar no device).
+            if (state.counters.ownerProbeResumo.isNotBlank()) {
+                item { OwnerProbeCard(state.counters.ownerProbeResumo) }
+            }
+
             item {
                 Button(
                     onClick = onLaunchWzm,
@@ -310,6 +315,31 @@ fun SyntheticReportCard(report: String) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Teste sintético do caminho CDNI", color = Color(0xFF9AA39A), fontSize = 12.sp)
             Text(report, color = Color(0xFFD7C36B), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+/**
+ * Teste de controle de autoria (M4.1): mostra o que a API pública `getConnectionOwnerUid` respondeu
+ * para conexões do próprio launcher (loopback e endereço do túnel) e para uma tupla inexistente.
+ *
+ * Leitura correta: só o passo resolvido prova autoria; `INVALID_UID` é **ambíguo por desenho**
+ * (socket não encontrado OU fora do per-app da VPN) e não pode ser lido como "não é o jogo".
+ */
+@Composable
+fun OwnerProbeCard(resumo: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag(LauncherTestTags.OWNER_PROBE),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2230))
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "Teste de controle de autoria (M4.1) — getConnectionOwnerUid",
+                color = Color(0xFF9AA39A),
+                fontSize = 12.sp
+            )
+            Text(resumo, color = Color(0xFF8EB6E0), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }

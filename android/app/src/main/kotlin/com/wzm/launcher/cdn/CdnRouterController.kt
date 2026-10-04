@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /** Estado do roteador CDNI local (servidor HTTPS + túnel) exposto para a UI. */
 data class CdnRouterStatus(
@@ -44,6 +46,10 @@ object CdnRouterController {
 
     private var server: LocalHttpsServer? = null
 
+    /** Pacote alvo da sessão (usado pelo veredito de origem e pelo teste de controle). */
+    @Volatile
+    private var targetPackage: String = ""
+
     private val lifecycle = RouterLifecycle { line -> RequestLog.add("DIAG", line) }
 
     private val _status = MutableStateFlow(CdnRouterStatus())
@@ -62,6 +68,7 @@ object CdnRouterController {
             "LAUNCHER",
             "iniciando roteador CDNI local na ordem correta: VPN -> endereço do túnel -> listener :443"
         )
+        targetPackage = wzmPackage
         lifecycle.onVpnStarting("pedido de túnel enviado ao sistema (per-app: $wzmPackage)")
         publishStatus()
         CdnVpnService.start(app, wzmPackage)
@@ -98,9 +105,19 @@ object CdnRouterController {
             return
         }
         val appContext = context.applicationContext
+        val targetUid = targetPackage.takeIf { it.isNotEmpty() }
+            ?.let { AndroidDiagnostics.targetUid(appContext, it) }
         val created = LocalHttpsServer(
             tlsMaterial = material,
-            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) }
+            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) },
+            originReport = { socket, role ->
+                AndroidDiagnostics.loopbackOriginFacts(
+                    appContext,
+                    socket,
+                    roleLoopback = role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO,
+                    targetUid = targetUid
+                )?.let { facts -> LoopbackOrigin.report(facts) }
+            }
         )
         val started = created.start()
         if (started) {
@@ -125,6 +142,48 @@ object CdnRouterController {
                 "fase=${lifecycle.phase.label}" +
                 (if (!ready) " — ROUTER_READY não declarado (listener do túnel ausente)" else "")
         )
+        // M4.1: teste de controle de autoria — só faz sentido com o listener no ar.
+        runOwnerControlProbe(appContext, created)
+    }
+
+    /**
+     * Teste de controle do item 2 do M4.1 (executado uma vez por sessão, com socket de verdade):
+     * mede o que `getConnectionOwnerUid` devolve para conexões do **próprio launcher** em loopback e
+     * no endereço do túnel, e para uma tupla que não existe. Nada sai do aparelho.
+     */
+    private fun runOwnerControlProbe(context: Context, server: LocalHttpsServer) {
+        RequestLog.add(
+            "DIAG",
+            "teste de controle de autoria (M4.1): mede o que getConnectionOwnerUid devolve para conexões " +
+                "do PRÓPRIO launcher (loopback e endereço do túnel) e para uma tupla inexistente"
+        )
+        val loopbackPort = server.boundEndpoints
+            .firstOrNull { it.role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO }?.port
+        val report = OwnerProbe.run(
+            loopbackPort = loopbackPort,
+            tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
+            tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
+            tunnelAddressAssigned = AndroidDiagnostics.isAddressAssigned(),
+            selfPortRegistrar = { port -> SelfPorts.register(port) },
+            connect = { host, port ->
+                Socket().also { socket ->
+                    socket.connect(InetSocketAddress(host, port), 2_000)
+                    socket.soTimeout = 2_000
+                }
+            },
+            querySocket = { socket -> ConnectionOwnership.querySocket(context, socket) },
+            queryTuple = { protocol, first, second -> ConnectionOwnership.query(context, protocol, first, second) }
+        )
+        for (step in report.steps) {
+            step.result?.let { RequestLog.incOwnerProbeResult(it) }
+        }
+        val linhas = report.lines()
+        linhas.forEach { line -> RequestLog.add("DIAG", line) }
+        val resumo = OwnerProbe.summaryLine(report)
+        val leitura = "leitura do teste de controle: ${report.expectation()}"
+        RequestLog.add("DIAG", resumo)
+        RequestLog.add("DIAG", leitura)
+        RequestLog.setOwnerProbeResumo((linhas + resumo + leitura).joinToString("\n"))
     }
 
     /**

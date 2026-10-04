@@ -271,6 +271,89 @@ class HypothesisBoardTest {
         assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "fluxo_dot_no_tun").level)
     }
 
+    // ---- M4.1: o quadro precisa refletir o significado EXATO do que o teste de controle devolveu ----
+
+    @Test
+    fun captureCapacityIsAlwaysStatedAsVerifiedAndNeverAsFullCoverage() {
+        val captura = claim(RequestCounters(), "capacidade_de_captura_do_tun")
+        assertEquals(Evidence.VERIFIED, captura.level)
+        assertTrue(
+            "a distinção allowlist != captura total é a base do M4.1: ${captura.detail}",
+            captura.detail.contains("não") && captura.detail.contains("capturado")
+        )
+        assertTrue("precisa citar a rota declarada: ${captura.detail}", captura.detail.contains(CdnRouterConfig.VPN_ROUTE))
+    }
+
+    @Test
+    fun emptyTunIsOnlyProbableWhenTheUidTrafficGrew() {
+        val grew = claim(RequestCounters(), "silencio_do_tun_e_escopo_ou_dns", baseFacts(uidTrafficGrew = true))
+        assertEquals(Evidence.PROBABLE, grew.level)
+        assertTrue(grew.detail.contains("fora da rota declarada"))
+
+        val unknown = claim(
+            RequestCounters(),
+            "silencio_do_tun_e_escopo_ou_dns",
+            baseFacts(uidTrafficAvailable = true, uidTrafficGrew = null)
+        )
+        assertEquals(Evidence.HYPOTHESIS, unknown.level)
+
+        val withPackets = claim(RequestCounters(tunPacketsTotal = 3), "silencio_do_tun_e_escopo_ou_dns")
+        assertEquals(Evidence.UNKNOWN, withPackets.level)
+        assertTrue(withPackets.detail.contains("não se aplica"))
+    }
+
+    @Test
+    fun ownerAttributionApiIsVerifiedOnlyWhenTheProbeResolvedSomeUid() {
+        val notRun = claim(RequestCounters(), "atribuicao_de_dono_pela_api")
+        assertEquals(Evidence.UNKNOWN, notRun.level)
+        assertTrue(notRun.detail.contains("ainda não rodou"))
+
+        val resolved = claim(RequestCounters(ownerProbeResolvido = 1), "atribuicao_de_dono_pela_api")
+        assertEquals(Evidence.VERIFIED, resolved.level)
+        assertTrue(resolved.detail.contains("appliesToUid"))
+
+        val invalid = claim(RequestCounters(ownerProbeInvalid = 3), "atribuicao_de_dono_pela_api")
+        assertEquals(Evidence.UNKNOWN, invalid.level)
+        assertTrue(
+            "INVALID_UID não pode virar afirmação de autoria: ${invalid.detail}",
+            invalid.detail.contains("NÃO autoriza")
+        )
+        assertFalse(invalid.detail.contains("é do jogo"))
+        assertFalse("não pode dizer que é de outro app", invalid.detail.contains("de outro app"))
+
+        val semPermissao = claim(
+            RequestCounters(ownerProbeResolvido = 1, ownerProbeSemPermissao = 1),
+            "atribuicao_de_dono_pela_api"
+        )
+        assertEquals("sem permissão não pode ser mascarado por um passo resolvido", Evidence.UNKNOWN, semPermissao.level)
+    }
+
+    @Test
+    fun loopbackOriginNeverClaimsTheGame() {
+        val none = claim(RequestCounters(), "origem_das_conexoes_loopback")
+        assertEquals(Evidence.UNKNOWN, none.level)
+
+        val own = claim(RequestCounters(loopbackMesmoProcesso = 2), "origem_das_conexoes_loopback")
+        assertEquals(Evidence.PROBABLE, own.level)
+        assertTrue(own.detail.contains("alcançável por QUALQUER app"))
+        assertTrue(own.detail.contains("não passa pelo túnel"))
+        assertFalse("conexão de loopback não é tráfego do WZM", own.detail.contains("WZM fez"))
+
+        val indeterminate = claim(RequestCounters(loopbackIndeterminado = 5), "origem_das_conexoes_loopback")
+        assertEquals(Evidence.UNKNOWN, indeterminate.level)
+    }
+
+    @Test
+    fun dnsAnswerPointingAtLoopbackIsARegressionNotATheory() {
+        val ok = claim(RequestCounters(), "dns_do_tunel_nunca_responde_loopback")
+        assertEquals(Evidence.VERIFIED, ok.level)
+        assertTrue(ok.detail.contains(CdnRouterConfig.REDIRECT_TO))
+
+        val regression = claim(RequestCounters(dnsRespostasParaLoopback = 1), "dns_do_tunel_nunca_responde_loopback")
+        assertEquals(Evidence.UNKNOWN, regression.level)
+        assertTrue(regression.detail.contains("REGRESSÃO"))
+    }
+
     @Test
     fun everyLineIsSelfDescribing() {
         val lines = HypothesisBoard.lines(RequestCounters(), baseFacts())

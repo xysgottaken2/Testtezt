@@ -76,7 +76,27 @@ data class RequestCounters(
     /** Respostas DNS (nome → endereços) guardadas no cache observacional. */
     val dnsRespostasRegistradas: Int = 0,
     /** ICMPv4 observado no túnel (simetria de instrumentação com o ICMPv6). */
-    val tunIcmpv4Flows: Int = 0
+    val tunIcmpv4Flows: Int = 0,
+    // ---- M4.1: autoria das conexões (teste de controle da API) e origem das conexões de loopback ----
+    /** Passos do teste de controle em que a API resolveu o uid (autoria comprovada). */
+    val ownerProbeResolvido: Int = 0,
+    /** Passos em que a API devolveu INVALID_UID (ambíguo por desenho — ver ConnectionOwnership). */
+    val ownerProbeInvalid: Int = 0,
+    /** Passos em que a API recusou a chamada (não somos o VPN ativo / sem NETWORK_STACK). */
+    val ownerProbeSemPermissao: Int = 0,
+    /** Conexões de loopback cuja origem foi atribuída ao próprio launcher. */
+    val loopbackMesmoProcesso: Int = 0,
+    /** Conexões de loopback atribuídas a outro uid (ou a um uid que não é o launcher). */
+    val loopbackOutroUid: Int = 0,
+    /** Conexões de loopback sem atribuição possível (INVALID_UID sem marca do processo). */
+    val loopbackIndeterminado: Int = 0,
+    /** Respostas DNS em que NÓS devolvemos 127.0.0.1 — deve ser sempre 0 (o destino é 10.111.222.1). */
+    val dnsRespostasParaLoopback: Int = 0,
+    /**
+     * Resultado (multi-linha) do **teste de controle de autoria** do M4.1, quando ele já rodou.
+     * String vazia = ainda não rodou. Mostrar na UI, junto do que foi para o log.
+     */
+    val ownerProbeResumo: String = ""
 ) {
     /** Linha única com todos os contadores (UI e cabeçalho de exportação). */
     fun summary(): String =
@@ -91,7 +111,11 @@ data class RequestCounters(
             "alvo-CDNI: $tunToRedirect bounce $tunBounces / $tunDiscards descartes • " +
             "IPv6 descartado: descoberta-local $tunIpv6DescobertaLocal / multicast-outro $tunIpv6MulticastOutro / " +
             "unicast $tunIpv6Unicast (antes-do-WZM $tunIpv6AntesDoWzm, depois $tunIpv6DepoisDoWzm) • " +
-            "destino-resolvido $tunFluxosDestinoResolvido (respostas DNS guardadas $dnsRespostasRegistradas)"
+            "destino-resolvido $tunFluxosDestinoResolvido (respostas DNS guardadas $dnsRespostasRegistradas) • " +
+            "autoria: api-resolvido $ownerProbeResolvido / INVALID_UID $ownerProbeInvalid / " +
+            "sem-permissao $ownerProbeSemPermissao • loopback: mesmo-processo $loopbackMesmoProcesso / " +
+            "outro-uid $loopbackOutroUid / indeterminado $loopbackIndeterminado • " +
+            "DNS-para-loopback $dnsRespostasParaLoopback (deve ser 0)"
 
     /** Versão curta para os cards. */
     fun compact(): String =
@@ -100,7 +124,8 @@ data class RequestCounters(
             "listener túnel $tcpConnectionsTunel / loopback $tcpConnectionsLoopback • " +
             "TUN $tunPacketsTotal(v4 $tunIpv4Packets/v6 $tunIpv6Packets/inv $tunInvalidPackets) " +
             "bounce $tunBounces desc $tunDiscards • v6-descoberta $tunIpv6DescobertaLocal/v6-unicast $tunIpv6Unicast • " +
-            "destino-resolvido $tunFluxosDestinoResolvido"
+            "destino-resolvido $tunFluxosDestinoResolvido • loopback mesmo-proc $loopbackMesmoProcesso/" +
+            "indet $loopbackIndeterminado • api INVALID_UID $ownerProbeInvalid"
 
     /** Linha `chave=valor` com os nomes exatos usados no log e no relatório (export .txt). */
     fun exportLine(): String =
@@ -123,7 +148,11 @@ data class RequestCounters(
             "tunIpv6DescobertaLocal=$tunIpv6DescobertaLocal tunIpv6MulticastOutro=$tunIpv6MulticastOutro " +
             "tunIpv6Unicast=$tunIpv6Unicast tunIpv6AntesDoWzm=$tunIpv6AntesDoWzm " +
             "tunIpv6DepoisDoWzm=$tunIpv6DepoisDoWzm tunFluxosDestinoResolvido=$tunFluxosDestinoResolvido " +
-            "dnsRespostasRegistradas=$dnsRespostasRegistradas tunIcmpv4Flows=$tunIcmpv4Flows"
+            "dnsRespostasRegistradas=$dnsRespostasRegistradas tunIcmpv4Flows=$tunIcmpv4Flows " +
+            "ownerProbeResolvido=$ownerProbeResolvido ownerProbeInvalid=$ownerProbeInvalid " +
+            "ownerProbeSemPermissao=$ownerProbeSemPermissao loopbackMesmoProcesso=$loopbackMesmoProcesso " +
+            "loopbackOutroUid=$loopbackOutroUid loopbackIndeterminado=$loopbackIndeterminado " +
+            "dnsRespostasParaLoopback=$dnsRespostasParaLoopback"
 }
 
 /**
@@ -157,6 +186,9 @@ object RequestLog {
 
     private val _entries = MutableStateFlow<List<String>>(emptyList())
     val entries: StateFlow<List<String>> = _entries.asStateFlow()
+
+    @Volatile
+    private var ownerProbeResumo: String = ""
 
     private val _counters = MutableStateFlow(RequestCounters())
     val counters: StateFlow<RequestCounters> = _counters.asStateFlow()
@@ -206,6 +238,13 @@ object RequestLog {
     private val tunFluxosDestinoResolvido = AtomicInteger(0)
     private val dnsRespostasRegistradas = AtomicInteger(0)
     private val tunIcmpv4Flows = AtomicInteger(0)
+    private val ownerProbeResolvido = AtomicInteger(0)
+    private val ownerProbeInvalid = AtomicInteger(0)
+    private val ownerProbeSemPermissao = AtomicInteger(0)
+    private val loopbackMesmoProcesso = AtomicInteger(0)
+    private val loopbackOutroUid = AtomicInteger(0)
+    private val loopbackIndeterminado = AtomicInteger(0)
+    private val dnsRespostasParaLoopback = AtomicInteger(0)
 
     @Volatile
     private var sink: LogSink? = null
@@ -313,6 +352,33 @@ object RequestLog {
         publishCounters()
     }
 
+    /** M4.1: desfecho de uma consulta de autoria (`getConnectionOwnerUid`) no teste de controle. */
+    fun incOwnerProbeResult(result: ConnectionOwnership.Result) {
+        when (result.outcome) {
+            ConnectionOwnership.Outcome.RESOLVIDO -> ownerProbeResolvido.incrementAndGet()
+            ConnectionOwnership.Outcome.INVALID_UID -> ownerProbeInvalid.incrementAndGet()
+            ConnectionOwnership.Outcome.SECURITY_EXCEPTION -> ownerProbeSemPermissao.incrementAndGet()
+            else -> Unit
+        }
+        publishCounters()
+    }
+
+    /** M4.1: origem de uma conexão aceita no listener (só o que os fatos permitem afirmar). */
+    fun incLoopbackOrigin(verdict: LoopbackOrigin.Verdict) {
+        when (verdict) {
+            LoopbackOrigin.Verdict.MESMO_PROCESSO -> loopbackMesmoProcesso.incrementAndGet()
+            LoopbackOrigin.Verdict.APP_ALVO, LoopbackOrigin.Verdict.OUTRO_UID -> loopbackOutroUid.incrementAndGet()
+            LoopbackOrigin.Verdict.INDETERMINADO -> loopbackIndeterminado.incrementAndGet()
+        }
+        publishCounters()
+    }
+
+    /** M4.1: alarme defensivo — o DNS do túnel NUNCA deve devolver 127.0.0.1 (o destino é 10.111.222.1). */
+    fun incDnsRespostaParaLoopback() {
+        dnsRespostasParaLoopback.incrementAndGet()
+        publishCounters()
+    }
+
     fun incTunObservation(observation: TunObservation) {
         when (observation) {
             TunObservation.TCP_SYN -> tunTcpSyn.incrementAndGet()
@@ -378,9 +444,23 @@ object RequestLog {
             tunIpv6DepoisDoWzm = tunIpv6DepoisDoWzm.get(),
             tunFluxosDestinoResolvido = tunFluxosDestinoResolvido.get(),
             dnsRespostasRegistradas = dnsRespostasRegistradas.get(),
+            ownerProbeResolvido = ownerProbeResolvido.get(),
+            ownerProbeInvalid = ownerProbeInvalid.get(),
+            ownerProbeSemPermissao = ownerProbeSemPermissao.get(),
+            loopbackMesmoProcesso = loopbackMesmoProcesso.get(),
+            loopbackOutroUid = loopbackOutroUid.get(),
+            loopbackIndeterminado = loopbackIndeterminado.get(),
+            dnsRespostasParaLoopback = dnsRespostasParaLoopback.get(),
             tunIcmpv4Flows = tunIcmpv4Flows.get(),
-            loopbackDepoisDoWzm = loopbackDepoisDoWzm.get()
+            loopbackDepoisDoWzm = loopbackDepoisDoWzm.get(),
+            ownerProbeResumo = ownerProbeResumo
         )
+    }
+
+    /** Publica (UI + estado) o resumo do teste de controle de autoria do M4.1. */
+    fun setOwnerProbeResumo(texto: String) {
+        ownerProbeResumo = texto
+        publishCounters()
     }
 
     fun resetCounters() {
@@ -400,6 +480,10 @@ object RequestLog {
         tunIpv6DescobertaLocal.set(0); tunIpv6MulticastOutro.set(0); tunIpv6Unicast.set(0)
         tunIpv6AntesDoWzm.set(0); tunIpv6DepoisDoWzm.set(0)
         tunFluxosDestinoResolvido.set(0); dnsRespostasRegistradas.set(0); tunIcmpv4Flows.set(0)
+        ownerProbeResolvido.set(0); ownerProbeInvalid.set(0); ownerProbeSemPermissao.set(0)
+        loopbackMesmoProcesso.set(0); loopbackOutroUid.set(0); loopbackIndeterminado.set(0)
+        dnsRespostasParaLoopback.set(0)
+        ownerProbeResumo = ""
         publishCounters()
     }
 

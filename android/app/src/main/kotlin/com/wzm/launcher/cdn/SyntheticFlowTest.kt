@@ -215,6 +215,9 @@ object SyntheticFlowTest {
         return try {
             socket.connect(InetSocketAddress(CdnRouterConfig.REDIRECT_TO, port), timeoutMs)
             socket.soTimeout = timeoutMs
+            // M4.1: esta porta foi aberta pelo PRÓPRIO launcher — registrá-la permite ao listener
+            // marcar a conexão como "mesmo processo" (evidência direta, não dedução).
+            SelfPorts.register(socket.localPort)
             TcpResult(
                 Step(
                     "tcp_alvo_443",

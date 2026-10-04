@@ -64,6 +64,7 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
 | [M4.0 — “Verificando atualizações”](docs/research/m4.0-verificando-atualizacoes.md) | **NOVO M4.0:** dá para pular a verificação de atualização? `CANNOT_SKIP_DIRECTLY` + cadeia concreta + scanner do APK |
+| [M4.1 — Dono das conexões (loopback)](docs/research/m4.1-dono-das-conexoes-loopback.md) | **NOVO M4.1:** `INVALID_UID` é ambíguo por desenho (AOSP `appliesToUid`) — autoria só com uid resolvido; teste de controle com sockets reais, janela de portas do processo e veredito de origem por conexão |
 | [M3.6 — Por que o tráfego do WZM não aparece no TUN](docs/research/m3.6-caminho-real-de-rede.md) | **NOVO M3.6:** contabilidade por UID, processos do alvo, IPv6 classificado (descoberta local × unicast), casamento de destino DNS — para separar "o app não fez rede" de "a rede não passou pelo túnel" |
 | [M3.5 — Loopback separado + teste sintético](docs/research/m3.5-loopback-e-teste-sintetico.md) | **NOVO M3.5:** `127.0.0.1:443` só diagnóstico (antes/depois do WZM), listener do túnel com peer/UID, botão TESTE SINTÉTICO e `cdni.meta` real |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
@@ -195,6 +196,17 @@ Detalhes em [docs/launcher.md](docs/launcher.md) §5.2.
 certificado**. A investigação de TLS/trust/pinning do APK 3.10.0 (read-only, sem modificar/distribuir o APK e
 sem bypass) está em [docs/research/m3.2-apk-tls-trust-investigation.md](docs/research/m3.2-apk-tls-trust-investigation.md),
 com scanner pronto: `python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --apk <externo>` (self-test no CI).
+
+**M4.1 — de quem é a conexão que aparece no listener? (`INVALID_UID` não prova nada):** a API pública
+`ConnectivityManager.getConnectionOwnerUid` devolve `-1` em **dois** casos distintos — conexão fora da tabela
+**ou** dono fora do per-app da VPN que chamou (AOSP: `appliesToUid`). Logo `dono=NAO_RESOLVIDO (INVALID_UID)` do
+log antigo **não** autorizava dizer "não é do jogo". O launcher agora classifica o retorno em seis estados
+(`ConnectionOwnership`), dá um veredito de origem **com nível de evidência** a cada conexão aceita
+(`origem-da-conexao=… VERIFIED|PROBABLE|UNKNOWN`), calibra a janela de portas do próprio processo e roda um
+**teste de controle** com sockets reais (loopback próprio, endereço do túnel, tupla inexistente, escopo da VPN)
+com o resultado no log e no card da tela principal. Regra mantida: conexão de loopback **nunca** conta como
+tráfego do WZM — só uid resolvido pela API conta. Detalhes e leitura em
+[docs/research/m4.1-dono-das-conexoes-loopback.md](docs/research/m4.1-dono-das-conexoes-loopback.md).
 
 **M4.0 — dá para pular “Verificando atualizações”? (`CANNOT_SKIP_DIRECTLY`):** a etapa consome **bytes de um
 manifesto** (estados `MANIFEST_DOWNLOAD_ERROR`, `manifest_ver`, `num_files_manifest`, `CDNI_MANDATORY_NOT_INSTALLED`),

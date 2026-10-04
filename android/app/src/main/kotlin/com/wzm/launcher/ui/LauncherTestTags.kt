@@ -21,6 +21,9 @@ object LauncherTestTags {
     /** Card com o relatório do teste sintético (altura variável — é ele que empurrava o resto). */
     const val SYNTHETIC_REPORT = "launcher_synthetic_report"
 
+    /** Card com o resultado do teste de controle de autoria do M4.1 (altura variável). */
+    const val OWNER_PROBE = "launcher_owner_probe"
+
     /** Painel de preview do log (altura fixa; rola por dentro, sem bloquear a tela). */
     const val LOG_PANEL = "launcher_log_panel"
 

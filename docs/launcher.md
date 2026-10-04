@@ -321,7 +321,7 @@ em primeiro plano).
 | Recurso | Detalhe |
 |---|---|
 | Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]`, `[SINTETICO]` |
-| Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = só este promove), **peer** (IP:porta de origem) e **dono** `dono=uid=<n> (<pacote>)`; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados — e conexões do **teste sintético** (UID do launcher) saem como prova do caminho, não do jogo (M3.3/M3.5) |
+| Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = só este promove), **peer** (IP:porta de origem), **dono** `dono=uid=<n> (<pacote>)` e, desde o M4.1, o **veredito de origem** `origem-da-conexao=<veredito> (VERIFIED|PROBABLE|UNKNOWN)` com o veredito da porta de origem; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados — e conexões do **teste sintético** (UID do launcher) saem como prova do caminho, não do jogo (M3.3/M3.5) |
 | Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
 | Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
 | DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
@@ -357,6 +357,27 @@ Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
 logados corpos de requisição, cabeçalhos, cookies, tokens nem credenciais — nem no arquivo persistido.
 
 ---
+## 5.3 Autoria das conexões e teste de controle (M4.1)
+
+`dono=uid=<n>` só aparece quando a API pública `ConnectivityManager.getConnectionOwnerUid` (API 29+)
+**resolve** o uid — e ela só resolve uid **coberto pela VPN que chamou**. Fora disso ela devolve
+`INVALID_UID`, que é **ambíguo por desenho** (conexão não encontrada **ou** dono fora do per-app):
+no log ele sai como `dono=NAO_RESOLVIDO (INVALID_UID …)` e **nunca** como "não é do jogo".
+
+| Recurso (M4.1) | O que faz |
+|---|---|
+| Veredito de origem | `origem-da-conexao=mesmo-processo-do-launcher` / `app-alvo` / `outro-uid` / `indeterminado`, **cada um com o nível de evidência** no texto (uid resolvido = `VERIFIED`; porta na janela do processo durante o teste sintético = `PROBABLE`; sem marca = `UNKNOWN`) |
+| Janela de portas do processo | `[DIAG] calibração de portas do próprio processo: janela-do-processo=min..max (n amostra(s))` — só indica origem **provável**, a janela é compartilhada no aparelho |
+| Teste de controle | Botão/rotina que mede, com sockets reais e locais, o que a API responde para: loopback próprio, endereço do túnel, tupla inexistente (`TCP 127.0.0.1:1`) e o escopo da VPN; resumo no log e no card **“Teste de controle de autoria (M4.1)”** na tela principal |
+| Invariante de DNS | `dnsRespostasParaLoopback` deve ficar sempre em **0**: o DNS do túnel responde `10.111.222.1`, nunca `127.0.0.1` (se mudar, é regressão de configuração e o log grita) |
+
+Leitura correta do teste de controle: **sem permissão** = inconclusivo; **algum uid resolvido** = a API
+prova autoria para uid dentro da VPN; **só `INVALID_UID`** = confirma a ambiguidade (inclusive para a
+conexão do próprio launcher). Loopback **não** é evidência de tráfego do WZM — a investigação completa
+está em `docs/research/m4.1-dono-das-conexoes-loopback.md`.
+
+---
+
 ## 6. O que já funciona (MVP)
 
 - [x] Projeto Android compilável **e compilado em CI** (Kotlin 1.9.22, AGP 8.5.2, Gradle 8.7, Compose Compiler 1.5.8, minSdk 24, target 34)
@@ -414,6 +435,8 @@ M3 (VPN/DNS/HTTPS locais):
 - **`[TLS] FALHA … cliente RECUSOU o certificado local`:** esperado com `targetSdk ≥ 24` (CA de usuário não é confiada) — é evidência de que a requisição chegou; ver §5.1/§7.
 - **WZM não usa o túnel:** confirme `addAllowedApplication` no log (`per-app: somente com.activision.callofduty.warzone`).
 - **Não sei onde o log foi salvo:** a tela VER LOGS mostra o caminho (`arquivo: /data/user/0/<pkg>/files/request-log.txt`); o `.txt` exportado vai para `/sdcard/Android/data/<pkg>/files/logs/` (sem permissão de armazenamento).
+- **`dono=NAO_RESOLVIDO (INVALID_UID …)` em conexões que o launcher abriu:** isso é o esperado sob allowlist estrita — a API devolve `-1` para quem está **fora** da VPN que chamou (o launcher não está dentro da própria allowlist); não é sinal de erro nem prova de que a conexão é de outro app.
+- **Teste de controle sem nenhum uid resolvido:** significa "a API não identificou", não "não há conexões". Se aparecer `SEM_PERMISSAO`, o serviço não era o VPN ativo no instante do teste — resultado inconclusivo (registre e repita com o roteador ativo).
 - **Log vazio mesmo com o WZM aberto:** confirme que o **ROTEADOR CDNI** está ativo e que apareceu `[DNS] prod.cdni.callofduty.com … [interceptado]`; sem DNS interceptado, nada chega ao servidor local.
 - **Como ver o log do CI sem baixar artifact:** os passos `Report Gradle failure as annotations` / `Announce APK SHA256` publicam trechos legíveis em **check-runs/annotations** (útil quando o blob de logs está inacessível).
 

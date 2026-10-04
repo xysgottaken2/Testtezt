@@ -47,12 +47,23 @@ class LauncherScreenScrollTest {
 
     private fun fullLog(count: Int): List<String> = List(count) { "[TUN] pacote $it classificado" }
 
+    /** Resumo no formato do card do M4.1 (teste de controle de autoria), longo como no device. */
+    private fun ownerProbeSummary(): String = buildString {
+        for (passo in listOf("loopback_proprio", "tunel_proprio", "tupla_inexistente", "escopo_da_vpn")) {
+            append("controle $passo: dono=NAO_RESOLVIDO (INVALID_UID — a API devolve -1 tanto para ")
+            append("conexão ausente quanto para uid FORA da VPN que chama)")
+            append("\n")
+        }
+        append("teste de controle de autoria: resolvidos=0 INVALID_UID=3 sem-permissao=0")
+    }
+
     private fun state(
         report: String? = null,
-        logs: List<String> = fullLog(300)
+        logs: List<String> = fullLog(300),
+        ownerProbe: String = ""
     ) = LauncherUiState(
         serverStatus = ServerStatus.ONLINE,
-        counters = RequestCounters(),
+        counters = RequestCounters(ownerProbeResumo = ownerProbe),
         logs = logs,
         syntheticReport = report
     )
@@ -82,6 +93,32 @@ class LauncherScreenScrollTest {
         rule.onNodeWithTag(LauncherTestTags.CONTENT)
             .performScrollToNode(hasTestTag(LauncherTestTags.ACTION_ROW))
         rule.onNodeWithTag(LauncherTestTags.ACTION_ROW).assertIsDisplayed()
+    }
+
+    @Test
+    fun ownerProbeCardIsRenderedAndKeepsLaunchWzmReachable() {
+        // M4.1: o card do teste de controle aparece quando o probe rodou — e ele é outro bloco de
+        // altura variável entre o relatório sintético e o botão do WZM.
+        rule.setContent(
+            LauncherContent(
+                state = state(report = longSyntheticReport(), ownerProbe = ownerProbeSummary())
+            )
+        )
+
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.OWNER_PROBE))
+        rule.onNodeWithTag(LauncherTestTags.OWNER_PROBE).assertIsDisplayed()
+
+        // E o botão do WZM continua alcançável depois do card novo.
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LAUNCH_WZM))
+        rule.onNodeWithTag(LauncherTestTags.LAUNCH_WZM).assertIsDisplayed()
+    }
+
+    @Test
+    fun ownerProbeCardIsAbsentBeforeTheProbeRuns() {
+        rule.setContent { LauncherContent(state = state(report = null, ownerProbe = "")) }
+        rule.onNodeWithTag(LauncherTestTags.OWNER_PROBE).assertDoesNotExist()
     }
 
     @Test

@@ -243,6 +243,14 @@ class CdnVpnService : VpnService() {
                 "${CdnRouterConfig.VPN_ROUTE_PREFIX}, ${CdnRouterConfig.INTERCEPT_HOSTS.joinToString()} -> " +
                 "${CdnRouterConfig.REDIRECT_TO}"
         )
+        // M4.1: janela de portas efêmeras que o kernel entrega a ESTE processo. Serve para o veredito
+        // limitado de origem das conexões de loopback (a janela é compartilhada no aparelho: PROBABLE).
+        val window = SelfPorts.calibrate()
+        RequestLog.add(
+            "DIAG",
+            "calibração de portas do próprio processo: ${window.label()} — usada só para indicar origem " +
+                "PROVÁVEL de conexões no listener (nunca prova de autoria)"
+        )
         // M3.6 (item 1/2): baseline da contabilidade por UID e retrato dos processos. Sem eles,
         // "nada no TUN" não distingue "o app não fez rede" de "a rede não passou pelo túnel".
         logUidAccounting("início da sessão", rememberBaseline = true)
@@ -571,6 +579,17 @@ class CdnVpnService : VpnService() {
             if (addresses.isNotEmpty()) {
                 dnsAnswers.record(question?.name ?: "?", addresses, source = "resposta virtual do túnel")
                 RequestLog.incDnsRespostaRegistrada()
+            }
+            // M4.1: invariante do projeto — o DNS do túnel NUNCA devolve 127.0.0.1 (o destino é
+            // CdnRouterConfig.REDIRECT_TO). Se isto disparar, a hipótese "cliente foi mandado ao
+            // loopback" ganha fundamento e há regressão de configuração a corrigir.
+            if (addresses.any { it == CdnRouterConfig.LOOPBACK_ADDRESS }) {
+                RequestLog.incDnsRespostaParaLoopback()
+                RequestLog.add(
+                    "DNS",
+                    "ATENÇÃO: resposta DNS apontou ${CdnRouterConfig.LOOPBACK_ADDRESS} (esperado " +
+                        "${CdnRouterConfig.REDIRECT_TO}) — conferir CdnRouterConfig.REDIRECT_TO"
+                )
             }
             watchdog.onCdnDns(System.currentTimeMillis())
             RequestLog.add(

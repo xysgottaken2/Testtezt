@@ -39,6 +39,7 @@ required=(
   "docs/research/m4.0-verificando-atualizacoes.md"
   "docs/research/m3.5-loopback-e-teste-sintetico.md"
   "warzone-offline/tools/apk-analysis/update-check-scan.py"
+  "docs/research/m4.1-dono-das-conexoes-loopback.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
@@ -53,4 +54,5 @@ grep -q "DBD_REFERENCE" docs/research/dead-by-daylight-mobile.md || { echo "DBD_
 grep -q "WARZONE" docs/research/warzone-mobile-networking.md || { echo "WARZONE marker missing"; exit 1; }
 grep -q "CANNOT_SKIP_DIRECTLY" docs/research/m4.0-verificando-atualizacoes.md || { echo "M4.0 verdict marker missing"; exit 1; }
 grep -q "SINTETICO" docs/research/m3.5-loopback-e-teste-sintetico.md || { echo "M3.5 synthetic marker missing"; exit 1; }
+grep -q "INVALID_UID_NAO_PROVA" docs/research/m4.1-dono-das-conexoes-loopback.md || { echo "M4.1 ownership marker missing"; exit 1; }
 echo "markers ok"

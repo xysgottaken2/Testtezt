@@ -354,6 +354,68 @@ class LocalHttpsServerDiagnosticsTest {
     }
 
     @Test
+    fun acceptLogCarriesTheM41OriginVerdictAndItsCounter() {
+        // M4.1: o veredito de origem chega ao log com o nível de confiança e alimenta o contador.
+        // O veredito em si é testado puro em LoopbackOriginTest; aqui se prova a FIÇÃO no listener.
+        RequestLog.clear()
+        RequestLog.resetCounters()
+        val port = ServerSocket(0).use { it.localPort }
+        var roles = mutableListOf<LocalHttpsServer.EndpointRole>()
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=NAO_RESOLVIDO (INVALID_UID — teste)" },
+            originReport = { socket, role ->
+                roles += role
+                LoopbackOrigin.report(
+                    LoopbackOrigin.Facts(
+                        roleLoopback = role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO,
+                        peerAddress = socket.remoteSocketAddress.toString(),
+                        peerPort = socket.port,
+                        ownerUidResolvido = null,
+                        launcherUid = 10101,
+                        targetUid = 10692,
+                        duranteTesteSintetico = false,
+                        portVerdict = SelfPorts.PortVerdict.INDETERMINADO
+                    )
+                )
+            }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline &&
+                    !RequestLog.snapshot().contains("origem-da-conexao=")
+                ) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val snapshot = RequestLog.snapshot()
+            assertTrue("o log precisa carregar o veredito", snapshot.contains("origem-da-conexao=indeterminado"))
+            assertTrue("o nível de confiança vai no texto", snapshot.contains("UNKNOWN"))
+            assertTrue("loopback não passa pelo túnel precisa estar explícito", snapshot.contains("não passa pelo túnel"))
+            assertEquals(
+                listOf(LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO),
+                roles
+            )
+            assertEquals(
+                "uma conexão de origem indeterminada incrementa exatamente um contador",
+                1,
+                RequestLog.counters.value.loopbackIndeterminado
+            )
+            assertEquals(0, RequestLog.counters.value.loopbackMesmoProcesso)
+            assertEquals(0, RequestLog.counters.value.loopbackOutroUid)
+        } finally {
+            server.stop()
+            RequestLog.resetCounters()
+        }
+    }
+
+    @Test
     fun loopbackEndpointIsNeverRetried() {
         RequestLog.clear()
         val port = ServerSocket(0).use { it.localPort }

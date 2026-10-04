@@ -440,6 +440,84 @@ object HypothesisBoard {
             }
         ),
         EvidenceClaim(
+            "capacidade_de_captura_do_tun",
+            Evidence.VERIFIED,
+            "o tun anuncia DNS ${CdnRouterConfig.VPN_DNS} e rota ${CdnRouterConfig.VPN_ROUTE}/" +
+                "${CdnRouterConfig.VPN_ROUTE_PREFIX}; 'addAllowedApplication' aceito significa que SÓ o pacote " +
+                "alvo pode usar a VPN — **não** que todo o tráfego dele seja capturado. Destino fora da rota " +
+                "(IP real do CDNI, DoT :853, DoH UDP :443, IP literal) não entra neste tun; sem consulta ao DNS " +
+                "do túnel o pacote nem sabe que ${CdnRouterConfig.REDIRECT_TO} existe"
+        ),
+        EvidenceClaim(
+            "silencio_do_tun_e_escopo_ou_dns",
+            when {
+                counters.tunPacketsTotal > 0 -> Evidence.UNKNOWN
+                facts.uidTrafficGrew == true -> Evidence.PROBABLE
+                else -> Evidence.HYPOTHESIS
+            },
+            when {
+                counters.tunPacketsTotal > 0 ->
+                    "há pacote no TUN: a leitura de escopo não se aplica a esta sessão"
+                facts.uidTrafficGrew == true ->
+                    "o UID do alvo movimentou bytes e o TUN está vazio — consistente com tráfego do app fora " +
+                        "da rota declarada (IP real/DoT/DoH) e NÃO com 'o app não fez rede' " +
+                        "(PROBABLE; a causa exige a rodada de observação)"
+                else ->
+                    "TUN vazio e sem crescimento de contabilidade do UID: nesta janela pode não ter havido " +
+                        "tráfego do app — não é possível separar escopo de ausência sem a contabilidade crescer"
+            }
+        ),
+        EvidenceClaim(
+            "atribuicao_de_dono_pela_api",
+            when {
+                counters.ownerProbeSemPermissao > 0 -> Evidence.UNKNOWN
+                counters.ownerProbeResolvido > 0 -> Evidence.VERIFIED
+                else -> Evidence.UNKNOWN
+            },
+            when {
+                counters.ownerProbeSemPermissao > 0 ->
+                    "o teste de controle recebeu SEM_PERMISSAO em ${counters.ownerProbeSemPermissao} passo(s): " +
+                        "getConnectionOwnerUid exige ser o VPN ATIVO (ou NETWORK_STACK) — autoria inconclusiva"
+                counters.ownerProbeResolvido > 0 ->
+                    "a API resolveu uid em ${counters.ownerProbeResolvido} passo(s) do teste de controle — e ela " +
+                        "só resolve uid COBERTO pela VPN (AOSP: appliesToUid), então isso é autoria comprovada"
+                counters.ownerProbeInvalid > 0 ->
+                    "INVALID_UID em ${counters.ownerProbeInvalid} passo(s) do teste de controle (inclusive a " +
+                        "conexão do PRÓPRIO launcher, que está fora da allowlist): confirma no device que a API " +
+                        "não identifica quem não pertence à VPN — INVALID_UID NÃO autoriza conclusão de autoria"
+                else ->
+                    "teste de controle de autoria ainda não rodou nesta sessão"
+            }
+        ),
+        EvidenceClaim(
+            "origem_das_conexoes_loopback",
+            when {
+                counters.loopbackMesmoProcesso > 0 || counters.loopbackOutroUid > 0 -> Evidence.PROBABLE
+                counters.loopbackIndeterminado > 0 -> Evidence.UNKNOWN
+                else -> Evidence.UNKNOWN
+            },
+            buildString {
+                append("loopback nesta sessão: mesmo-processo=").append(counters.loopbackMesmoProcesso)
+                append(", outro-uid=").append(counters.loopbackOutroUid)
+                append(", indeterminado=").append(counters.loopbackIndeterminado)
+                append(" — o listener em ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} ")
+                append("é alcançável por QUALQUER app e o loopback não passa pelo túnel, então a única prova de ")
+                append("autoria seria uid resolvido (só acontece para uid dentro da VPN)")
+            }
+        ),
+        EvidenceClaim(
+            "dns_do_tunel_nunca_responde_loopback",
+            if (counters.dnsRespostasParaLoopback == 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.dnsRespostasParaLoopback == 0) {
+                "nenhuma resposta DNS desta sessão apontou 127.0.0.1 — o destino continua sendo " +
+                    "${CdnRouterConfig.REDIRECT_TO} (a hipótese de que o cliente foi mandado ao loopback " +
+                    "não tem apoio no nosso código)"
+            } else {
+                "REGRESSÃO: ${counters.dnsRespostasParaLoopback} resposta(s) DNS apontaram 127.0.0.1 — o destino " +
+                    "deveria ser ${CdnRouterConfig.REDIRECT_TO}; conferir CdnRouterConfig.REDIRECT_TO e o DnsResponder"
+            }
+        ),
+        EvidenceClaim(
             "wzm_resolve_cdni_por_mecanismo_proprio",
             when {
                 counters.tunDohCandidates > 0 || counters.tunTcp443Externo > 0 -> Evidence.PROBABLE
