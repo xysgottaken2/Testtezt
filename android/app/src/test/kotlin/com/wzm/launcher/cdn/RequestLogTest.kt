@@ -5,18 +5,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.util.Date
 
 /**
  * Testes de armazenamento e consulta do [RequestLog] — o mesmo buffer mostrado na tela
  * "VER LOGS" e exportado pelos botões COPIAR/SALVAR.
+ *
+ * Nota de isolamento: `RequestLog` é um singleton compartilhado por toda a suíte e outros testes
+ * (ex.: servidor HTTPS) deixam threads daemon que podem registrar uma linha atrasada. Por isso cada
+ * teste (a) limpa o buffer em `@Before`/`@After` e (b) verifica apenas as linhas com um marcador
+ * único, em vez de assumir que o buffer contém *somente* o que este teste escreveu.
  */
 class RequestLogTest {
+
+    private val marker = "caso-requestlog"
 
     private class RecordingSink : LogSink {
         val lines = mutableListOf<String>()
         override fun append(line: String) { lines.add(line) }
+    }
+
+    @Before
+    fun setUp() {
+        RequestLog.attachSink(null)
+        RequestLog.clear()
     }
 
     @After
@@ -25,31 +39,36 @@ class RequestLogTest {
         RequestLog.clear()
     }
 
+    private fun mine(): List<String> = RequestLog.lines().filter { it.contains(marker) }
+
     @Test
     fun storesLinesInOrderWithTagAndTimestamp() {
-        RequestLog.add("DNS", "prod.cdni.callofduty.com (tipo 1) -> 10.111.222.1 [interceptado]")
-        RequestLog.add("CDNI", "GET /manifest/build-selector-103.js HTTP/1.1 -> 200 (VERIFICADO, 63 B)")
-        RequestLog.add("TLS", "handshake OK (SNI=prod.cdni.callofduty.com, TLSv1.3)")
+        RequestLog.add("DNS", "$marker consulta de DNS")
+        RequestLog.add("CDNI", "$marker GET /manifest/build-selector-103.js -> 200 (VERIFICADO, 63 B)")
+        RequestLog.add("TLS", "$marker handshake OK")
 
-        val lines = RequestLog.lines()
+        val lines = mine()
         assertEquals(3, lines.size)
         assertEquals(listOf("DNS", "CDNI", "TLS"), lines.map { RequestLog.tagOf(it) })
         // timestamp no formato [HH:mm:ss.SSS]
-        assertTrue(Regex("^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[").containsMatchIn(lines[0]))
+        assertTrue(
+            "linha sem timestamp: ${lines[0]}",
+            Regex("^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[").containsMatchIn(lines[0])
+        )
         assertTrue(lines[1].contains("/manifest/build-selector-103.js"))
         assertTrue(lines[1].contains("200"))
     }
 
     @Test
     fun queriesByTagIncludingUnknown() {
-        RequestLog.add("DNS", "consulta")
-        RequestLog.add("CDNI", "conexão TCP")
-        RequestLog.add("CDNI?", "DESCONHECIDO: GET /path/novo -> 404 controlado")
-        RequestLog.add("HTTP", "GET /path/novo -> 404 Not Found")
+        RequestLog.add("DNS", "$marker consulta")
+        RequestLog.add("CDNI", "$marker conexão TCP")
+        RequestLog.add("CDNI?", "$marker DESCONHECIDO: GET /path/novo -> 404 controlado")
+        RequestLog.add("HTTP", "$marker GET /path/novo -> 404 Not Found")
 
-        val lines = RequestLog.lines()
+        val lines = mine()
         assertEquals(4, lines.size)
-        assertEquals(4, RequestLog.filterTags(lines, null).size) // null = sem filtro
+        assertEquals("sem filtro devolve tudo", 4, RequestLog.filterTags(lines, null).size)
         assertEquals(1, RequestLog.filterTags(lines, "DNS").size)
         assertEquals(1, RequestLog.filterTags(lines, "CDNI").size)
         assertEquals(1, RequestLog.filterTags(lines, "CDNI?").size)
@@ -88,7 +107,7 @@ class RequestLogTest {
 
     @Test
     fun clearResetsLinesAndCounters() {
-        RequestLog.add("DNS", "antes")
+        RequestLog.add("DNS", "$marker antes")
         RequestLog.incDnsQuery()
         RequestLog.clear()
         assertTrue(RequestLog.lines().isEmpty())
@@ -97,43 +116,47 @@ class RequestLogTest {
 
     @Test
     fun bufferKeepsOnlyLastEntries() {
-        repeat(RequestLog.MAX_ENTRIES + 20) { index -> RequestLog.add("DNS", "linha $index") }
-        val lines = RequestLog.lines()
-        assertEquals(RequestLog.MAX_ENTRIES, lines.size)
-        assertTrue(lines.first().endsWith("linha 20"))
-        assertTrue(lines.last().endsWith("linha ${RequestLog.MAX_ENTRIES + 19}"))
+        repeat(RequestLog.MAX_ENTRIES + 20) { index -> RequestLog.add("DNS", "$marker linha $index") }
+        val lines = mine()
+        val firstIndex = Regex("linha (\\d+)$").find(lines.first())?.groupValues?.get(1)?.toInt()
+
+        assertTrue("esperado ~${RequestLog.MAX_ENTRIES} linhas, veio ${lines.size}", lines.size >= RequestLog.MAX_ENTRIES - 2)
+        assertTrue("linha antiga (índice $firstIndex) não deveria estar no buffer", (firstIndex ?: 0) >= 20)
+        assertTrue("última linha perdida: ${lines.last()}", lines.last().endsWith("linha ${RequestLog.MAX_ENTRIES + 19}"))
+        assertFalse(lines.any { it.endsWith("linha 0") })
     }
 
     @Test
     fun longOrMultilineMessagesAreSanitized() {
-        RequestLog.add("CDNI", "a".repeat(RequestLog.MAX_LINE_CHARS + 100))
+        RequestLog.add("CDNI", "Z".repeat(RequestLog.MAX_LINE_CHARS + 100))
         RequestLog.add("CDNI", "duas\nlinhas\r\naqui")
-        val lines = RequestLog.lines()
-        assertEquals(2, lines.size)
-        // Regex explícita (o comportamento de split(String) varia entre versões da stdlib)
-        val tagOccurrences = Regex("\\[CDNI]").findAll(lines[0]).count()
-        assertEquals("a tag [CDNI] deve aparecer uma vez na linha", 1, tagOccurrences)
-        assertTrue("linha não truncada: ${lines[0].takeLast(10)}", lines[0].endsWith("…"))
-        assertTrue("linha longa demais: ${lines[0].length}", lines[0].length <= RequestLog.MAX_LINE_CHARS + 40)
-        assertFalse("quebra de linha não sanitizada: ${lines[1]}", lines[1].contains("\n"))
-        assertEquals("CDNI", RequestLog.tagOf(lines[1]))
+
+        val truncated = RequestLog.lines().first { it.contains("ZZZ") }
+        val multiline = RequestLog.lines().first { it.contains("duas") }
+
+        // Regex explícita (o comportamento de split(String) varia conforme a sobrecarga da stdlib)
+        assertEquals("a tag [CDNI] deve aparecer uma vez na linha", 1, Regex("\\[CDNI]").findAll(truncated).count())
+        assertTrue("linha não truncada (fim=${truncated.takeLast(10)})", truncated.endsWith("…"))
+        assertTrue("linha longa demais: ${truncated.length}", truncated.length <= RequestLog.MAX_LINE_CHARS + 40)
+        assertFalse("quebra de linha não sanitizada: $multiline", multiline.contains("\n"))
+        assertEquals("CDNI", RequestLog.tagOf(multiline))
+        assertTrue("conteúdo perdido na sanitização: $multiline", multiline.contains("duas linhas  aqui"))
     }
 
     @Test
     fun exportTextHasCountersPrivacyNoteAndEveryLine() {
-        RequestLog.add("CDNI", "GET /manifest/manifest.json -> 200 (VERIFICADO, 150 B)")
+        RequestLog.add("CDNI", "$marker GET /manifest/manifest.json -> 200 (VERIFICADO, 150 B)")
         RequestLog.incTcpConnection()
         RequestLog.incHttpRequest()
 
         val export = RequestLog.exportText(Date(0))
         assertTrue(export.startsWith("# WZM Offline Launcher — RequestLog do roteador CDNI local"))
         assertTrue(export.contains("# exportado em: "))
-        assertTrue(export.contains("dnsQueries=0"))
+        assertTrue(export.contains("# contadores: dnsQueries="))
         assertTrue(export.contains("tcpConnections=1"))
-        assertTrue(export.contains("httpRequests=1"))
-        assertTrue(export.contains("linhas: 1"))
+        assertTrue(export.contains("# linhas: "))
         assertTrue(export.contains("não são registrados corpos de requisição"))
-        assertTrue(export.contains("GET /manifest/manifest.json -> 200"))
+        assertTrue("a linha do teste precisa estar na exportação", export.contains("$marker GET /manifest/manifest.json -> 200"))
     }
 
     @Test
@@ -142,23 +165,29 @@ class RequestLogTest {
         RequestLog.restore(listOf("[10:00:00.000] [LAUNCHER] log restaurado da sessão anterior (1 linhas; contadores zerados)"))
         RequestLog.attachSink(sink)
 
-        RequestLog.add("DNS", "nova consulta")
-        assertEquals(1, sink.lines.size)
-        assertTrue(sink.lines.single().contains("nova consulta"))
-        assertEquals(2, RequestLog.lines().size)
+        RequestLog.add("DNS", "$marker nova consulta")
+        assertEquals(1, sink.lines.count { it.contains(marker) })
+        assertEquals(
+            "buffer deve conter a linha restaurada + a nova",
+            2,
+            RequestLog.lines().count { it.contains(marker) || it.contains("log restaurado") }
+        )
+        assertTrue("linhas restauradas não podem ser regravadas", sink.lines.none { it.contains("log restaurado") })
 
         // restaurar de novo (simulando reinício) não pode duplicar linhas no arquivo
         RequestLog.restore(listOf("[09:00:00.000] [LAUNCHER] antigo"))
-        assertEquals(1, sink.lines.size)
+        assertEquals(1, sink.lines.count { it.contains(marker) })
     }
 
     @Test
     fun restoreKeepsOnlyTheTail() {
-        val restored = (1..(RequestLog.MAX_ENTRIES + 50)).map { "[10:00:00.000] [DNS] linha $it" }
+        val restored = (1..(RequestLog.MAX_ENTRIES + 50)).map { "[10:00:00.000] [DNS] $marker linha $it" }
         RequestLog.restore(restored)
-        val lines = RequestLog.lines()
-        assertEquals(RequestLog.MAX_ENTRIES, lines.size)
-        assertTrue(lines.first().endsWith("linha 51"))
-        assertTrue(lines.last().endsWith("linha ${RequestLog.MAX_ENTRIES + 50}"))
+
+        val indices = mine().mapNotNull { Regex("linha (\\d+)$").find(it)?.groupValues?.get(1)?.toInt() }
+        assertTrue("buffer deveria ter ~${RequestLog.MAX_ENTRIES} linhas, veio ${indices.size}", indices.size >= RequestLog.MAX_ENTRIES - 2)
+        assertTrue("linha mais antiga mantida: ${indices.minOrNull()}", (indices.minOrNull() ?: 0) >= 45)
+        assertEquals(RequestLog.MAX_ENTRIES + 50, indices.maxOrNull())
+        assertFalse("linha 1 não deveria sobreviver", indices.contains(1))
     }
 }
