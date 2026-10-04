@@ -14,25 +14,127 @@ data class CdnRouterStatus(
     val endpoints: String = "",
     val serverError: String? = null,
     val vpnActive: Boolean = false,
-    val vpnError: String? = null
-)
+    val vpnError: String? = null,
+    /** Fase explícita do ciclo de vida (M3.4): nunca "pronto" sem o listener do túnel. */
+    val phase: RouterPhase = RouterPhase.PARADO,
+    /** Listener no endereço do túnel (10.111.222.1:443) ativo. */
+    val tunnelBound: Boolean = false,
+    /** `10.111.222.1` está atribuído a uma interface (tun0). */
+    val tunnelAddressAssigned: Boolean = false,
+    /** Motivo registrado quando o listener do túnel não é possível (limitação documentada). */
+    val tunnelListenerMissingReason: String? = null,
+    val phaseHistory: List<String> = emptyList()
+) {
+    val phaseLabel: String get() = phase.label
+}
 
 /**
- * Orquestra o roteamento local: servidor HTTPS (kernel, com certificado nosso) + VpnService
- * que intercepta o DNS dos hosts CDNI comprovados.
+ * Orquestra o roteamento local na ordem correta (M3.4):
+ *
+ * ```
+ * startRouter -> VPN_STARTING -> (serviço espera o endereço do túnel de forma LIMITADA)
+ *             -> VPN_READY -> LOCAL_SERVER_STARTING -> (bind com retry limitado)
+ *             -> LOCAL_SERVER_READY -> ROUTER_READY (somente com o listener do túnel ativo)
+ * ```
+ *
+ * O listener de loopback continua existindo, mas **separado**, como caminho de diagnóstico —
+ * o roteador não é declarado pronto por causa dele.
  */
 object CdnRouterController {
 
     private var server: LocalHttpsServer? = null
 
+    private val lifecycle = RouterLifecycle { line -> RequestLog.add("DIAG", line) }
+
     private val _status = MutableStateFlow(CdnRouterStatus())
     val status: StateFlow<CdnRouterStatus> = _status.asStateFlow()
 
-    /** Inicia o servidor HTTPS local. Devolve false se nenhum listener subiu. */
+    val currentPhase: RouterPhase get() = lifecycle.phase
+
+    /**
+     * Início correto do roteador: **VPN primeiro**; o servidor HTTPS só é iniciado depois que o
+     * serviço confirma que `10.111.222.1` está atribuído (callback [onVpnEstablished]).
+     */
+    fun startRouter(context: Context, wzmPackage: String) {
+        val app = context.applicationContext
+        AndroidDiagnostics.remember(app)
+        RequestLog.add(
+            "LAUNCHER",
+            "iniciando roteador CDNI local na ordem correta: VPN -> endereço do túnel -> listener :443"
+        )
+        lifecycle.onVpnStarting("pedido de túnel enviado ao sistema (per-app: $wzmPackage)")
+        publishStatus()
+        CdnVpnService.start(app, wzmPackage)
+    }
+
+    /** Chamado pelo serviço depois de estabelecer a VPN e esperar (limitado) o endereço do túnel. */
+    fun onVpnEstablished(context: Context, addressAssigned: Boolean, waitedMs: Long) {
+        val app = context.applicationContext
+        lifecycle.onVpnReady(
+            addressAssigned,
+            "espera limitada de ${waitedMs} ms por ${CdnRouterConfig.VPN_ADDRESS}"
+        )
+        publishStatus()
+        lifecycle.onLocalServerStarting(
+            "iniciando listener em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
+                "com retry limitado (${CdnRouterConfig.TUNNEL_BIND_ATTEMPTS} tentativas)"
+        )
+        publishStatus()
+        // O bind pode esperar alguns milissegundos pelo endereço: nunca na thread principal.
+        Thread({ startServerBlocking(app) }, "cdn-https-start").also { it.isDaemon = true; it.start() }
+    }
+
+    private fun startServerBlocking(context: Context) {
+        val material = try {
+            TlsContextFactory.FromBytes(
+                readAsset(context, CdnRouterConfig.CERT_ASSET),
+                CdnRouterConfig.CERT_PASSWORD.toCharArray()
+            )
+        } catch (e: Exception) {
+            val message = "asset ${CdnRouterConfig.CERT_ASSET} indisponível: ${e.javaClass.simpleName}: ${e.message}"
+            RequestLog.add("CDNI", "FALHA: $message")
+            lifecycle.onError(message)
+            publishStatus(serverError = message)
+            return
+        }
+        val appContext = context.applicationContext
+        val created = LocalHttpsServer(
+            tlsMaterial = material,
+            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) }
+        )
+        val started = created.start()
+        if (started) {
+            server = created
+        }
+        val endpoints = created.boundEndpoints.joinToString(", ") { it.toString() }
+        val tunnelBound = created.boundEndpoints.any { it.role == LocalHttpsServer.EndpointRole.TUNEL_PRIMARIO }
+        val loopbackBound = created.boundEndpoints.any {
+            it.role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO
+        }
+        lifecycle.onLocalServerReady(tunnelBound, endpoints)
+        val ready = if (tunnelBound) lifecycle.onRouterReady() else false
+        publishStatus(
+            httpsRunning = started,
+            endpoints = endpoints,
+            serverError = if (started) null else "nenhum listener HTTPS ativo (ver log)",
+            tunnelBound = tunnelBound
+        )
+        RequestLog.add(
+            "DIAG",
+            "servidor local: listeners=[$endpoints] tunel=$tunnelBound loopback=$loopbackBound " +
+                "fase=${lifecycle.phase.label}" +
+                (if (!ready) " — ROUTER_READY não declarado (listener do túnel ausente)" else "")
+        )
+    }
+
+    /**
+     * Caminho legado/diagnóstico: inicia **apenas** o servidor HTTPS na thread chamadora.
+     * Não use para o fluxo normal — o caminho correto é [startRouter].
+     */
     fun startHttps(context: Context): Boolean {
         val current = server
         if (current?.isRunning == true) {
-            _status.value = _status.value.copy(httpsRunning = true)
+            publishStatus(httpsRunning = true)
             return true
         }
         val material = try {
@@ -43,7 +145,7 @@ object CdnRouterController {
         } catch (e: Exception) {
             val message = "asset ${CdnRouterConfig.CERT_ASSET} indisponível: ${e.javaClass.simpleName}: ${e.message}"
             RequestLog.add("CDNI", "FALHA: $message")
-            _status.value = _status.value.copy(httpsRunning = false, serverError = message)
+            publishStatus(serverError = message)
             return false
         }
         val appContext = context.applicationContext
@@ -53,10 +155,12 @@ object CdnRouterController {
         )
         val started = created.start()
         server = if (started) created else null
-        _status.value = _status.value.copy(
+        val tunnelBound = created.boundEndpoints.any { it.role == LocalHttpsServer.EndpointRole.TUNEL_PRIMARIO }
+        publishStatus(
             httpsRunning = started,
             endpoints = created.boundEndpoints.joinToString(", ") { it.toString() },
-            serverError = if (started) null else "nenhum listener HTTPS ativo (ver log)"
+            serverError = if (started) null else "nenhum listener HTTPS ativo (ver log)",
+            tunnelBound = tunnelBound
         )
         return started
     }
@@ -64,7 +168,7 @@ object CdnRouterController {
     fun stopHttps() {
         server?.stop()
         server = null
-        _status.value = _status.value.copy(httpsRunning = false, endpoints = "")
+        publishStatus(httpsRunning = false, endpoints = "", tunnelBound = false)
     }
 
     /** Consenso do sistema (VpnService.prepare) ou null quando já autorizado. */
@@ -79,13 +183,40 @@ object CdnRouterController {
     }
 
     fun stopAll(context: Context) {
+        RequestLog.add("LAUNCHER", "parando roteador CDNI local (VPN + listeners)")
         stopVpn(context)
         stopHttps()
+        lifecycle.onStopped("parada solicitada pelo launcher")
         _status.value = CdnRouterStatus()
     }
 
     fun onVpnStateChanged(active: Boolean, error: String? = null) {
-        _status.value = _status.value.copy(vpnActive = active, vpnError = error)
+        if (!active && error != null) {
+            lifecycle.onError(error)
+        }
+        publishStatus(vpnActive = active, vpnError = error)
+    }
+
+    private fun publishStatus(
+        httpsRunning: Boolean = _status.value.httpsRunning,
+        endpoints: String = _status.value.endpoints,
+        serverError: String? = _status.value.serverError,
+        vpnActive: Boolean = _status.value.vpnActive,
+        vpnError: String? = _status.value.vpnError,
+        tunnelBound: Boolean = _status.value.tunnelBound
+    ) {
+        _status.value = CdnRouterStatus(
+            httpsRunning = httpsRunning,
+            endpoints = endpoints,
+            serverError = serverError,
+            vpnActive = vpnActive,
+            vpnError = vpnError,
+            phase = lifecycle.phase,
+            tunnelBound = tunnelBound,
+            tunnelAddressAssigned = lifecycle.tunnelAddressAssigned,
+            tunnelListenerMissingReason = lifecycle.tunnelListenerMissingReason,
+            phaseHistory = lifecycle.history()
+        )
     }
 
     /**

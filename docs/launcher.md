@@ -24,7 +24,7 @@
 > `[WARZONE_VERIFIED — device]` **M3 comprovado no S23 Ultra (2026-10-04):** `tcpConnections=5` em `127.0.0.1:443`,
 > `tlsFailed=5` (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), `httpRequests=0`, `dnsIntercepted=0`. O tráfego do jogo
 > chega ao servidor local e aparece em VER LOGS; o bloqueio é confiança de certificado.
-> `[VERIFIED]` em CI (M3.3): compilação Kotlin/Compose, **89 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 5 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 11 `RequestLogTest` + 7 `FileLogSinkTest` + **9 `TlsTrustTest`** + **7 `TunDiagnosticsTest`** + **5 `TunActivityWatchdogTest`** + **3 `SessionReportTest`** + **3 `LocalHttpsServerDiagnosticsTest`**), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **123 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 11 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 7 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 5 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **7 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`**), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
 > `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
 
@@ -248,6 +248,18 @@ Exemplo de leitura no próprio device:
 adb shell 'curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/requests'
 ```
 
+**Caminho WZM → TUN (M3.4):** o roteador sobe na ordem correta (**VPN primeiro**, espera limitada pelo endereço do
+túnel, **depois** o listener em `:443`, com retry limitado de 8 tentativas apenas para EADDRNOTAVAIL). A fase é
+explícita e visível no card: `PARADO → VPN_STARTING → VPN_READY → LOCAL_SERVER_STARTING → LOCAL_SERVER_READY →
+ROUTER_READY` — `ROUTER_READY` **só** com o listener `10.111.222.1:443` ativo; se for impossível, a limitação fica
+registrada e o caminho de loopback continua separado. Cada pacote do TUN é classificado por versão (IPv4 **e**
+IPv6), protocolo, endereço, porta e flags; cada descarte sai com `motivo=<CODIGO>` (`VERSAO_DESCONHECIDA`,
+`CURTO_DEMAIS`, `IPV4_CABECALHO_INCONSISTENTE`, `TAMANHO_DECLARADO_MENOR_QUE_CABECALHO`,
+`TAMANHO_DECLARADO_MAIOR_QUE_LIDO`, `TRANSPORTE_CABECALHO_CURTO`, `IPV6_CABECALHO_CURTO`,
+`IPV6_SEM_ATENDIMENTO`, `PROTO_NAO_SUPORTADO`, `UDP_PORTA_NAO_DNS`, `TCP_SEM_ATENDIMENTO`) e o log traz o
+**quadro de evidências** (`VERIFIED`/`PROBABLE`/`HYPOTHESIS`/`UNKNOWN`). Detalhes:
+[docs/research/m3.4-caminho-wzm-tun.md](research/m3.4-caminho-wzm-tun.md).
+
 **Diagnóstico de sessão (M3.3):** como dois testes no mesmo device deram resultados diferentes
 (5 conexões em um, 0 no outro), o launcher passou a registrar dono da conexão, rota/interfaces aplicadas,
 inatividade do túnel e motivo de cada descarte — sem alterar o roteamento. Investigação completa, hipóteses
@@ -272,13 +284,15 @@ em primeiro plano).
 | Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
 | Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
 | DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
-| Silêncio do túnel (M3.3) | aviso único de `[DIAG] nenhum pacote recebido no TUN…` e de `[DIAG] nenhuma consulta DNS dos hosts CDNI…` — o "não aconteceu nada" passa a ser explícito no log |
-| Descarte de pacote | `[TUN] pacote descartado: motivo=<CODIGO> …` (`FORA_DA_ROTA`, `UDP_PORTA_NAO_DNS`, `PROTO_NAO_SUPORTADO`, `TCP_SEM_ATENDIMENTO`, `PACOTE_INVALIDO`) |
+| Silêncio do túnel (M3.3/M3.4) | avisos únicos de `[DIAG] nenhum pacote no TUN…`, `[DIAG] nenhuma consulta DNS de host CDNI…` e `[DIAG] houve N pacote(s), mas nenhum para 10.111.222.1:443…` — o "não aconteceu nada" passa a ser explícito no log |
+| IPv6 no túnel (M3.4) | aparece **como IPv6** (endereço, next-header, portas) e é descartado por política (`motivo=IPV6_SEM_ATENDIMENTO`) — nunca como "pacote inválido" |
+| Quadro de evidências (M3.4) | bloco `[DIAG] evidência <id>: VERIFIED|PROBABLE|HYPOTHESIS|UNKNOWN — <motivo>` a cada ciclo do vigia e no fim da sessão (per-app, tráfego no TUN, DNS virtual, consulta CDNI, IPv6, SYN ao alvo, listener do túnel, Private DNS) |
+| Descarte de pacote | `[TUN] pacote descartado: motivo=<CODIGO> …` — política: `IPV6_SEM_ATENDIMENTO`, `PROTO_NAO_SUPORTADO`, `UDP_PORTA_NAO_DNS`, `TCP_SEM_ATENDIMENTO`; parser: `CURTO_DEMAIS`, `VERSAO_DESCONHECIDA`, `IPV4_CABECALHO_INCONSISTENTE`, `TAMANHO_DECLARADO_MENOR_QUE_CABECALHO`, `TAMANHO_DECLARADO_MAIOR_QUE_LIDO`, `TRANSPORTE_CABECALHO_CURTO`, `IPV6_CABECALHO_CURTO` (pacote inválido sai com prévia hexadecimal de até 32 B) |
 | Bind dos listeners | `[CDNI] listener NÃO subiu em …: motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e aviso explícito quando o endereço do túnel fica sem listener |
 | Resumo do túnel | `[DIAG] resumo do túnel: pacotes=… para-10.111.222.1=… devolvidos-bounce=… descartados=… dns-total=… dns-cdni-interceptado=… dns-encaminhado=… tcp-conexoes=… tls-ok=… tls-falha=…` (a cada 20 s e no fim) |
 | Status/código HTTP | linha `[HTTP]` dedicada: `GET /path -> 200 OK (resposta N B, cliente=…)`; desconhecidos aparecem como `404 Not Found` |
 | Timestamps | `[HH:mm:ss.SSS]` em cada linha (fuso local do aparelho) |
-| Contadores | `DNS: consultas/interceptadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas • TUN: pacotes/p-10.111.222.1/bounce/descartes • DNS encaminhado` |
+| Contadores | `DNS: consultas/interceptadas/encaminhadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas • TUN: total (IPv4/IPv6/inválidos; TCP/UDP/ICMP) • alvo-CDNI: bounces/descartes` |
 | Filtros | chips por tag + contagem de linhas visíveis |
 | Leitura | fonte monoespaçada, cor por tag, toggle **auto-rolar** (desligue para ler enquanto chegam linhas novas) |
 | LIMPAR LOGS | com confirmação; apaga buffer, contadores e o arquivo persistido |
@@ -292,7 +306,7 @@ Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
 ```
 # WZM Offline Launcher — RequestLog do roteador CDNI local
 # exportado em: 2026-10-04T14:22:31.512-03:00
-# contadores: dnsQueries=3 dnsIntercepted=1 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 tunPackets=12 tunToRedirect=5 tunBounces=5 tunDiscards=7 dnsForwarded=2
+# contadores: dnsQueries=3 dnsIntercepted=1 dnsForwarded=2 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 tunPacketsTotal=12 tunIpv4Packets=10 tunIpv6Packets=2 tunTcpPackets=6 tunUdpPackets=4 tunIcmpPackets=0 tunInvalidPackets=1 tunIpv4ToCdnTarget=5 tunIpv6ToCdnTarget=2 tunToRedirect=5 tunBounces=5 tunDiscards=6 tunTcpSyn=6 tunTcpSynToRedirect=5 tunTcpSynOther=1 tunUdpDns53=2 tunUdpDnsNoVirtualDns=2 tunDotFlows=0 tunDohCandidates=1 tunTcp443Externo=0 tunUidVerifiedFlows=1
 # linhas: 12 (buffer máximo: 400)
 # privacidade: não são registrados corpos de requisição nem cabeçalhos (sem cookies/tokens)
 ```

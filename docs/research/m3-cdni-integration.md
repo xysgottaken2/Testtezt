@@ -151,7 +151,7 @@ dentro das nossas regras (sem root, sem patch do APK, sem bypass de pinning).
 | `tlsOk` / `tlsFailed` | 0 / 5 | nenhum handshake aceito |
 | `dnsIntercepted` | 0 | nesta tentativa o WZM **não** usou o DNS do túnel (anomalia analisada em §1.1 do doc M3.2) |
 
-Leitura (**revisada em M3.3** — ver `docs/research/m3.3-diferenca-entre-os-testes.md`):
+Leitura (**revisada em M3.3/M3.4** — ver `docs/research/m3.3-diferenca-entre-os-testes.md` e, para o caminho TCP/IP e o ciclo de vida do listener, `docs/research/m3.4-caminho-wzm-tun.md`):
 
 * **VERIFIED:** houve 5 conexões TCP aceitas no listener de loopback e o cliente foi recusado no TLS
   (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`);
@@ -171,7 +171,10 @@ Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteam
 * vigia de túnel: aviso único de `nenhum pacote recebido no TUN` e de `nenhuma consulta DNS dos hosts CDNI`
   (o silêncio do teste B passa a ser uma linha explícita, não uma ausência);
 * cada pacote do TUN é contado e, quando descartado, registrado com `motivo=<CODIGO>`
-  (`FORA_DA_ROTA`, `UDP_PORTA_NAO_DNS`, `PROTO_NAO_SUPORTADO`, `TCP_SEM_ATENDIMENTO`, `PACOTE_INVALIDO`);
+  (`IPV6_SEM_ATENDIMENTO`, `UDP_PORTA_NAO_DNS`, `PROTO_NAO_SUPORTADO`, `TCP_SEM_ATENDIMENTO`) e, para pacote
+  realmente inválido, o motivo exato do parser (`CURTO_DEMAIS`, `VERSAO_DESCONHECIDA`,
+  `IPV4_CABECALHO_INCONSISTENTE`, `TAMANHO_DECLARADO_MENOR_QUE_CABECALHO`, `TAMANHO_DECLARADO_MAIOR_QUE_LIDO`,
+  `TRANSPORTE_CABECALHO_CURTO`, `IPV6_CABECALHO_CURTO`) — ver M3.4;
 * falhas de bind dos listeners ganham `motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e, quando o
   endereço do túnel fica sem listener, o log diz explicitamente que só o caminho `127.0.0.1:443` pode
   completar;

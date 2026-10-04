@@ -105,35 +105,74 @@ class RequestLogTest {
         assertTrue(counters.compact().contains("TLS 1/1"))
     }
 
-    /** M3.3: o log precisa provar o que passou (ou não) pelo túnel, com contadores próprios. */
+    /**
+     * M3.4: cada contador do TUN tem nome próprio (versão, protocolo, porta, caminho) e aparece
+     * no card, no resumo e no `.txt` exportado com o **nome exato** usado no relatório.
+     */
     @Test
-    fun countersTrackTunnelActivity() {
+    fun countersTrackTunnelActivityByVersionProtocolAndPath() {
         RequestLog.clear()
-        RequestLog.incTunPacket()
-        RequestLog.incTunPacket()
+        RequestLog.incTunPacketsTotal()
+        RequestLog.incTunIpv4Packet()
+        RequestLog.incTunTcpPacket()
+        RequestLog.incTunObservation(TunObservation.TCP_SYN)
+        RequestLog.incTunObservation(TunObservation.TCP_SYN_PARA_ALVO_443)
+        RequestLog.incTunIpv4ToCdnTarget()
         RequestLog.incTunToRedirect()
         RequestLog.incTunBounce()
+        RequestLog.incTunUidVerifiedFlow()
+        RequestLog.incTunPacketsTotal()
+        RequestLog.incTunIpv6Packet()
+        RequestLog.incTunUdpPacket()
+        RequestLog.incTunObservation(TunObservation.UDP_DNS_53)
+        RequestLog.incTunObservation(TunObservation.UDP_DNS_NO_DNS_VIRTUAL)
+        RequestLog.incTunObservation(TunObservation.UDP_443_QUIC_DOH)
         RequestLog.incTunDiscard()
+        RequestLog.incTunInvalidPacket()
         RequestLog.incDnsForwarded()
 
         val counters = RequestLog.counters.value
-        assertEquals(2, counters.tunPackets)
+        assertEquals(2, counters.tunPacketsTotal)
+        assertEquals(1, counters.tunIpv4Packets)
+        assertEquals(1, counters.tunIpv6Packets)
+        assertEquals(1, counters.tunTcpPackets)
+        assertEquals(1, counters.tunUdpPackets)
+        assertEquals(0, counters.tunIcmpPackets)
+        assertEquals(1, counters.tunInvalidPackets)
+        assertEquals(1, counters.tunIpv4ToCdnTarget)
+        assertEquals(0, counters.tunIpv6ToCdnTarget)
         assertEquals(1, counters.tunToRedirect)
         assertEquals(1, counters.tunBounces)
         assertEquals(1, counters.tunDiscards)
+        assertEquals(1, counters.tunTcpSyn)
+        assertEquals(1, counters.tunTcpSynToRedirect)
+        assertEquals(0, counters.tunTcpSynOther)
+        assertEquals(1, counters.tunUdpDns53)
+        assertEquals(1, counters.tunUdpDnsNoVirtualDns)
+        assertEquals(1, counters.tunDohCandidates)
+        assertEquals(1, counters.tunUidVerifiedFlows)
         assertEquals(1, counters.dnsForwarded)
 
         val summary = counters.summary()
         assertTrue(summary.contains("TUN: 2 pacotes"))
-        assertTrue(summary.contains("1 p/ 10.111.222.1"))
-        assertTrue(summary.contains("1 bounce"))
-        assertTrue(summary.contains("1 descartes"))
-        assertTrue(summary.contains("DNS encaminhado: 1"))
-        assertTrue(counters.compact().contains("TUN 2/1/1/1"))
+        assertTrue(summary.contains("IPv4 1"))
+        assertTrue(summary.contains("IPv6 1"))
+        assertTrue(summary.contains("inválidos 1"))
+        assertTrue(summary.contains("alvo-CDNI: 1 bounce 1 / 1 descartes"))
+        assertTrue(counters.compact().contains("TUN 2(v4 1/v6 1/inv 1)"))
 
         val export = RequestLog.exportText()
-        assertTrue("o export precisa levar os contadores do túnel", export.contains("tunPackets=2"))
-        assertTrue(export.contains("dnsForwarded=1"))
+        for (name in listOf(
+            "tunPacketsTotal=2", "tunIpv4Packets=1", "tunIpv6Packets=1", "tunTcpPackets=1",
+            "tunUdpPackets=1", "tunIcmpPackets=0", "tunInvalidPackets=1", "tunIpv4ToCdnTarget=1",
+            "tunIpv6ToCdnTarget=0", "tunToRedirect=1", "tunBounces=1", "tunDiscards=1",
+            "tunTcpSyn=1", "tunTcpSynToRedirect=1", "tunTcpSynOther=0", "tunUdpDns53=1",
+            "tunUdpDnsNoVirtualDns=1", "tunDotFlows=0", "tunDohCandidates=1",
+            "tunTcp443Externo=0", "tunUidVerifiedFlows=1"
+        )) {
+            assertTrue("export deve conter $name", export.contains(name))
+        }
+        assertTrue("export não pode conter payload", export.contains("NÃO são registrados corpos"))
     }
 
     @Test

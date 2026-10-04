@@ -55,8 +55,30 @@ object CdnRouterConfig {
     const val CA_ASSET = "cdn_local_ca.pem"
     const val CA_EXPORT_NAME = "wzm-offline-local-ca.crt"
 
+    /**
+     * Forma IPv4-mapeada do endereço do túnel (`::ffff:10.111.222.1`): é o que um cliente
+     * dual-stack usaria se resolvesse o alvo em IPv6. Só serve para CLASSIFICAR pacotes no log.
+     */
+    const val CDN_TARGET_V6 = "::ffff:10.111.222.1"
+
+    /**
+     * IPs de CDNI já observados em M2.2 (Akamai). Uso exclusivamente **informativo** no log
+     * (`IP-CDNI-CONHECIDO(M2.2)`); nenhum roteamento depende disso.
+     */
+    val KNOWN_CDNI_IPS = listOf("23.46.216.80")
+
+    // ---- Ciclo de vida do listener no endereço do túnel (M3.4) ----
+    /** Espera LIMITADA pelo endereço do túnel (nunca retry infinito). */
+    const val VPN_ADDRESS_READY_TIMEOUT_MS = 5_000L
+    const val VPN_ADDRESS_POLL_MS = 250L
+    /** Tentativas LIMITADAS de bind no endereço do túnel (EADDRNOTAVAIL enquanto a interface sobe). */
+    const val TUNNEL_BIND_ATTEMPTS = 8
+    const val TUNNEL_BIND_RETRY_DELAY_MS = 350L
+
     // ---- DNS ----
     const val DNS_PORT = 53
+    /** DNS over TLS — só para IDENTIFICAR o fluxo no log (nunca descriptografar). */
+    const val DOT_PORT = 853
     const val DNS_TTL_SECONDS = 30
     const val DNS_UPSTREAM_PRIMARY = "1.1.1.1"
     const val DNS_UPSTREAM_FALLBACK = "8.8.8.8"

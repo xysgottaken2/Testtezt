@@ -118,21 +118,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // ---------------- roteador CDNI local (M3) ----------------
 
     fun startRouter() {
-        log("Iniciando roteador CDNI local (HTTPS 443 + DNS)...")
-        val started = CdnRouterController.startHttps(getApplication())
-        val status = CdnRouterController.status.value
-        if (started) {
-            log("HTTPS local ativo em ${status.endpoints}")
-        } else {
-            log("Roteador: nenhum listener HTTPS ativo — ${status.serverError ?: "ver log"}")
-        }
+        // Ordem correta (M3.4): a VPN sobe primeiro; o listener em :443 só começa depois que o
+        // endereço do túnel existe. Antes disso o bind em 10.111.222.1 falhava com EADDRNOTAVAIL.
+        log("Iniciando roteador CDNI local (VPN -> endereço do túnel -> listener HTTPS 443 + DNS)")
         val consent = CdnRouterController.vpnConsentIntent(getApplication())
         if (consent != null) {
             pendingVpnStart = true
             log("Autorização de VPN necessária — confirme o diálogo do sistema")
             _consentRequest.value = consent
         } else {
-            startVpnNow()
+            startRouterNow()
         }
     }
 
@@ -149,19 +144,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         log("Roteador: consentimento concedido")
         if (pendingVpnStart) {
             pendingVpnStart = false
-            startVpnNow()
+            startRouterNow()
         }
     }
 
-    private fun startVpnNow() {
-        CdnRouterController.startVpn(getApplication(), LauncherConfig.WZM_PACKAGE)
-        log("VPN: pedido de túnel enviado ao sistema (per-app: ${LauncherConfig.WZM_PACKAGE})")
+    private fun startRouterNow() {
+        CdnRouterController.startRouter(getApplication(), LauncherConfig.WZM_PACKAGE)
+        log("VPN: pedido de túnel enviado (per-app: ${LauncherConfig.WZM_PACKAGE}); fase ${CdnRouterController.currentPhase}")
     }
 
     fun stopRouter() {
-        log("Parando roteador CDNI local...")
+        log("Parando roteador CDNI local (fase ${CdnRouterController.currentPhase})...")
         CdnRouterController.stopAll(getApplication())
-        log("Roteador CDNI parado")
+        log("Roteador CDNI parado (fase ${CdnRouterController.currentPhase})")
     }
 
     fun installCa() {

@@ -5,7 +5,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Process
+import android.provider.Settings
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
@@ -114,6 +116,115 @@ object AndroidDiagnostics {
 
     private fun toInet(address: SocketAddress?): InetSocketAddress? =
         (address as? InetSocketAddress)?.takeIf { it.address != null }
+
+    /**
+     * Dono (UID/pacote) de um fluxo observado no TUN — responde "esse pacote é do WZM?"
+     * com a API pública que o próprio sistema usa para firewall/VPN (API 29+).
+     *
+     * Em per-app VPN o socket do app continua na tabela de conexões do sistema, então a consulta
+     * costuma resolver no SYN. Quando não resolve, o log diz `NAO_RESOLVIDO` — nunca se presume autoria.
+     */
+    fun connectionOwnerForFlow(context: Context, header: PacketHeader): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return "dono=INDISPONIVEL (getConnectionOwnerUid exige API 29+)"
+        }
+        val srcPort = header.srcPort ?: return "dono=NAO_RESOLVIDO (sem porta de origem)"
+        val dstPort = header.dstPort ?: return "dono=NAO_RESOLVIDO (sem porta de destino)"
+        val sourceAddress = runCatching { InetAddress.getByName(header.srcAddress) }.getOrNull()
+            ?: return "dono=NAO_RESOLVIDO (endereço de origem inválido)"
+        val destinationAddress = runCatching { InetAddress.getByName(header.dstAddress) }.getOrNull()
+            ?: return "dono=NAO_RESOLVIDO (endereço de destino inválido)"
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+            ?: return "dono=INDISPONIVEL (ConnectivityManager ausente)"
+        val protocol = when {
+            header.isTcp -> 6
+            header.isUdp -> 17
+            else -> return "dono=NAO_RESOLVIDO (protocolo ${header.protocolCode} não suportado pela consulta)"
+        }
+        val local = InetSocketAddress(sourceAddress, srcPort)
+        val remote = InetSocketAddress(destinationAddress, dstPort)
+        val orientations = listOf(local to remote, remote to local)
+        for ((first, second) in orientations) {
+            val uid = runCatching { manager.getConnectionOwnerUid(protocol, first, second) }.getOrNull() ?: continue
+            if (uid == Process.INVALID_UID) continue
+            val packages = runCatching { context.packageManager.getPackagesForUid(uid) }
+                .getOrNull()?.joinToString(",") ?: "?"
+            return "dono=uid=$uid ($packages)"
+        }
+        return "dono=NAO_RESOLVIDO (fluxo ainda não está na tabela do sistema)"
+    }
+
+    /** `true` quando o endereço está atribuído a alguma interface do device. */
+    fun isAddressAssigned(address: String = CdnRouterConfig.VPN_ADDRESS): Boolean =
+        LocalHttpsServer.isAddressAssigned(address)
+
+    data class AddressWait(val found: Boolean, val elapsedMs: Long)
+
+    /**
+     * Espera LIMITADA (nunca retry infinito) até [address] aparecer nas interfaces.
+     * **Bloqueante**: deve rodar fora da thread principal (o serviço usa uma thread própria).
+     */
+    fun waitForAddress(
+        address: String = CdnRouterConfig.VPN_ADDRESS,
+        timeoutMs: Long = CdnRouterConfig.VPN_ADDRESS_READY_TIMEOUT_MS,
+        pollMs: Long = CdnRouterConfig.VPN_ADDRESS_POLL_MS,
+        sleep: (Long) -> Unit = { millis -> Thread.sleep(millis) }
+    ): AddressWait {
+        val startedAt = System.currentTimeMillis()
+        val effectivePoll = pollMs.coerceAtLeast(20L)
+        while (true) {
+            if (isAddressAssigned(address)) {
+                return AddressWait(true, System.currentTimeMillis() - startedAt)
+            }
+            val elapsed = System.currentTimeMillis() - startedAt
+            if (elapsed >= timeoutMs) return AddressWait(false, elapsed)
+            runCatching { sleep(minOf(effectivePoll, timeoutMs - elapsed)) }
+        }
+    }
+
+    /**
+     * DNS privado (DoT) do sistema: leitura **best-effort** de `Settings.Global`.
+     * Isso é evidência do que está *configurado*, não prova de causa — ver [HypothesisBoard].
+     */
+    fun privateDns(): Triple<Boolean, String?, String?> {
+        val resolver = appContext?.contentResolver
+            ?: return Triple(false, null, null)
+        val mode = runCatching { Settings.Global.getString(resolver, "private_dns_mode") }.getOrNull()
+        val specifier = runCatching { Settings.Global.getString(resolver, "private_dns_specifier") }.getOrNull()
+        if (mode == null) return Triple(false, null, null)
+        return Triple(true, mode, specifier)
+    }
+
+    fun privateDnsLines(context: Context): List<String> {
+        appContext = context.applicationContext
+        val (readable, mode, specifier) = privateDns()
+        if (!readable) {
+            return listOf(
+                "DNS privado (DoT): UNKNOWN — Settings.Global private_dns_mode não legível neste app " +
+                    "(não se pode afirmar nem negar)"
+            )
+        }
+        val detail = buildString {
+            append("Settings.Global private_dns_mode=")
+            append(mode)
+            if (!specifier.isNullOrBlank()) append(" specifier=").append(specifier)
+        }
+        val effect = if (mode == "off") {
+            "DNS privado desligado: não pode ser a explicação para consultas ausentes no túnel"
+        } else {
+            "efeito sobre o WZM: HYPOTHESIS (só contorna o DNS do túnel se o app deixar de usar " +
+                "o resolvedor do sistema; depende das consultas vistas na tag DNS)"
+        }
+        return listOf("DNS privado (DoT) configurado: VERIFIED ($detail) — $effect")
+    }
+
+    @Volatile
+    private var appContext: Context? = null
+
+    /** Guarda o contexto do app para as consultas que não recebem `Context` por parâmetro. */
+    fun remember(context: Context) {
+        appContext = context.applicationContext
+    }
 
     /**
      * Interfaces de rede do device que carregam o endereço do túnel.

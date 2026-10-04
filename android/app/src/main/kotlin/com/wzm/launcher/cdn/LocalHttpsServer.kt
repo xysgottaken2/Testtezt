@@ -31,11 +31,33 @@ class LocalHttpsServer(
      * Dono (UID/pacote) do socket cliente — em Android usa `getConnectionOwnerUid` (M3.3).
      * Responde "o processo está mesmo na VPN per-app?" com evidência, não com suposição.
      */
-    private val ownerDescription: (Socket) -> String = { "dono=NAO_RESOLVIDO (sem lookup neste ambiente)" }
+    private val ownerDescription: (Socket) -> String = { "dono=NAO_RESOLVIDO (sem lookup neste ambiente)" },
+    /**
+     * Tentativas LIMITADAS de bind em endereço que ainda não existe (EADDRNOTAVAIL enquanto a
+     * interface tun sobe). Nunca é um retry cego: cada tentativa é logada e há um teto.
+     */
+    private val tunnelBindAttempts: Int = CdnRouterConfig.TUNNEL_BIND_ATTEMPTS,
+    private val tunnelBindRetryDelayMs: Long = CdnRouterConfig.TUNNEL_BIND_RETRY_DELAY_MS,
+    private val addressAssigned: (String) -> Boolean = { LocalHttpsServer.isAddressAssigned(it) },
+    private val sleep: (Long) -> Unit = { millis -> Thread.sleep(millis) },
+    /** Ponto de injeção do bind (testes em JVM simulam EADDRNOTAVAIL→sucesso sem tocar na rede). */
+    private val bindOverride: ((BindEndpoint) -> ServerSocket)? = null
 ) {
+
+    /** Papel do listener: o do túnel é o caminho principal; o de loopback é diagnóstico separado. */
+    enum class EndpointRole { TUNEL_PRIMARIO, TUNEL_FALLBACK, LOOPBACK_DIAGNOSTICO, OUTRO }
 
     data class BindEndpoint(val address: String, val port: Int) {
         override fun toString(): String = "$address:$port"
+
+        val role: EndpointRole
+            get() = when {
+                address == CdnRouterConfig.VPN_ADDRESS &&
+                    port == CdnRouterConfig.LOCAL_HTTPS_PORT -> EndpointRole.TUNEL_PRIMARIO
+                address == CdnRouterConfig.VPN_ADDRESS -> EndpointRole.TUNEL_FALLBACK
+                address == CdnRouterConfig.LOOPBACK_ADDRESS -> EndpointRole.LOOPBACK_DIAGNOSTICO
+                else -> EndpointRole.OUTRO
+            }
     }
 
     @Volatile
@@ -78,21 +100,14 @@ class LocalHttpsServer(
         val factory = context.serverSocketFactory
         val bound = mutableListOf<BindEndpoint>()
         for (endpoint in endpoints) {
-            try {
-                val socket = factory.createServerSocket(
-                    endpoint.port,
-                    16,
-                    InetAddress.getByName(endpoint.address)
-                )
+            val socket = bindWithBoundedRetry(factory, endpoint)
+            if (socket != null) {
                 serverSockets += socket
                 bound += endpoint
-                log("CDNI", "HTTPS local escutando em ${endpoint.address}:${endpoint.port}")
-            } catch (e: Exception) {
-                val failure = ListenerFailures.classify(e.javaClass.simpleName, e.message)
                 log(
                     "CDNI",
-                    "listener NÃO subiu em ${endpoint.address}:${endpoint.port}: motivo=${failure.code} " +
-                        "(${e.javaClass.simpleName}: ${e.message}) — ${failure.hint}"
+                    "HTTPS local escutando em ${endpoint.address}:${endpoint.port} " +
+                        "(papel=${endpoint.role.name})"
                 )
             }
         }
@@ -112,9 +127,12 @@ class LocalHttpsServer(
         if (!tunnelBound) {
             log(
                 "CDNI",
-                "SEM listener em 10.111.222.1:443: o cliente que conectar no IP devolvido pelo DNS " +
-                    "não será atendido por essa via — só o caminho 127.0.0.1:443 pode completar " +
-                    "(motivo=ENDERECO_INDISPONIVEL no bind do endereço do túnel)"
+                "LIMITAÇÃO DOCUMENTADA: sem listener em ${CdnRouterConfig.VPN_ADDRESS}:" +
+                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} (bind falhou; endereço atribuído=" +
+                    "${addressAssigned(CdnRouterConfig.VPN_ADDRESS)}) — o cliente que conectar no IP " +
+                    "devolvido pelo DNS não será atendido por essa via; o caminho de loopback " +
+                    "${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} continua " +
+                    "separado, apenas para diagnóstico. O estado do roteador NÃO avança para ROUTER_READY."
             )
         }
         boundEndpoints = bound
@@ -127,6 +145,58 @@ class LocalHttpsServer(
             thread.start()
         }
         return true
+    }
+
+    /**
+     * Bind com tentativas LIMITADAS: só repete quando o endereço ainda não está atribuído
+     * (EADDRNOTAVAIL). Qualquer outro erro de bind é definitivo e sai do loop imediatamente.
+     */
+    private fun bindWithBoundedRetry(
+        factory: javax.net.ssl.SSLServerSocketFactory,
+        endpoint: BindEndpoint
+    ): ServerSocket? {
+        val attempts = if (endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO) 1
+        else tunnelBindAttempts.coerceAtLeast(1)
+        var lastFailure: ListenerFailure? = null
+        var lastMessage: String? = null
+        for (attempt in 1..attempts) {
+            if (attempt > 1) {
+                log(
+                    "CDNI",
+                    "tentativa $attempt/$attempts de bind em ${endpoint.address}:${endpoint.port} " +
+                        "(endereço atribuído=${addressAssigned(endpoint.address)}; espera " +
+                        "${tunnelBindRetryDelayMs} ms — retry limitado, nunca infinito)"
+                )
+                runCatching { sleep(tunnelBindRetryDelayMs) }
+            }
+            try {
+                val override = bindOverride
+                if (override != null) return override(endpoint)
+                return factory.createServerSocket(
+                    endpoint.port,
+                    16,
+                    InetAddress.getByName(endpoint.address)
+                )
+            } catch (e: Exception) {
+                val failure = ListenerFailures.classify(e.javaClass.simpleName, e.message)
+                lastFailure = failure
+                lastMessage = "${e.javaClass.simpleName}: ${e.message}"
+                log(
+                    "CDNI",
+                    "listener NÃO subiu em ${endpoint.address}:${endpoint.port} (tentativa $attempt/$attempts): " +
+                        "motivo=${failure.code} ($lastMessage) — ${failure.hint}"
+                )
+                if (failure != ListenerFailure.ENDERECO_INDISPONIVEL) break
+            }
+        }
+        if (lastFailure != null && endpoint.role != EndpointRole.LOOPBACK_DIAGNOSTICO) {
+            log(
+                "CDNI",
+                "bind definitivo em ${endpoint.address}:${endpoint.port} esgotado após as tentativas: " +
+                    "motivo=${lastFailure.code} ($lastMessage)"
+            )
+        }
+        return null
     }
 
     fun stop() {
@@ -231,6 +301,18 @@ class LocalHttpsServer(
     }
 
     companion object {
+
+        /** O endereço está atribuído a alguma interface do device? (usado para explicar EADDRNOTAVAIL) */
+        fun isAddressAssigned(address: String): Boolean {
+            if (address == CdnRouterConfig.LOOPBACK_ADDRESS) return true
+            return runCatching {
+                val interfaces = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+                interfaces.any { iface ->
+                    java.util.Collections.list(iface.inetAddresses).any { it.hostAddress == address }
+                }
+            }.getOrDefault(false)
+        }
+
         fun defaultEndpoints(): List<BindEndpoint> = listOf(
             BindEndpoint(CdnRouterConfig.LOCAL_BIND_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT),
             BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT),

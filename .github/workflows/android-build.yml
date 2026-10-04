@@ -120,6 +120,25 @@ jobs:
           python3 scripts/ci-report-test-failures.py \
             --dir android/app/build/test-results/testDebugUnitTest || true
 
+      # Contagem visível nos annotations (o blob do Actions não é acessível de todo ambiente):
+      # é a evidência de quantos testes JVM rodaram nesta build.
+      - name: Report JVM test count as annotation
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          files = glob.glob("android/app/build/test-results/testDebugUnitTest/*.xml")
+          for path in files:
+              root = ET.parse(path).getroot()
+              tests += int(root.get("tests", 0))
+              failures += int(root.get("failures", 0))
+              errors += int(root.get("errors", 0))
+              skipped += int(root.get("skipped", 0))
+          print(f"files={len(files)} tests={tests} failures={failures} errors={errors} skipped={skipped}")
+          print(f"::notice title=testes-jvm::arquivos={len(files)} testes={tests} falhas={failures} erros={errors} pulados={skipped}")
+          PY
+
       - name: Upload test logs and reports on failure
         if: env.TEST_EXIT != '0'
         uses: actions/upload-artifact@v4

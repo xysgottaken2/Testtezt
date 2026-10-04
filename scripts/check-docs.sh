@@ -35,6 +35,7 @@ required=(
   "docs/research/m3.2-apk-tls-trust-investigation.md"
   "docs/research/m3-cdni-integration.md"
   "docs/research/m3.3-diferenca-entre-os-testes.md"
+  "docs/research/m3.4-caminho-wzm-tun.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )

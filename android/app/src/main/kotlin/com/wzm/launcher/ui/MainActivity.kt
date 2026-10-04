@@ -218,8 +218,18 @@ fun RouterCard(router: CdnRouterStatus, counters: RequestCounters) {
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Roteador CDNI local", color = Color(0xFF9AA39A), fontSize = 12.sp)
+            // Fase explícita (M3.4): não existe "pronto" enquanto o listener do túnel não subir.
+            Text("Fase — ${router.phaseLabel}", color = Color(0xFFD7C36B), fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Text("HTTPS :443 — $httpsLabel", color = httpsColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Text("Túnel DNS — $vpnLabel", color = vpnColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            if (!router.tunnelBound) {
+                Text(
+                    "Listener do túnel (10.111.222.1:443) ausente — só o caminho 127.0.0.1:443 atende " +
+                        "(limitação registrada; ver docs M3.4)",
+                    color = Color(0xFFC9A227),
+                    fontSize = 11.sp
+                )
+            }
             Text(counters.summary(), color = Color(0xFFB0B8B0), fontSize = 11.sp)
         }
     }

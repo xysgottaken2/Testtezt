@@ -160,7 +160,7 @@ npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
 
 # Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
-cd ../../android && ./gradlew :app:testDebugUnitTest  # 89 testes JVM (servidor, launcher, roteador CDNI, RequestLog, TLS/trust e diagnóstico do túnel)
+cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM: servidor, launcher, roteador CDNI, RequestLog, TLS/trust, parser IPv4/IPv6 e diagnóstico do caminho WZM->TUN
 ./gradlew :app:assembleDebug  # APK em android/app/build/outputs/apk/debug/app-debug.apk
 # instalar no S23 Ultra:
 adb install android/app/build/outputs/apk/debug/app-debug.apk
