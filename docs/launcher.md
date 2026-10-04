@@ -14,8 +14,8 @@
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
 | Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** · **artifact do APK verificado pelo CI: `37210054051` (commit `b761b07`, jobs `build` + `verify-artifact`)** · **`37210339073` (commit `2d49ab0`, só documentação): também gerou e verificou o artifact — prova de que o workflow roda em todo push, sem filtro de `paths`** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** · **verificado pelo job `verify-artifact` (run `37210054051`): `a3206af64f993751bba21ffc07c2e86adba7d428d105a17b1fd7c6c0f10456af`** · **`3c03870cd2f0e59ae6a96bd332f099a86aad0c27b4f88ae1cc81aef9a4b1f779` (run `37210339073`, 15.678.268 B)** |
-| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** · **verificado: 15.678.120 B (~14,9 MiB)** |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** · **verificado pelo job `verify-artifact` (run `37210760384`, commit `457af25`): `dfaa53a58a163687d0a5a8ccdaf89a6c70b01b508d08c277512650ba67184ca8`** · **`3c03870cd2f0e59ae6a96bd332f099a86aad0c27b4f88ae1cc81aef9a4b1f779` (run `37210339073`, 15.678.268 B)** |
+| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** · **verificado: 15.678.188 B (~14,9 MiB)** |
 | Data | 2026-10-04 |
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
@@ -118,11 +118,11 @@ CI, que também publica o artifact técnico) **ou** do workflow **`android-build
 
 O CI **verifica o artifact depois de publicar** (job `verify-artifact`: baixa de volta, exige exatamente os 2
 arquivos na raiz e confere sha256/tamanho contra o build) e publica o resultado no resumo do run e na annotation
-`artifact-verificado`. Última verificação (run `37210054051`, commit `b761b07`):
+`artifact-verificado`. Última verificação no run do workflow **`build`** (run `37210760384`, commit `457af25`):
 
 ```
 artifact=wzm-offline-launcher-debug caminho-no-artifact=app-debug.apk (+app-debug.apk.sha256)
-arquivos=2 size=15.678.120 sha256=a3206af64f993751bba21ffc07c2e86adba7d428d105a17b1fd7c6c0f10456af
+arquivos=2 size=15.678.188 sha256=dfaa53a58a163687d0a5a8ccdaf89a6c70b01b508d08c277512650ba67184ca8
 ```
 
 O APK é publicado em **todo push** (nenhum filtro de `paths`, inclusive commits só de documentação) por dois
@@ -141,6 +141,10 @@ Workflow `.github/workflows/android-build.yml`:
 7. `./gradlew :app:assembleDebug`
 8. `sha256sum app-debug.apk` + **annotation com o hash** + `upload-artifact@v4` nome `wzm-offline-launcher-debug`
 9. Guarda anti-commit: falha se houver `*.apk/*.xapk/*.shard` fora de `android/app/build/`
+
+> O **mesmo arquivo** é reutilizado pelo workflow `build` (job `apk`, `uses: ./.github/workflows/android-build.yml`),
+> de modo que cada push publica o APK em dois runs — `build` (ao lado do artifact técnico) e `android-build` —
+> sempre com o nome `wzm-offline-launcher-debug` e a mesma estrutura de 2 arquivos na raiz.
 
 Artefato disponível em **Actions → `build` ou `android-build` → Artifacts → `wzm-offline-launcher-debug`**.
 
