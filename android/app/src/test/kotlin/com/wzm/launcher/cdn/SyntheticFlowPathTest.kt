@@ -54,7 +54,8 @@ class SyntheticFlowPathTest {
         val host = CdnRouterConfig.EXACT_HOST
         val query = DnsMessage.buildQuery(host, DnsMessage.TYPE_A)
         val labels = host.split('.').sumOf { it.length + 1 }
-        assertEquals("header(12) + nome($labels) + tipo/classe(4)", 12 + labels + 4, query.size)
+        // 12 B de header + labels (cada um já conta o byte de tamanho) + 1 B do root + 4 B (tipo+classe)
+        assertEquals("header(12) + nome($labels) + root(1) + tipo/classe(4)", 12 + labels + 5, query.size)
         // QDCOUNT = 1 exatamente nos bytes 4-5 do header e o nome começa no byte 12.
         assertEquals(0, query[4].toInt() and 0xFF)
         assertEquals(1, query[5].toInt() and 0xFF)
