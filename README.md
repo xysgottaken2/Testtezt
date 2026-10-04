@@ -205,12 +205,13 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 
 | Item | Valor |
 |---|---|
-| Artifact | `wzm-offline-launcher-debug` (Actions → run verde **`37209458668`** (M3.2) → Artifacts) |
-| Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
+| Artifact | **`wzm-offline-launcher-debug`** — Actions → run do workflow **`android-build`** → Artifacts (roda em todo push) |
+| Arquivo | `app-debug.apk` (raiz do artifact) + `app-debug.apk.sha256` |
 | SHA-256 | **muda a cada execução** — fonte de verdade é o `app-debug.apk.sha256` do artifact. Referência (run `37209458668`, commit `d69a731`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008` |
 | Tamanho | 15.678.140 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
+| ⚠️ Não confundir | o artifact técnico `warzone-offline-M1` (workflow `build`) tem **só código/docs — sem APK**; o APK é sempre o `wzm-offline-launcher-debug` |
 
 Servidor stub escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 OK`, `GET /` → página, `GET /__hits`, `POST /__reset`).
 O caminho real do CDNI é o roteador M3: listeners HTTPS **somente** em endereços específicos (`10.111.222.1:443`, `127.0.0.1:443`), nunca `0.0.0.0`.

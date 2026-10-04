@@ -96,7 +96,25 @@ Requer:
 
 ### GitHub Actions (recomendado — VERIFIED)
 
-O workflow gera o certificado local (`scripts/generate-local-cdni-cert.sh`), roda os testes JVM e monta o APK.
+O workflow gera o certificado local (`scripts/generate-local-cdni-cert.sh`), roda os testes JVM e monta o APK
+com `./gradlew assembleDebug`.
+
+**Onde baixar o APK (passo a passo):** Actions → escolha um run do workflow **`android-build`** →
+seção **Artifacts** → **`wzm-offline-launcher-debug`**. Dentro do artifact:
+
+| Caminho no artifact | Arquivo |
+|---|---|
+| `app-debug.apk` (raiz) | o APK debug instalável |
+| `app-debug.apk.sha256` (raiz) | hash SHA-256 do APK |
+
+> O workflow `android-build` roda em **todo push** (sem filtro de `paths`) justamente para o artifact nunca faltar.
+> O artifact técnico `warzone-offline-M1` (workflow `build`) contém **somente código-fonte e docs — nunca APK**,
+> e o `<provider>`/guardas do CI impedem que qualquer APK que não seja o nosso entre nos artifacts.
+> Nenhum APK do Warzone Mobile original é publicado.
+
+O CI **verifica o artifact depois de publicar** (baixa de volta, confere a raiz do artifact e o SHA-256) e
+escreve no resumo do run: artifact, caminho no artifact, tamanho e sha256 (também disponível como annotation
+`artifact-verificado` via API).
 
 Workflow `.github/workflows/android-build.yml`:
 
