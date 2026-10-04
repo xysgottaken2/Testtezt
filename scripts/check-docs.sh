@@ -26,7 +26,10 @@ required=(
   "docs/protocol/endpoints-template.json"
   "docs/protocol/examples/synthetic-example.md"
   "docs/research/m2.2-assets-cdni-investigation.md"
+  "docs/research/m2.2.1-shard-inventory.md"
   "warzone-offline/tools/asset-tools/cdni-probe.sh"
+  "warzone-offline/tools/asset-tools/shard-reference-scanner.py"
+  "warzone-offline/tools/asset-tools/shard-cdn-check.sh"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
