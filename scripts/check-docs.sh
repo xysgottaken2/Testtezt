@@ -10,10 +10,14 @@ required=(
   "docs/research/warzone-mobile-streaming.md"
   "docs/research/warzone-mobile-research.md"
   "docs/research/m1-endpoint-discovery.md"
+  "docs/research/issue8-unlock-status.md"
   "docs/architecture/overview.md"
   "docs/reverse-engineering/methodology.md"
   "docs/reverse-engineering/frida-bypass.md"
+  "docs/reverse-engineering/apk-analysis-runbook.md"
   "docs/protocol/template.md"
+  "docs/protocol/endpoints-template.json"
+  "docs/protocol/examples/synthetic-example.md"
 )
 missing=0
 for f in "${required[@]}"; do

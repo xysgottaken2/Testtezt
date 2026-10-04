@@ -1,0 +1,1 @@
+export function categorize(findings: Array<{ pattern: string; match: string; file: string; confidence: string }>): Record<string, Array<{ pattern: string; match: string; file: string; confidence: string }>>;
