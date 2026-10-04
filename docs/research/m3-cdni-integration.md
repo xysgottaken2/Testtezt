@@ -149,7 +149,11 @@ Outras incógnitas registradas honestamente:
 2. Abrir o launcher → **INICIAR ROTEADOR CDNI** → aceitar o diálogo de VPN do sistema.
    * O log deve mostrar: `HTTPS local escutando em 10.111.222.1:443` (ou a falha exata) e
      `túnel ativo: DNS 10.111.222.2, rota 10.111.222.0/24, prod.cdni.callofduty.com -> 10.111.222.1`.
-3. **INICIAR WARZONE MOBILE**. Acompanhar o log:
+3. **INICIAR WARZONE MOBILE**. Acompanhar o log **na própria tela VER LOGS** (botão na tela principal; sem ADB):
+   há filtros por tag (`DNS`, `CDNI`, `CDNI?`, `HTTP`, `TLS`, `TUN`, `VPN`, `LAUNCHER`), contadores,
+   status HTTP de cada resposta e botões LIMPAR/COPIAR/SALVAR .TXT. As linhas também vão para
+   `filesDir/request-log.txt` (o log sobrevive a reabrir o app).
+   Linhas esperadas:
    * `[DNS] prod.cdni.callofduty.com (tipo 1) -> 10.111.222.1 [interceptado]` = o WZM resolveu o CDNI pelo nosso DNS;
    * `[CDNI] TCP SYN ... -> 10.111.222.1:443 (devolvido à pilha local ...)` = conexão chegando;
    * `[TLS] handshake OK ...` ou `[TLS] FALHA no handshake ...` = a requisição chegou (com ou sem confiança);
@@ -176,11 +180,15 @@ curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callo
 | `LocalHttpsServerTest` | **fim-a-fim com TLS real** (certificado do app): handshake, GET, 404 controlado, contadores e o log contendo path + SNI |
 | `CertificateAssetTest` | p12 abre com a senha, tem chave privada, SAN correto, não é Activision, CA separada |
 | `ServerTest`, `WzmLauncherTest` | regressão da fase M2 (inalterados, continuam verdes) |
+| `RequestLogTest` | armazenamento/consulta do log mostrado em VER LOGS: ordem/timestamp/tag, filtro por tag (inclusive `CDNI?`), sanitização de linha longa/multilinha, limite do buffer, contadores (DNS/TCP/HTTP/TLS), export, restore e sink sem duplicar linhas restauradas |
+| `FileLogSinkTest` | persistência em arquivo: append/readTail, rotação por tamanho, clear, criação de diretório, export `.txt` e escrita concorrente (4 threads) |
 
 ## 9. Limitações / dívida técnica registrada
 
 * O corpo servido é placeholder (não há captura do arquivo real) — o objetivo desta etapa é **observar e rotear**, não completar o boot.
-* O log é em memória (400 linhas) e reinicia com o app; persistência fica para M4 se necessário.
+* O buffer em memória guarda 400 linhas (a UI mostra esse total); em paralelo, tudo é gravado em
+  `filesDir/request-log.txt` com rotação de 256 KB, então o histórico não se perde ao reabrir o app
+  (contadores, porém, zeram junto com o processo — não há como reconstruí-los).
 * `POST`/outros métodos nos endpoints conhecidos são atendidos como `GET` (semântica real UNKNOWN);
   métodos em paths desconhecidos caem no 404 controlado.
 * Se o device negar `:443`, o log mostra a negativa e sobe em 18443 (diagnóstico) — nesse caso o próximo passo é o responder TCP em userspace sobre o tun (M3.1), o que **não** foi implementado nesta rodada.

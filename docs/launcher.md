@@ -10,15 +10,15 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · **M3: `37179735648` (commit `622a97b`, `arena/01a10449-testtezt`)** |
+| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · **M3 + VER LOGS: `37205801261` (commit `15f1bb6`, `arena/01a10449-testtezt`)** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · **M3: `75474ede1c936294bb7259dece8b1f98e3232e2f5fc456546cf3a2d0da6eb558`** |
-| Tamanho | M2 ~15.573.600 B (~14,9 MiB) · **M3 15.640.840 B (~14,9 MiB)** |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · **M3 + VER LOGS: `c358af7b9cf6c471733c627df13452646424cae32edf0aa0a743bdf0a460ec5b`** |
+| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · **M3 + VER LOGS: 15.675.176 B (~14,9 MiB)** |
 | Data | 2026-10-04 |
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
 
-> `[VERIFIED]` em CI (M3): compilação Kotlin/Compose, **43 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 5 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[VERIFIED]` em CI (M3 + VER LOGS): compilação Kotlin/Compose, **60 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 5 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + **10 `RequestLogTest`** + **7 `FileLogSinkTest`**), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
 > `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
 
@@ -33,6 +33,7 @@
 | `e: …:130:42 Identifier expected` + `e: …:157:1 Unclosed comment` (linha errada, longe da causa) | **Kotlin aninha comentários de bloco**: um `/__wzm_offline/*` dentro de um KDoc abriu comentário aninhado e o `*/` seguinte fechou só o interno → o resto do arquivo virou comentário | nunca escrever `/*` ou `*/` dentro de comentário/KDoc (usar `/__wzm_offline/…`); preflight no CI pega isso |
 | `Identifier expected` em string raw `""""campo":…` | aspas **coladas** ao delimitador `"""`, que o lexer do Kotlin rejeita | montar JSON com concatenação/`jsonEscape` (nunca `"""` colado em `"`) |
 | Preflight local | — | `python3 scripts/check-kotlin-preflight.py --dir android` (roda no CI antes do build) |
+| Teste falhou e não dá para ler artifact/log (blob bloqueado) | — | passo `Report unit test failures as annotations` publica mensagem + stack das falhas como annotations: `gh api repos/<owner>/<repo>/check-runs/<job>/annotations` |
 
 Compatibilidade VERIFIED: Kotlin `1.9.22` ↔ Compose Compiler `1.5.8` ↔ AGP `8.5.2` ↔ Gradle `8.7` ↔ JDK `17` ↔ compileSdk `34`.
 
@@ -209,6 +210,40 @@ Isso **não** é contornado: nada de root, patch de trust ou alteração do APK 
 
 ---
 
+## 5.2 VER LOGS — tela de logs dentro do APK (sem ADB/Logcat)
+
+O botão **VER LOGS** (tela principal) abre um painel com o `RequestLog` completo do roteador CDNI,
+atualizado **em tempo real** (o log é um `StateFlow` consumido pelo Compose; o WZM pode estar aberto
+em primeiro plano).
+
+| Recurso | Detalhe |
+|---|---|
+| Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[LAUNCHER]` |
+| Status/código HTTP | linha `[HTTP]` dedicada: `GET /path -> 200 OK (resposta N B, cliente=…)`; desconhecidos aparecem como `404 Not Found` |
+| Timestamps | `[HH:mm:ss.SSS]` em cada linha (fuso local do aparelho) |
+| Contadores | `DNS: consultas/interceptadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas` |
+| Filtros | chips por tag + contagem de linhas visíveis |
+| Leitura | fonte monoespaçada, cor por tag, toggle **auto-rolar** (desligue para ler enquanto chegam linhas novas) |
+| LIMPAR LOGS | com confirmação; apaga buffer, contadores e o arquivo persistido |
+| COPIAR LOGS | copia o texto completo (cabeçalho de contadores + linhas) para a área de transferência |
+| SALVAR/EXPORTAR .TXT | grava em diretório privado do app e abre o compartilhamento (FileProvider) |
+| Persistência | cada linha também vai para `filesDir/request-log.txt` (rotação em 256 KB); ao reabrir o launcher, o log anterior é restaurado e uma linha avisa quantas linhas vieram |
+| Navegação | tela principal ↔ logs sem perder nada (o log vive fora da UI); botão físico de voltar retorna |
+
+Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
+
+```
+# WZM Offline Launcher — RequestLog do roteador CDNI local
+# exportado em: 2026-10-04T14:22:31.512-03:00
+# contadores: dnsQueries=3 dnsIntercepted=1 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0
+# linhas: 12 (buffer máximo: 400)
+# privacidade: não são registrados corpos de requisição nem cabeçalhos (sem cookies/tokens)
+```
+
+**Privacidade:** registramos apenas tag, horário, método, host/path, status e contadores. Não são
+logados corpos de requisição, cabeçalhos, cookies, tokens nem credenciais — nem no arquivo persistido.
+
+---
 ## 6. O que já funciona (MVP)
 
 - [x] Projeto Android compilável **e compilado em CI** (Kotlin 1.9.22, AGP 8.5.2, Gradle 8.7, Compose Compiler 1.5.8, minSdk 24, target 34)
@@ -224,6 +259,7 @@ Isso **não** é contornado: nada de root, patch de trust ou alteração do APK 
 - [x] `docs/launcher.md` + README
 - [x] **M3:** `CdnVpnService` (VpnService per-app + DNS em userspace + bounce/RST), `LocalHttpsServer` (:443 no endereço do túnel e loopback), `CdnRouteTable`/`BootstrapEndpoints` (só endpoints com evidência), `RequestLog` unificado, certificado local + botão EXPORTAR CA
 - [x] **M3:** testes JVM novos (`DnsRouterTest`, `TunnelPacketsTest`, `CdnRouteTableTest`, `LocalHttpsServerTest` fim-a-fim com TLS real, `CertificateAssetTest`)
+- [x] **M3 + VER LOGS:** tela de logs no APK (filtros por tag, contadores, status HTTP, timestamps, auto-rolar), botões LIMPAR/COPIAR/SALVAR .TXT, persistência do log em arquivo (sobrevive a reinício do processo) e testes `RequestLogTest` + `FileLogSinkTest`
 
 ---
 
@@ -262,5 +298,7 @@ M3 (VPN/DNS/HTTPS locais):
 - **Log mostra DNS interceptado mas nenhum `TCP SYN`:** o WZM pode estar usando DNS próprio/DoH ou IP fixo; verifique também se outra VPN estava ativa (só uma VPN por vez).
 - **`[TLS] FALHA … cliente RECUSOU o certificado local`:** esperado com `targetSdk ≥ 24` (CA de usuário não é confiada) — é evidência de que a requisição chegou; ver §5.1/§7.
 - **WZM não usa o túnel:** confirme `addAllowedApplication` no log (`per-app: somente com.activision.callofduty.warzone`).
+- **Não sei onde o log foi salvo:** a tela VER LOGS mostra o caminho (`arquivo: /data/user/0/<pkg>/files/request-log.txt`); o `.txt` exportado vai para `/sdcard/Android/data/<pkg>/files/logs/` (sem permissão de armazenamento).
+- **Log vazio mesmo com o WZM aberto:** confirme que o **ROTEADOR CDNI** está ativo e que apareceu `[DNS] prod.cdni.callofduty.com … [interceptado]`; sem DNS interceptado, nada chega ao servidor local.
 - **Como ver o log do CI sem baixar artifact:** os passos `Report Gradle failure as annotations` / `Announce APK SHA256` publicam trechos legíveis em **check-runs/annotations** (útil quando o blob de logs está inacessível).
 

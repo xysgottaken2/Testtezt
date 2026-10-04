@@ -160,7 +160,7 @@ npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
 
 # Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
-cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM (ServerTest, WzmLauncher + 5 suítes do roteador CDNI M3)
+cd ../../android && ./gradlew :app:testDebugUnitTest  # 60 testes JVM (servidor, launcher, roteador CDNI e RequestLog)
 ./gradlew :app:assembleDebug  # APK em android/app/build/outputs/apk/debug/app-debug.apk
 # instalar no S23 Ultra:
 adb install android/app/build/outputs/apk/debug/app-debug.apk
@@ -179,6 +179,13 @@ Workflow CI roda em todo PR: checkout → deps → build → testes → artifact
 
 Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar, o **roteador CDNI local (M3)** e o que ainda não funciona.
 
+**VER LOGS (dentro do APK, sem ADB/Logcat):** botão na tela principal abre o `RequestLog` do roteador em
+tempo real — `[DNS]`, `[CDNI]`, `[CDNI?]` (paths desconhecidos), `[HTTP]` (status/código de cada resposta),
+`[TLS]`, `[TUN]`, `[VPN]` — com timestamps, filtros por tag, contadores (DNS/TCP/HTTP/TLS), auto-rolar e
+botões **LIMPAR LOGS**, **COPIAR LOGS** e **SALVAR/EXPORTAR .TXT**. O log também é persistido em
+`filesDir/request-log.txt` (sobrevive a reabrir o app) e nada sensível é registrado (sem corpos/cabeçalhos).
+Detalhes em [docs/launcher.md](docs/launcher.md) §5.2.
+
 **M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
 `prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um
 servidor embarcado com **certificado nosso** (SAN `prod.cdni.callofduty.com`). Endpoints já comprovados em M2/M2.2
@@ -191,10 +198,10 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 
 | Item | Valor |
 |---|---|
-| Artifact | `wzm-offline-launcher-debug` (Actions → runs verdes `37177649488` / `37177973604` / **`37179735648` (M3)** → Artifacts) |
+| Artifact | `wzm-offline-launcher-debug` (Actions → runs verdes `37177649488` / `37177973604` / `37179735648` / **`37205801261` (M3 + VER LOGS)** → Artifacts) |
 | Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 | por execução (M3, run `37179735648`, commit `622a97b`: `75474ede1c936294bb7259dece8b1f98e3232e2f5fc456546cf3a2d0da6eb558`) — use o `.sha256` do artifact |
-| Tamanho | M3: 15.640.840 bytes (~14,9 MiB) |
+| SHA-256 | por execução (último run verde, `37205801261`, commit `15f1bb6`: `c358af7b9cf6c471733c627df13452646424cae32edf0aa0a743bdf0a460ec5b`) — use o `.sha256` do artifact |
+| Tamanho | 15.675.176 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 
@@ -212,6 +219,7 @@ Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.call
 | M1 | Client communication — concluído (PR #9 + #10) |
 | M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **concluído no launcher MVP** |
 | M3 | Integração real do CDNI local (DNS + HTTPS embarcado + log de requests do WZM) — **implementado; bloqueio conhecido = confiança TLS do cliente** |
+| M3.1 | Tela VER LOGS no APK (RequestLog em tempo real, filtros, contadores, LIMPAR/COPIAR/SALVAR .TXT) — **implementado** |
 | M2 | Local configuration |
 | M3 | Local auth/profile |
 | M4 | Local matchmaking |
