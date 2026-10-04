@@ -13,6 +13,7 @@ required=(
   "docs/research/issue8-unlock-status.md"
   "docs/research/wzm-310-bootstrap.md"
   "docs/research/wzm-permissions-gvs.md"
+  "docs/research/m2.1-webview-test-plan.md"
   "docs/architecture/overview.md"
   "docs/reverse-engineering/methodology.md"
   "docs/reverse-engineering/frida-bypass.md"
@@ -22,6 +23,8 @@ required=(
   "docs/protocol/cdni-offline-page.md"
   "docs/protocol/endpoints-template.json"
   "docs/protocol/examples/synthetic-example.md"
+  "warzone-offline/patches/apk-webview-patch/README.md"
+  "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
 missing=0
 for f in "${required[@]}"; do

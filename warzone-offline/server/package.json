@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc --noEmit",
     "dev": "tsx watch src/index.ts",
+    "dev:bootstrap": "tsx src/bootstrap/cli.ts",
     "start": "node --loader ts-node/esm src/index.ts",
+    "start:bootstrap": "node --loader ts-node/esm src/bootstrap/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
