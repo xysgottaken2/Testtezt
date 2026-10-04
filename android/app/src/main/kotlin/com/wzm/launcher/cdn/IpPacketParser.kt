@@ -89,7 +89,12 @@ data class PacketHeader(
     val dstPort: Int?,
     val tcpFlags: Int?,
     val hopLimit: Int?,
-    val extensionHeaders: List<Int> = emptyList()
+    val extensionHeaders: List<Int> = emptyList(),
+    /**
+     * Tipo de ICMP/ICMPv6 (M3.6) — só o primeiro byte do cabeçalho de transporte, nunca o payload.
+     * É o que permite dizer "ICMPv6 neighbor-solicitation" em vez de "ICMPv6" genérico.
+     */
+    val icmpType: Int? = null
 ) {
 
     val isTcp: Boolean get() = protocol == TransportKind.TCP
@@ -143,6 +148,11 @@ data class PacketHeader(
         append(' ').append(endpoint(srcAddress, srcPort))
         append(" -> ").append(endpoint(dstAddress, dstPort))
         if (isTcp) append(" flags=").append(flagNames())
+        if (isIcmp) {
+            val name = if (isIpv6) TrafficClassifier.icmpv6TypeName(icmpType)
+            else TrafficClassifier.icmpv4TypeName(icmpType)
+            append(" tipo=").append(icmpType ?: -1).append(" (").append(name).append(')')
+        }
         append(" hop=").append(hopLimit?.toString() ?: "?")
         append(" (lido=").append(rawLength).append(" B total=").append(declaredTotalLength)
         append(" payload=").append(payloadLength).append(" B)")
@@ -216,7 +226,8 @@ object IpPacketParser {
                 srcPort = ports.src,
                 dstPort = ports.dst,
                 tcpFlags = ports.tcpFlags,
-                hopLimit = packet[8].toInt() and 0xFF
+                hopLimit = packet[8].toInt() and 0xFF,
+                icmpType = icmpType(packet, read, ihl, protocol)
             )
         )
     }
@@ -301,7 +312,8 @@ object IpPacketParser {
         dstPort = dstPort,
         tcpFlags = tcpFlags,
         hopLimit = packet[7].toInt() and 0xFF,
-        extensionHeaders = extensions
+        extensionHeaders = extensions,
+        icmpType = icmpType(packet, read, payloadStart, protocol)
     )
 
     private data class TransportPorts(
@@ -330,6 +342,10 @@ object IpPacketParser {
         val tcpHeaderLength = ((packet[offset + 12].toInt() and 0xF0) shr 4) * 4
         return TransportPorts(src, dst, flags, tcpHeaderLength.coerceAtLeast(20))
     }
+
+    /** Primeiro byte do cabeçalho ICMP/ICMPv6 (tipo) — metadado, não payload. */
+    private fun icmpType(packet: ByteArray, read: Int, offset: Int, protocol: TransportKind): Int? =
+        if (protocol.isIcmp && offset < read) packet[offset].toInt() and 0xFF else null
 
     private fun transportPayload(declaredTotal: Int, headerLength: Int, transportHeaderBytes: Int): Int {
         val afterIp = declaredTotal - headerLength

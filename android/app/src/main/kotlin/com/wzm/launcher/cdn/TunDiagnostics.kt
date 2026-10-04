@@ -94,6 +94,8 @@ object TunPolicy {
     }
 
     private fun ipv6Note(header: PacketHeader): String = buildString {
+        val profile = TrafficClassifier.ipv6Profile(header)
+        val category = TrafficClassifier.ipv6Category(header)
         append("IPv6 válido: next-header=${header.protocolCode} (${header.protocol.label})")
         append(" de ").append(header.srcAddress)
         append(" -> ").append(header.dstAddress)
@@ -103,6 +105,9 @@ object TunPolicy {
         if (header.extensionHeaders.isNotEmpty()) {
             append(" extensões=").append(header.extensionHeaders.joinToString(","))
         }
+        append(" • perfil=").append(profile.label())
+        append(" • categoria=").append(category.label)
+        append(" • local=").append(TrafficClassifier.destinationClass(header))
         if (header.isDnsPort) {
             append(" (porta 53 em IPv6: sem atendimento local — o DNS virtual é IPv4)")
         } else if (header.isDotPort) {
@@ -149,12 +154,26 @@ object TunPolicy {
             if (header.isDotPort) list += TunObservation.FLUXO_DOT
             if (header.isHttpsPort) list += TunObservation.UDP_443_QUIC_DOH
         }
+        // M3.6: ICMPv4 e a categoria do IPv6 descartado (descoberta local × multicast × unicast).
+        if (header.isIpv4 && header.isIcmp) list += TunObservation.ICMPV4
+        if (header.isIpv6) {
+            list += when (TrafficClassifier.ipv6Category(header)) {
+                TrafficClassifier.Ipv6Category.DESCOBERTA_LOCAL -> TunObservation.IPV6_DESCOBERTA_LOCAL
+                TrafficClassifier.Ipv6Category.MULTICAST_OUTRO -> TunObservation.IPV6_MULTICAST_OUTRO
+                TrafficClassifier.Ipv6Category.UNICAST -> TunObservation.IPV6_UNICAST
+            }
+        }
         return list
     }
 }
 
 /** Observações contáveis do caminho (cada uma tem contador próprio em [RequestCounters]). */
-enum class TunObservation { TCP_SYN, TCP_SYN_PARA_ALVO_443, TCP_SYN_OUTRO_DESTINO, UDP_DNS_53, UDP_DNS_NO_DNS_VIRTUAL, FLUXO_DOT, TCP_443_EXTERNO, UDP_443_QUIC_DOH }
+enum class TunObservation {
+    TCP_SYN, TCP_SYN_PARA_ALVO_443, TCP_SYN_OUTRO_DESTINO, UDP_DNS_53, UDP_DNS_NO_DNS_VIRTUAL,
+    FLUXO_DOT, TCP_443_EXTERNO, UDP_443_QUIC_DOH,
+    // M3.6: classificação do IPv6 descartado (nunca "pacote inválido") e ICMPv4.
+    IPV6_DESCOBERTA_LOCAL, IPV6_MULTICAST_OUTRO, IPV6_UNICAST, ICMPV4
+}
 
 /** Nível de evidência — mesma disciplina do projeto (nunca "achismo" como fato). */
 enum class Evidence { VERIFIED, PROBABLE, HYPOTHESIS, UNKNOWN }
@@ -174,7 +193,20 @@ data class DiagFacts(
     val privateDnsSpecifier: String?,
     val tunnelAddressAssigned: Boolean,
     val tunnelListenerBound: Boolean,
-    val routerPhase: String
+    val routerPhase: String,
+    // ---- M3.6: o que faltava para separar "app sem rede" de "tráfego fora do túnel" ----
+    /** `true` quando TrafficStats respondeu para o UID do alvo nesta sessão. */
+    val uidTrafficAvailable: Boolean = false,
+    /** Bytes somados (tx+rx) que o UID do alvo movimentou desde o início da sessão (null = não sei). */
+    val uidTrafficBytesSinceStart: Long? = null,
+    /** `true` = houve crescimento; `false` = nenhum; `null` = não foi possível afirmar. */
+    val uidTrafficGrew: Boolean? = null,
+    /** Perfis IPv6 distintos descartados nesta sessão (ex.: "ICMPv6 neighbor-solicitation ..."). */
+    val ipv6Profiles: List<String> = emptyList(),
+    /** Processos declarados no manifesto do app alvo (fato estático). */
+    val targetDeclaredProcesses: List<String> = emptyList(),
+    /** `true` quando a contabilidade do UID do alvo cresceu mas nada apareceu no túnel. */
+    val uidTrafficOutsideTunnel: Boolean = false
 )
 
 /**
@@ -333,6 +365,80 @@ object HypothesisBoard {
             }
         ),
         EvidenceClaim(
+            "trafego_do_app_alvo_fora_do_tunel",
+            when {
+                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 &&
+                    counters.tunPacketsTotal == 0 -> Evidence.PROBABLE
+                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 -> Evidence.PROBABLE
+                facts.uidTrafficGrew == false && counters.tunPacketsTotal == 0 -> Evidence.VERIFIED
+                else -> Evidence.UNKNOWN
+            },
+            when {
+                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 ->
+                    "a contabilidade do UID do alvo CRESCEU ${facts.uidTrafficBytesSinceStart?.let { "(+$it B)" } ?: ""} " +
+                        "enquanto nada no TUN foi atribuído a ele — consistente com tráfego do app FORA do túnel " +
+                        "(PROBABLE; a contabilidade é por UID, não por processo, e a VPN per-app não é prova de captura)"
+                facts.uidTrafficGrew == false && counters.tunPacketsTotal == 0 ->
+                    "contabilidade do UID do alvo NÃO cresceu e o TUN está vazio: nesta janela o app não fez rede " +
+                        "(por UID; processos auxiliares do mesmo pacote entram nessa conta)"
+                facts.uidTrafficGrew == true ->
+                    "houve tráfego no UID do alvo e há fluxo verificado no TUN"
+                !facts.uidTrafficAvailable ->
+                    "sem contabilidade por UID (TrafficStats indisponível) — não é possível separar \"app sem rede\" " +
+                        "de \"tráfego fora do túnel\"
+                else -> "contabilidade por UID ainda sem variação legível"
+            }
+        ),
+        EvidenceClaim(
+            "ipv6_descartado_e_descoberta_local",
+            when {
+                counters.tunIpv6DescobertaLocal > 0 && counters.tunIpv6Unicast == 0 -> Evidence.PROBABLE
+                counters.tunIpv6Unicast > 0 -> Evidence.VERIFIED
+                else -> Evidence.UNKNOWN
+            },
+            when {
+                counters.tunIpv6Unicast > 0 ->
+                    "${counters.tunIpv6Unicast} pacote(s) IPv6 em endereço UNICAST descartado(s) — não é apenas " +
+                        "descoberta local; antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm}"
+                counters.tunIpv6DescobertaLocal > 0 ->
+                    "todo o IPv6 descartado até agora (${counters.tunIpv6DescobertaLocal} pacote(s)) é descoberta local " +
+                        "(multicast/link-local: vizinhança/MLD) — compatível com o sistema, NÃO com tráfego de jogo " +
+                        "; unicast=${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}"
+                counters.tunIpv6Packets > 0 ->
+                    "há IPv6 no TUN mas sem classificação registrada ainda"
+                else -> "nenhum pacote IPv6 observado no TUN"
+            }
+        ),
+        EvidenceClaim(
+            "dns_observado_para_os_destinos",
+            when {
+                counters.dnsRespostasRegistradas == 0 -> Evidence.UNKNOWN
+                counters.tunFluxosDestinoResolvido > 0 -> Evidence.PROBABLE
+                else -> Evidence.PROBABLE
+            },
+            when {
+                counters.dnsRespostasRegistradas == 0 ->
+                    "nenhuma resposta DNS passou pelo túnel — impossível casar destinos com nomes"
+                counters.tunFluxosDestinoResolvido > 0 ->
+                    "${counters.tunFluxosDestinoResolvido} fluxo(s) foram para endereço que consta de resposta DNS " +
+                        "observada (${counters.dnsRespostasRegistradas} resposta(s) guardada(s)) — a resolução passou pelo túnel"
+                else ->
+                    "${counters.dnsRespostasRegistradas} resposta(s) DNS guardada(s) e nenhum fluxo casou com elas: " +
+                        "os destinos usados não vieram do DNS do túnel (DoH/DoT/cache do sistema — HYPOTHESIS, não causa)"
+            }
+        ),
+        EvidenceClaim(
+            "processos_do_app_alvo",
+            if (facts.targetDeclaredProcesses.isEmpty()) Evidence.UNKNOWN else Evidence.VERIFIED,
+            if (facts.targetDeclaredProcesses.isEmpty()) {
+                "não foi possível listar processos do app alvo (API restringe processos de outro UID; " +
+                    "lista vazia não prova execução)"
+            } else {
+                "processos declarados no manifesto: " + facts.targetDeclaredProcesses.joinToString(", ") +
+                    " — é fato estático (não prova execução); no device, cada um teria o MESMO UID ${facts.targetUid ?: "?"}"
+            }
+        ),
+        EvidenceClaim(
             "wzm_resolve_cdni_por_mecanismo_proprio",
             when {
                 counters.tunDohCandidates > 0 || counters.tunTcp443Externo > 0 -> Evidence.PROBABLE
@@ -483,7 +589,11 @@ object TunDiagnostics {
             "listener-tunel=${counters.tcpConnectionsTunel} listener-loopback=${counters.tcpConnectionsLoopback} " +
             "(antes-do-wzm=${counters.loopbackAntesDoWzm} depois-do-wzm=${counters.loopbackDepoisDoWzm}) " +
             "tls-tunel=${counters.tlsOkTunel}/${counters.tlsFailedTunel} " +
-            "tls-loopback=${counters.tlsOkLoopback}/${counters.tlsFailedLoopback}"
+            "tls-loopback=${counters.tlsOkLoopback}/${counters.tlsFailedLoopback} " +
+            "ipv6-descartado=${counters.tunIpv6Packets} (descoberta-local=${counters.tunIpv6DescobertaLocal} " +
+            "multicast-outro=${counters.tunIpv6MulticastOutro} unicast=${counters.tunIpv6Unicast} " +
+            "antes-do-wzm=${counters.tunIpv6AntesDoWzm} depois-do-wzm=${counters.tunIpv6DepoisDoWzm}) " +
+            "destino-resolvido=${counters.tunFluxosDestinoResolvido} respostas-dns=${counters.dnsRespostasRegistradas}"
 }
 
 /** Eventos que o vigia do túnel pode emitir — cada um vira uma linha no log. */

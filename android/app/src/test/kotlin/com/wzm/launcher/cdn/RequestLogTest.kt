@@ -169,12 +169,54 @@ class RequestLogTest {
             "tunIpv6ToCdnTarget=0", "tunToRedirect=1", "tunBounces=1", "tunDiscards=1",
             "tunTcpSyn=1", "tunTcpSynToRedirect=1", "tunTcpSynOther=0", "tunUdpDns53=1",
             "tunUdpDnsNoVirtualDns=1", "tunDotFlows=0", "tunDohCandidates=1",
-            "tunTcp443Externo=0", "tunUidVerifiedFlows=1"
+            "tunTcp443Externo=0", "tunUidVerifiedFlows=1",
+            // M3.6: classificação do IPv6 descartado e rastreio de destino
+            "tunIpv6DescobertaLocal=0", "tunIpv6MulticastOutro=0", "tunIpv6Unicast=0",
+            "tunIpv6AntesDoWzm=0", "tunIpv6DepoisDoWzm=0",
+            "tunFluxosDestinoResolvido=0", "dnsRespostasRegistradas=0", "tunIcmpv4Flows=0"
         )) {
             assertTrue("export deve conter $name", export.contains(name))
         }
         assertTrue("export não pode conter payload", export.contains("nada de payload"))
         assertTrue(export.contains("não são registrados corpos de requisição"))
+    }
+
+    @Test
+    fun ipv6CategoriesAreCountedWithWzmRelation() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(10_000L)
+
+        // antes do WZM: uma solicitação de vizinho (descoberta local)
+        RequestLog.incTunIpv6Category(TrafficClassifier.Ipv6Category.DESCOBERTA_LOCAL, beforeWzm = true)
+        // depois: multicast "outro" e um unicast de verdade
+        RequestLog.incTunIpv6Category(TrafficClassifier.Ipv6Category.MULTICAST_OUTRO, beforeWzm = false)
+        RequestLog.incTunIpv6Category(TrafficClassifier.Ipv6Category.UNICAST, beforeWzm = false)
+
+        val counters = RequestLog.counters.value
+        assertEquals(1, counters.tunIpv6DescobertaLocal)
+        assertEquals(1, counters.tunIpv6MulticastOutro)
+        assertEquals(1, counters.tunIpv6Unicast)
+        assertEquals(1, counters.tunIpv6AntesDoWzm)
+        assertEquals(2, counters.tunIpv6DepoisDoWzm)
+        assertTrue(counters.summary(), counters.summary().contains("descoberta-local 1"))
+        assertTrue(counters.summary(), counters.summary().contains("unicast 1"))
+        assertTrue(counters.compact(), counters.compact().contains("v6-descoberta 1/v6-unicast 1"))
+        assertTrue(RequestLog.exportText(), RequestLog.exportText().contains("tunIpv6Unicast=1"))
+        RequestLog.clearWzmMarker()
+    }
+
+    @Test
+    fun dnsAnswerAndDestinationMatchAreCountedSeparately() {
+        RequestLog.clear()
+        RequestLog.incDnsRespostaRegistrada()
+        RequestLog.incDnsRespostaRegistrada()
+        RequestLog.incTunFluxoDestinoResolvido()
+        val counters = RequestLog.counters.value
+        assertEquals(2, counters.dnsRespostasRegistradas)
+        assertEquals(1, counters.tunFluxosDestinoResolvido)
+        assertTrue(counters.summary(), counters.summary().contains("destino-resolvido 1"))
+        assertTrue(counters.summary(), counters.summary().contains("respostas DNS guardadas 2"))
     }
 
     @Test

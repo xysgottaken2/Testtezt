@@ -291,6 +291,16 @@ bytes + TCP + TLS com a CA local + `GET cdni.meta`), e o `cdni.meta` passou a se
 (~320 B, `min_buildnum=19854920`) em vez de placeholder. Detalhes e o procedimento no device:
 [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
 
+**Onde está o tráfego do app? (M3.6):** o launcher mede, **por UID**, se o alvo movimentou bytes
+(`TrafficAccounting`, `TrafficStats`), lista os processos observáveis/declarados (`ProcessDiscovery`),
+classifica cada pacote IPv6 descartado (`TrafficClassifier`: `descoberta-local` × `multicast-outro` ×
+`unicast`, com contagem antes/depois do WZM e o tipo ICMPv6 nomeado — neighbor-solicitation etc.) e casa o
+destino dos fluxos com as respostas DNS que passaram pelo túnel (`DnsAnswerCache`). Com isso o log separa
+com observação: **"nesta janela o app não fez rede"** × **"o app fez rede e ela não passou pelo túnel"**
+(`PROBABLE`) × **"não foi possível afirmar"** (`UNKNOWN` — API indisponível). Nada de payload, cookie ou
+credencial; nenhuma causa é afirmada sem evidência. Procedimento no device e leitura dos desfechos:
+[docs/research/m3.6-caminho-real-de-rede.md](research/m3.6-caminho-real-de-rede.md).
+
 **Diagnóstico de sessão (M3.3):** como dois testes no mesmo device deram resultados diferentes
 (5 conexões em um, 0 no outro), o launcher passou a registrar dono da conexão, rota/interfaces aplicadas,
 inatividade do túnel e motivo de cada descarte — sem alterar o roteamento. Investigação completa, hipóteses

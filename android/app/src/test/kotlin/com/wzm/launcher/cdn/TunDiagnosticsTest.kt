@@ -143,7 +143,9 @@ class TunDiagnosticsTest {
             "pacotes=12", "ipv4=10", "ipv6=2", "tcp=6", "udp=4", "icmp=0", "invalidos=1",
             "para-alvo-ipv4=5", "para-alvo-ipv6=2", "toRedirect=5", "bounces=5", "descartes=6",
             "syn=6/alvo443=5/outros=1", "dns53=2/virtual=2", "dot=0", "quic/doh=1",
-            "dns-total=3", "dns-cdni-interceptado=1", "dns-encaminhado=2", "tcp-conexoes=5", "tls-falha=5"
+            "dns-total=3", "dns-cdni-interceptado=1", "dns-encaminhado=2", "tcp-conexoes=5", "tls-falha=5",
+            // M3.6: a seção que separa descoberta local de tráfego IPv6 de verdade e o rastreio de destino
+            "ipv6-descartado=2", "descoberta-local=0", "unicast=0", "destino-resolvido=0", "respostas-dns=0"
         )) {
             assertTrue("resumo deve conter $expected", line.contains(expected))
         }

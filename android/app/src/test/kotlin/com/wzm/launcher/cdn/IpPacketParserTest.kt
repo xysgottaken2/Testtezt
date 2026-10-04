@@ -208,6 +208,55 @@ class IpPacketParserTest {
     }
 
     @Test
+    fun icmpv6NeighborSolicitationCarriesItsTypeAndIsClassifiedAsLocalDiscovery() {
+        // 40 B (IPv6) + 8 B (ICMPv6 neighbor-solicitation) — vizinhança, não tráfego de jogo.
+        val icmpv6 = ByteArray(8).also { it[0] = 135.toByte() }
+        val packet = ipv6(
+            TransportKind.ICMPV6.code, icmpv6,
+            dst = v6(0xff02, 0, 0, 0, 0, 0, 1, 0xff00)
+        )
+        val header = ok(packet)
+        assertEquals(135, header.icmpType)
+        assertTrue("brief precisa nomear o tipo", header.brief().contains("neighbor-solicitation"))
+        assertEquals(
+            listOf(TunObservation.IPV6_DESCOBERTA_LOCAL),
+            TunPolicy.observations(header)
+        )
+        assertTrue(
+            "a nota precisa dizer o perfil e a categoria",
+            TunPolicy.decide(header).note.contains("descoberta local")
+        )
+    }
+
+    @Test
+    fun icmpv4EchoRequestIsAlsoInstrumented() {
+        val icmp = ByteArray(8).also { it[0] = 8.toByte() }
+        val packet = ipv4("10.111.222.1", "8.8.8.8", TunnelPackets.PROTO_ICMP, icmp)
+        val header = ok(packet)
+        assertEquals(8, header.icmpType)
+        assertTrue(header.brief().contains("echo-request"))
+        assertEquals(listOf(TunObservation.ICMPV4), TunPolicy.observations(header))
+        assertEquals(TunDiscardReason.PROTO_NAO_SUPORTADO, TunPolicy.decide(header).reason)
+    }
+
+    @Test
+    fun ipv6UnicastIsClassifiedAsRealTrafficNotDiscovery() {
+        val tcp = tcpSegment(51000, 443, TunnelPackets.FLAG_SYN)
+        val packet = ipv6(
+            TunnelPackets.PROTO_TCP, tcp,
+            src = v6(0x2a00, 0x1450, 0, 0, 0, 0, 0, 1),
+            dst = v6(0x2a00, 0x1450, 0, 0, 0, 0, 0, 2)
+        )
+        val header = ok(packet)
+        assertEquals(
+            listOf(TunObservation.TCP_SYN, TunObservation.TCP_SYN_OUTRO_DESTINO, TunObservation.TCP_443_EXTERNO,
+                TunObservation.IPV6_UNICAST),
+            TunPolicy.observations(header)
+        )
+        assertTrue(TunPolicy.decide(header).note.contains("categoria=unicast"))
+    }
+
+    @Test
     fun ipv6ExtensionHeaderIsWalkedAndDoTIsFlagged() {
         val tcp = tcpSegment(51000, CdnRouterConfig.DOT_PORT, TunnelPackets.FLAG_SYN)
         val hopByHop = ByteArray(8).also { it[0] = TunnelPackets.PROTO_TCP.toByte(); it[1] = 0 }

@@ -98,6 +98,36 @@ class CdnVpnService : VpnService() {
     /** Evita repetir a mesma linha de log (pacotes repetidos geram milhares de eventos). */
     private val loggedOnce: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
+    // ---- M3.6: instrumentação para separar "app sem rede" de "tráfego fora do túnel" ----
+
+    /** Cache observacional nome→IP das respostas DNS que passaram pelo túnel. */
+    private val dnsAnswers = DnsAnswerCache()
+
+    /** Amostra inicial dos contadores do UID do alvo (null quando indisponível/não iniciada). */
+    @Volatile
+    private var uidTrafficStart: TrafficAccounting.UidStats? = null
+
+    /** Última amostra do UID do alvo (base do delta do vigia). */
+    @Volatile
+    private var uidTrafficLast: TrafficAccounting.UidStats? = null
+
+    /** Perfis IPv6 distintos já logados nesta sessão (limitado; só metadados de cabeçalho). */
+    private val ipv6Profiles: MutableSet<String> = Collections.synchronizedSet(linkedSetOf<String>())
+
+    /** Processos declarados no manifesto do app alvo (fato estático, lido uma vez). */
+    @Volatile
+    private var targetDeclaredProcesses: List<String> = emptyList()
+
+    /** Quantas amostras de contabilidade o vigia já fez (usado só para não repetir linhas iguais). */
+    private var trafficSampleTicks = 0
+
+    /** Pacote/UID do alvo da sessão (preenchidos no `establish`, antes de qualquer amostra). */
+    @Volatile
+    private var targetPackageName: String = ""
+
+    @Volatile
+    private var targetUidValue: Int? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
@@ -160,6 +190,8 @@ class CdnVpnService : VpnService() {
         }
 
         val target = wzmPackage ?: "(sem pacote alvo)"
+        targetPackageName = target
+        targetUidValue = AndroidDiagnostics.targetUid(this, target)
         val privateDnsInfo = AndroidDiagnostics.privateDns()
         val privateDnsReadable = privateDnsInfo.first
         val pDnsMode = privateDnsInfo.second
@@ -211,6 +243,71 @@ class CdnVpnService : VpnService() {
                 "${CdnRouterConfig.VPN_ROUTE_PREFIX}, ${CdnRouterConfig.INTERCEPT_HOSTS.joinToString()} -> " +
                 "${CdnRouterConfig.REDIRECT_TO}"
         )
+        // M3.6 (item 1/2): baseline da contabilidade por UID e retrato dos processos. Sem eles,
+        // "nada no TUN" não distingue "o app não fez rede" de "a rede não passou pelo túnel".
+        logUidAccounting("início da sessão", rememberBaseline = true)
+        logProcessInventory(target)
+    }
+
+    /** Amostra a contabilidade do UID do alvo e, opcionalmente, guarda como baseline da sessão. */
+    private fun logUidAccounting(label: String, rememberBaseline: Boolean = false) {
+        val target = targetPackageName
+        val uid = targetUidValue
+        if (target.isEmpty() || uid == null) {
+            RequestLog.add("DIAG", "contabilidade do UID do alvo: INDISPONIVEL (sem pacote/UID do alvo)")
+            return
+        }
+        val stats = TrafficAccounting.snapshot(uid)
+        if (rememberBaseline) {
+            uidTrafficStart = stats
+            uidTrafficLast = stats
+        }
+        val baseline = if (rememberBaseline) null else uidTrafficStart
+        val delta = baseline?.let { TrafficAccounting.delta(it, stats) }
+        val grew = baseline?.let { TrafficAccounting.grew(it, stats) }
+        RequestLog.add("DIAG", TrafficAccounting.line(label, stats, delta))
+        if (grew != null) {
+            RequestLog.add(
+                "DIAG",
+                "contabilidade do UID $uid ($label): variação desde o início = " +
+                    (if (grew) "CRESCEU (houve tráfego de rede do app)" else "sem crescimento (nenhum byte novo)") +
+                    " — conta por UID: processos auxiliares do mesmo pacote entram juntos"
+            )
+        }
+        refreshTrafficFacts(stats)
+    }
+
+    /**
+     * Inventário de processos (M3.6 item 1): processos do launcher (observáveis), processos
+     * **declarados** no manifesto do alvo (fato estático) e o resultado — frequentemente vazio e
+     * sempre explicado — da tentativa de listar processos do alvo em execução.
+     */
+    private fun logProcessInventory(target: String) {
+        val uid = targetUidValue
+        val facts = ProcessDiscovery.collect(this, target, uid)
+        targetDeclaredProcesses = facts.targetDeclaredProcesses
+        RequestLog.add("DIAG", "inventário de processos (leitura apenas; nenhum processo é alterado):")
+        ProcessDiscovery.describe(facts).forEach { line -> RequestLog.add("DIAG", line) }
+    }
+
+    /** Atualiza os fatos do quadro de evidências com a contabilidade e com os perfis IPv6 vistos. */
+    private fun refreshTrafficFacts(stats: TrafficAccounting.UidStats) {
+        val baseline = uidTrafficStart
+        val grew = baseline?.let { TrafficAccounting.grew(it, stats) }
+        val bytes = baseline?.let { before ->
+            val a = stats.totalBytes
+            val b = before.totalBytes
+            if (a != null && b != null) a - b else null
+        }
+        val outsideTunnel = grew == true && RequestLog.counters.value.tunUidVerifiedFlows == 0
+        diagFacts = diagFacts.copy(
+            uidTrafficAvailable = stats.available,
+            uidTrafficBytesSinceStart = bytes,
+            uidTrafficGrew = grew,
+            ipv6Profiles = ipv6Profiles.toList(),
+            targetDeclaredProcesses = targetDeclaredProcesses,
+            uidTrafficOutsideTunnel = outsideTunnel
+        )
     }
 
     /**
@@ -260,6 +357,7 @@ class CdnVpnService : VpnService() {
             for (event in watchdog.poll(now)) {
                 RequestLog.add("DIAG", watchdog.messageFor(event, RequestLog.counters.value, now))
             }
+            emitTrafficSample()
             emitEvidenceBoard("periódico")
         }
     }
@@ -274,6 +372,7 @@ class CdnVpnService : VpnService() {
         tunnelAddressAssigned: Boolean
     ) {
         val status = CdnRouterController.status.value
+        val previous = diagFacts
         diagFacts = DiagFacts(
             perAppApplied = perAppApplied,
             perAppError = perAppError,
@@ -284,8 +383,76 @@ class CdnVpnService : VpnService() {
             privateDnsSpecifier = privateDnsSpecifier,
             tunnelAddressAssigned = tunnelAddressAssigned,
             tunnelListenerBound = status.tunnelBound,
-            routerPhase = status.phase.label
+            routerPhase = status.phase.label,
+            // M3.6: campos de contabilidade/perfis/processos não vêm do lifecycle — são preservados.
+            uidTrafficAvailable = previous.uidTrafficAvailable,
+            uidTrafficBytesSinceStart = previous.uidTrafficBytesSinceStart,
+            uidTrafficGrew = previous.uidTrafficGrew,
+            ipv6Profiles = previous.ipv6Profiles,
+            targetDeclaredProcesses = previous.targetDeclaredProcesses,
+            uidTrafficOutsideTunnel = previous.uidTrafficOutsideTunnel
         )
+    }
+
+    /**
+     * Amostra periódica do vigia (M3.6): contabilidade do UID do alvo desde a última amostra e
+     * perfis IPv6 vistos. É esta linha que separa com observação as duas leituras do silêncio do TUN:
+     * "o app não fez rede" × "o app fez rede e ela não passou pelo túnel".
+     */
+    private fun emitTrafficSample() {
+        val uid = targetUidValue
+        if (uid == null) return
+        val stats = TrafficAccounting.snapshot(uid)
+        val last = uidTrafficLast
+        uidTrafficLast = stats
+        val deltaWindow = last?.let { TrafficAccounting.delta(it, stats) }
+        val deltaSession = uidTrafficStart?.let { TrafficAccounting.delta(it, stats) }
+        val changed = last?.let { TrafficAccounting.grew(it, stats) } == true
+        trafficSampleTicks++
+        // Só imprime quando mudou (o evento interessante) ou a cada 5 ciclos (~100 s), para a
+        // contabilidade não empurrar as outras evidências para fora do buffer de 400 linhas.
+        if (changed || trafficSampleTicks % 5 == 1) {
+            RequestLog.add("DIAG", TrafficAccounting.line("vigia", stats, deltaWindow))
+            if (deltaSession != null) {
+                RequestLog.add("DIAG", "contabilidade do UID $uid desde o início da sessão: $deltaSession")
+            }
+        }
+        refreshTrafficFacts(stats)
+        val counters = RequestLog.counters.value
+        val profiles = ipv6Profiles.toList()
+        if (counters.tunIpv6Packets > 0) {
+            RequestLog.add(
+                "DIAG",
+                "IPv6 descartado até agora: descoberta-local=${counters.tunIpv6DescobertaLocal} " +
+                    "multicast-outro=${counters.tunIpv6MulticastOutro} unicast=${counters.tunIpv6Unicast} " +
+                    "(antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm}); " +
+                    "perfis: " + (profiles.ifEmpty { listOf("nenhum") }.joinToString(" | "))
+            )
+            if (counters.tunIpv6Unicast == 0 && counters.tunIpv6DescobertaLocal > 0) {
+                RequestLog.add(
+                    "DIAG",
+                    "leitura do IPv6: todo o descarte é multicast/link-local de descoberta local — " +
+                        "compatível com o sistema Android, NÃO com tráfego do jogo " +
+                        "(nenhuma causalidade é afirmada; a autoria exige UID)"
+                )
+            }
+        }
+        // Sem baseline (nenhuma conta disponível) NÃO se afirma nada: `grew(null, null)` não existe.
+        val sessionGrew = uidTrafficStart?.let { TrafficAccounting.grew(it, stats) }
+        val trafficNote = when {
+            !stats.available ->
+                "contabilidade por UID indisponível — não dá para afirmar se houve tráfego do app"
+            sessionGrew == null ->
+                "contabilidade por UID sem amostra inicial — não dá para afirmar se houve tráfego do app"
+            sessionGrew && counters.tunPacketsTotal == 0 ->
+                "o UID do alvo movimentou bytes e NADA apareceu no TUN: tráfego do app fora do túnel (PROBABLE)"
+            !sessionGrew && counters.tunPacketsTotal == 0 ->
+                "o UID do alvo não movimentou bytes e o TUN está vazio: nesta janela o app não fez rede (por UID)"
+            else -> null
+        }
+        if (trafficNote != null && loggedOnce.add("trafficNote|" + trafficNote.substringBefore(':'))) {
+            RequestLog.add("DIAG", trafficNote)
+        }
     }
 
     /** Escreve o quadro de evidências (VERIFIED/PROBABLE/HYPOTHESIS/UNKNOWN) no log. */
@@ -353,6 +520,26 @@ class CdnVpnService : VpnService() {
 
         watchdog.onPacket(System.currentTimeMillis())
         TunPolicy.observations(header).forEach { RequestLog.incTunObservation(it) }
+        // M3.6: o IPv6 descartado é classificado (descoberta local × multicast × unicast) e separado
+        // por relação com o WZM iniciado — "antes" nunca pode ser atribuído ao jogo.
+        if (header.isIpv6) {
+            val category = TrafficClassifier.ipv6Category(header)
+            RequestLog.incTunIpv6Category(category, RequestLog.isBeforeWzmStart(System.currentTimeMillis()))
+            val profile = TrafficClassifier.ipv6Profile(header).label()
+            if (ipv6Profiles.size < 32) ipv6Profiles.add(profile)
+        }
+        // M3.6: destino externo que casa com resposta DNS observada — a resolução passou pelo túnel.
+        if (!header.isCdnTarget && header.dstPort != null && !header.isDnsPort) {
+            dnsAnswers.match(header.dstAddress)?.let { entry ->
+                RequestLog.incTunFluxoDestinoResolvido()
+                logThrottled(
+                    "TUN",
+                    "destino ${header.dstAddress} consta de resposta DNS observada para ${entry.host} " +
+                        "(${String.format(java.util.Locale.US, "%.1f", entry.ageSeconds(System.currentTimeMillis()))} s atrás, " +
+                        "via ${entry.source}) — a resolução passou pelo túnel (autoria continua sendo do UID)"
+                )
+            }
+        }
         val decision = TunPolicy.decide(header)
 
         when (decision.action) {
@@ -378,6 +565,13 @@ class CdnVpnService : VpnService() {
         val intercepted = dnsResponder.answer(dnsPayload, dnsPayload.size)
         if (intercepted != null) {
             RequestLog.incDnsIntercepted()
+            // M3.6: guarda o par nome→IP que NÓS devolvemos (é assim que o destino do jogo entra no
+            // rastreio) — somente endereços, nenhum conteúdo de payload.
+            val addresses = DnsMessage.extractARecords(intercepted, intercepted.size)
+            if (addresses.isNotEmpty()) {
+                dnsAnswers.record(question?.name ?: "?", addresses, source = "resposta virtual do túnel")
+                RequestLog.incDnsRespostaRegistrada()
+            }
             watchdog.onCdnDns(System.currentTimeMillis())
             RequestLog.add(
                 "DNS",
@@ -413,10 +607,16 @@ class CdnVpnService : VpnService() {
             return
         }
         RequestLog.incDnsForwarded()
+        // M3.6: guarda os endereços da resposta do DNS real (só endereços) para casar destinos depois.
+        val upstreamAddresses = DnsMessage.extractARecords(upstream, upstream.size)
+        if (upstreamAddresses.isNotEmpty()) {
+            dnsAnswers.record(name, upstreamAddresses, source = "DNS real encaminhado pelo túnel")
+            RequestLog.incDnsRespostaRegistrada()
+        }
         logThrottled(
             "DNS",
             "$name (tipo $type) $origin servidor=$serverClass -> encaminhado ao DNS real " +
-                "(não é host CDNI; resposta ${upstream.size} B)"
+                "(não é host CDNI; resposta ${upstream.size} B; A=${upstreamAddresses.joinToString(",").ifEmpty { "sem registros A" }})"
         )
         writePacket(
             output,
@@ -474,8 +674,15 @@ class CdnVpnService : VpnService() {
                 append("respondido com RST (nada é inventado)")
             }
         }
-        // IPv6 é registrado por extenso (uma vez por perfil de fluxo) — nunca como "inválido".
-        logThrottled("TUN", reason.line(header.brief(), suffix))
+        // IPv6 é registrado por extenso (uma vez por perfil de fluxo) — nunca como "inválido",
+        // e agora com a relação temporal (antes/depois do WZM) e o perfil classificado.
+        if (header.isIpv6) {
+            val relation = RequestLog.connectionOrigin(System.currentTimeMillis())
+            val withRelation = (if (suffix.isEmpty()) "" else "$suffix ") + "• $relation"
+            logThrottled("TUN", reason.line(header.brief(), withRelation))
+        } else {
+            logThrottled("TUN", reason.line(header.brief(), suffix))
+        }
         if (reset != null) writePacket(output, reset, direction = "tunel->app(RST)")
     }
 

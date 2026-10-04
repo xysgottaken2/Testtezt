@@ -59,7 +59,24 @@ data class RequestCounters(
     /** Conexões de loopback que ocorreram ANTES do WZM iniciado (não podem ser dele). */
     val loopbackAntesDoWzm: Int = 0,
     /** Conexões de loopback que ocorreram DEPOIS do WZM iniciado (ainda assim: só diagnóstico). */
-    val loopbackDepoisDoWzm: Int = 0
+    val loopbackDepoisDoWzm: Int = 0,
+    // ---- M3.6: classificação do IPv6 descartado e rastreio do destino ----
+    /** IPv6 descartado que é descoberta local (ICMPv6 vizinhança/MLD em multicast/link-local). */
+    val tunIpv6DescobertaLocal: Int = 0,
+    /** IPv6 descartado em multicast que NÃO é descoberta (ex.: outro tráfego de grupo). */
+    val tunIpv6MulticastOutro: Int = 0,
+    /** IPv6 descartado em endereço unicast (link-local ou global) — tráfego "de verdade". */
+    val tunIpv6Unicast: Int = 0,
+    /** Pacotes IPv6 vistos ANTES do WZM iniciado (separação temporal, como no loopback). */
+    val tunIpv6AntesDoWzm: Int = 0,
+    /** Pacotes IPv6 vistos DEPOIS do WZM iniciado. */
+    val tunIpv6DepoisDoWzm: Int = 0,
+    /** Fluxos cujo destino casou com uma resposta DNS observada no túnel (nome → IP). */
+    val tunFluxosDestinoResolvido: Int = 0,
+    /** Respostas DNS (nome → endereços) guardadas no cache observacional. */
+    val dnsRespostasRegistradas: Int = 0,
+    /** ICMPv4 observado no túnel (simetria de instrumentação com o ICMPv6). */
+    val tunIcmpv4Flows: Int = 0
 ) {
     /** Linha única com todos os contadores (UI e cabeçalho de exportação). */
     fun summary(): String =
@@ -71,7 +88,10 @@ data class RequestCounters(
             "(diagnóstico; antes-do-WZM $loopbackAntesDoWzm, depois $loopbackDepoisDoWzm) • " +
             "TUN: $tunPacketsTotal pacotes (IPv4 $tunIpv4Packets / IPv6 $tunIpv6Packets / inválidos $tunInvalidPackets; " +
             "TCP $tunTcpPackets / UDP $tunUdpPackets / ICMP $tunIcmpPackets) • " +
-            "alvo-CDNI: $tunToRedirect bounce $tunBounces / $tunDiscards descartes"
+            "alvo-CDNI: $tunToRedirect bounce $tunBounces / $tunDiscards descartes • " +
+            "IPv6 descartado: descoberta-local $tunIpv6DescobertaLocal / multicast-outro $tunIpv6MulticastOutro / " +
+            "unicast $tunIpv6Unicast (antes-do-WZM $tunIpv6AntesDoWzm, depois $tunIpv6DepoisDoWzm) • " +
+            "destino-resolvido $tunFluxosDestinoResolvido (respostas DNS guardadas $dnsRespostasRegistradas)"
 
     /** Versão curta para os cards. */
     fun compact(): String =
@@ -79,7 +99,8 @@ data class RequestCounters(
             "TLS $tlsOk/$tlsFailed (túnel $tlsOkTunel/$tlsFailedTunel) • " +
             "listener túnel $tcpConnectionsTunel / loopback $tcpConnectionsLoopback • " +
             "TUN $tunPacketsTotal(v4 $tunIpv4Packets/v6 $tunIpv6Packets/inv $tunInvalidPackets) " +
-            "bounce $tunBounces desc $tunDiscards"
+            "bounce $tunBounces desc $tunDiscards • v6-descoberta $tunIpv6DescobertaLocal/v6-unicast $tunIpv6Unicast • " +
+            "destino-resolvido $tunFluxosDestinoResolvido"
 
     /** Linha `chave=valor` com os nomes exatos usados no log e no relatório (export .txt). */
     fun exportLine(): String =
@@ -98,7 +119,11 @@ data class RequestCounters(
             "tcpConnectionsTunel=$tcpConnectionsTunel tcpConnectionsLoopback=$tcpConnectionsLoopback " +
             "tlsOkTunel=$tlsOkTunel tlsFailedTunel=$tlsFailedTunel " +
             "tlsOkLoopback=$tlsOkLoopback tlsFailedLoopback=$tlsFailedLoopback " +
-            "loopbackAntesDoWzm=$loopbackAntesDoWzm loopbackDepoisDoWzm=$loopbackDepoisDoWzm"
+            "loopbackAntesDoWzm=$loopbackAntesDoWzm loopbackDepoisDoWzm=$loopbackDepoisDoWzm " +
+            "tunIpv6DescobertaLocal=$tunIpv6DescobertaLocal tunIpv6MulticastOutro=$tunIpv6MulticastOutro " +
+            "tunIpv6Unicast=$tunIpv6Unicast tunIpv6AntesDoWzm=$tunIpv6AntesDoWzm " +
+            "tunIpv6DepoisDoWzm=$tunIpv6DepoisDoWzm tunFluxosDestinoResolvido=$tunFluxosDestinoResolvido " +
+            "dnsRespostasRegistradas=$dnsRespostasRegistradas tunIcmpv4Flows=$tunIcmpv4Flows"
 }
 
 /**
@@ -173,6 +198,14 @@ object RequestLog {
     private val tlsFailedLoopback = AtomicInteger(0)
     private val loopbackAntesDoWzm = AtomicInteger(0)
     private val loopbackDepoisDoWzm = AtomicInteger(0)
+    private val tunIpv6DescobertaLocal = AtomicInteger(0)
+    private val tunIpv6MulticastOutro = AtomicInteger(0)
+    private val tunIpv6Unicast = AtomicInteger(0)
+    private val tunIpv6AntesDoWzm = AtomicInteger(0)
+    private val tunIpv6DepoisDoWzm = AtomicInteger(0)
+    private val tunFluxosDestinoResolvido = AtomicInteger(0)
+    private val dnsRespostasRegistradas = AtomicInteger(0)
+    private val tunIcmpv4Flows = AtomicInteger(0)
 
     @Volatile
     private var sink: LogSink? = null
@@ -250,6 +283,36 @@ object RequestLog {
     fun incTunUidVerifiedFlow() { tunUidVerifiedFlows.incrementAndGet(); publishCounters() }
 
     /** Registra uma observação de caminho ([TunObservation]) no contador correspondente. */
+    /**
+     * IPv6 descartado, classificado (M3.6) — descoberta local, multicast outro ou unicast — e
+     * separado por relação com o WZM iniciado. É o que permite dizer se o IPv6 descartado
+     * ocorreu antes ou depois de o jogo abrir, em vez de supor que é dele.
+     */
+    fun incTunIpv6Category(category: TrafficClassifier.Ipv6Category, beforeWzm: Boolean) {
+        when (category) {
+            TrafficClassifier.Ipv6Category.DESCOBERTA_LOCAL -> tunIpv6DescobertaLocal.incrementAndGet()
+            TrafficClassifier.Ipv6Category.MULTICAST_OUTRO -> tunIpv6MulticastOutro.incrementAndGet()
+            TrafficClassifier.Ipv6Category.UNICAST -> tunIpv6Unicast.incrementAndGet()
+        }
+        if (beforeWzm) tunIpv6AntesDoWzm.incrementAndGet() else tunIpv6DepoisDoWzm.incrementAndGet()
+        publishCounters()
+    }
+
+    fun incTunFluxoDestinoResolvido() {
+        tunFluxosDestinoResolvido.incrementAndGet()
+        publishCounters()
+    }
+
+    fun incDnsRespostaRegistrada() {
+        dnsRespostasRegistradas.incrementAndGet()
+        publishCounters()
+    }
+
+    fun incTunIcmpv4Flow() {
+        tunIcmpv4Flows.incrementAndGet()
+        publishCounters()
+    }
+
     fun incTunObservation(observation: TunObservation) {
         when (observation) {
             TunObservation.TCP_SYN -> tunTcpSyn.incrementAndGet()
@@ -260,6 +323,12 @@ object RequestLog {
             TunObservation.FLUXO_DOT -> tunDotFlows.incrementAndGet()
             TunObservation.TCP_443_EXTERNO -> tunTcp443Externo.incrementAndGet()
             TunObservation.UDP_443_QUIC_DOH -> tunDohCandidates.incrementAndGet()
+            // M3.6: categorias de IPv6 e ICMPv4 são contadas com relação temporal própria
+            // (incTunIpv6Category) — aqui só o ICMPv4 genérico.
+            TunObservation.ICMPV4 -> tunIcmpv4Flows.incrementAndGet()
+            TunObservation.IPV6_DESCOBERTA_LOCAL,
+            TunObservation.IPV6_MULTICAST_OUTRO,
+            TunObservation.IPV6_UNICAST -> Unit
         }
         publishCounters()
     }
@@ -302,6 +371,14 @@ object RequestLog {
             tlsOkLoopback = tlsOkLoopback.get(),
             tlsFailedLoopback = tlsFailedLoopback.get(),
             loopbackAntesDoWzm = loopbackAntesDoWzm.get(),
+            tunIpv6DescobertaLocal = tunIpv6DescobertaLocal.get(),
+            tunIpv6MulticastOutro = tunIpv6MulticastOutro.get(),
+            tunIpv6Unicast = tunIpv6Unicast.get(),
+            tunIpv6AntesDoWzm = tunIpv6AntesDoWzm.get(),
+            tunIpv6DepoisDoWzm = tunIpv6DepoisDoWzm.get(),
+            tunFluxosDestinoResolvido = tunFluxosDestinoResolvido.get(),
+            dnsRespostasRegistradas = dnsRespostasRegistradas.get(),
+            tunIcmpv4Flows = tunIcmpv4Flows.get(),
             loopbackDepoisDoWzm = loopbackDepoisDoWzm.get()
         )
     }
@@ -320,6 +397,9 @@ object RequestLog {
         tcpConnectionsTunel.set(0); tcpConnectionsLoopback.set(0)
         tlsOkTunel.set(0); tlsFailedTunel.set(0); tlsOkLoopback.set(0); tlsFailedLoopback.set(0)
         loopbackAntesDoWzm.set(0); loopbackDepoisDoWzm.set(0)
+        tunIpv6DescobertaLocal.set(0); tunIpv6MulticastOutro.set(0); tunIpv6Unicast.set(0)
+        tunIpv6AntesDoWzm.set(0); tunIpv6DepoisDoWzm.set(0)
+        tunFluxosDestinoResolvido.set(0); dnsRespostasRegistradas.set(0); tunIcmpv4Flows.set(0)
         publishCounters()
     }
 

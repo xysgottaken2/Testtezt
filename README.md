@@ -64,6 +64,7 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
 | [M4.0 — “Verificando atualizações”](docs/research/m4.0-verificando-atualizacoes.md) | **NOVO M4.0:** dá para pular a verificação de atualização? `CANNOT_SKIP_DIRECTLY` + cadeia concreta + scanner do APK |
+| [M3.6 — Por que o tráfego do WZM não aparece no TUN](docs/research/m3.6-caminho-real-de-rede.md) | **NOVO M3.6:** contabilidade por UID, processos do alvo, IPv6 classificado (descoberta local × unicast), casamento de destino DNS — para separar "o app não fez rede" de "a rede não passou pelo túnel" |
 | [M3.5 — Loopback separado + teste sintético](docs/research/m3.5-loopback-e-teste-sintetico.md) | **NOVO M3.5:** `127.0.0.1:443` só diagnóstico (antes/depois do WZM), listener do túnel com peer/UID, botão TESTE SINTÉTICO e `cdni.meta` real |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |

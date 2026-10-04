@@ -17,7 +17,13 @@ class HypothesisBoardTest {
         mode: String? = "off",
         specifier: String? = null,
         tunnelListenerBound: Boolean = false,
-        tunnelAddressAssigned: Boolean = true
+        tunnelAddressAssigned: Boolean = true,
+        uidTrafficAvailable: Boolean = false,
+        uidTrafficBytesSinceStart: Long? = null,
+        uidTrafficGrew: Boolean? = null,
+        ipv6Profiles: List<String> = emptyList(),
+        targetDeclaredProcesses: List<String> = listOf("com.activision.callofduty.warzone"),
+        uidTrafficOutsideTunnel: Boolean = false
     ) = DiagFacts(
         perAppApplied = perAppApplied,
         perAppError = if (perAppApplied) null else "sem pacote alvo",
@@ -28,7 +34,13 @@ class HypothesisBoardTest {
         privateDnsSpecifier = specifier,
         tunnelAddressAssigned = tunnelAddressAssigned,
         tunnelListenerBound = tunnelListenerBound,
-        routerPhase = RouterPhase.LOCAL_SERVER_READY.label
+        routerPhase = RouterPhase.LOCAL_SERVER_READY.label,
+        uidTrafficAvailable = uidTrafficAvailable,
+        uidTrafficBytesSinceStart = uidTrafficBytesSinceStart,
+        uidTrafficGrew = uidTrafficGrew,
+        ipv6Profiles = ipv6Profiles,
+        targetDeclaredProcesses = targetDeclaredProcesses,
+        uidTrafficOutsideTunnel = uidTrafficOutsideTunnel
     )
 
     private fun claim(counters: RequestCounters, id: String, facts: DiagFacts = baseFacts()): EvidenceClaim =
@@ -136,6 +148,91 @@ class HypothesisBoardTest {
         )
         assertTrue(claim.detail.contains("antes do WZM iniciado=5"))
         assertTrue(claim.detail.contains("depois=0"))
+    }
+
+    @Test
+    fun uidTrafficGrowthWithoutAnythingInTunnelIsProbableTrafficOutsideIt() {
+        // O cenário exato do device em 2026-10-04: TUN silencioso, mas o UID do alvo mexeu bytes.
+        val facts = baseFacts(uidTrafficAvailable = true, uidTrafficBytesSinceStart = 1_500_000, uidTrafficGrew = true)
+        val claim = claim(RequestCounters(), "trafego_do_app_alvo_fora_do_tunel", facts)
+        assertEquals(Evidence.PROBABLE, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("CRESCEU"))
+        assertTrue(claim.detail, claim.detail.contains("FORA do túnel"))
+        assertFalse("não pode afirmar causalidade", claim.detail.contains("por causa"))
+        assertTrue("precisa lembrar que a conta é por UID", claim.detail.contains("por UID"))
+    }
+
+    @Test
+    fun noGrowthWithEmptyTunnelIsVerifiedThatTheAppDidNotUseTheNetwork() {
+        val facts = baseFacts(uidTrafficAvailable = true, uidTrafficGrew = false)
+        val claim = claim(RequestCounters(), "trafego_do_app_alvo_fora_do_tunel", facts)
+        assertEquals(Evidence.VERIFIED, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("não fez rede"))
+    }
+
+    @Test
+    fun withoutUidAccountingTheClaimStaysUnknown() {
+        val claim = claim(RequestCounters(), "trafego_do_app_alvo_fora_do_tunel", baseFacts())
+        assertEquals(Evidence.UNKNOWN, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("não é possível separar"))
+    }
+
+    @Test
+    fun ipv6OnlyDiscoveryIsProbableAndNeverAttributedToTheGame() {
+        val counters = RequestCounters(
+            tunIpv6Packets = 10,
+            tunIpv6DescobertaLocal = 10,
+            tunIpv6AntesDoWzm = 3,
+            tunIpv6DepoisDoWzm = 7
+        )
+        val claim = claim(counters, "ipv6_descartado_e_descoberta_local")
+        assertEquals(Evidence.PROBABLE, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("descoberta local"))
+        assertTrue("o antes/depois precisa aparecer", claim.detail.contains("depois=7"))
+    }
+
+    @Test
+    fun ipv6UnicastRaisesTheClaimToVerified() {
+        val counters = RequestCounters(
+            tunIpv6Packets = 4,
+            tunIpv6DescobertaLocal = 2,
+            tunIpv6Unicast = 2,
+            tunIpv6DepoisDoWzm = 4
+        )
+        val claim = claim(counters, "ipv6_descartado_e_descoberta_local")
+        assertEquals(Evidence.VERIFIED, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("UNICAST"))
+        assertTrue(claim.detail, claim.detail.contains("não é apenas descoberta local"))
+    }
+
+    @Test
+    fun dnsDestinationMatchingDistinguishesResolvedFromUnresolvedDestinations() {
+        val resolved = claim(RequestCounters(dnsRespostasRegistradas = 2, tunFluxosDestinoResolvido = 1),
+            "dns_observado_para_os_destinos")
+        assertEquals(Evidence.PROBABLE, resolved.level)
+        assertTrue(resolved.detail, resolved.detail.contains("a resolução passou pelo túnel"))
+
+        val unmatched = claim(RequestCounters(dnsRespostasRegistradas = 3), "dns_observado_para_os_destinos")
+        assertTrue(unmatched.detail, unmatched.detail.contains("HYPOTHESIS"))
+        assertTrue(unmatched.detail, unmatched.detail.contains("não causa"))
+
+        val nothing = claim(RequestCounters(), "dns_observado_para_os_destinos")
+        assertEquals(Evidence.UNKNOWN, nothing.level)
+        assertTrue(nothing.detail, nothing.detail.contains("nenhuma resposta DNS passou pelo túnel"))
+    }
+
+    @Test
+    fun declaredProcessesAreVerifiedButDoNotProveExecution() {
+        val claim = claim(RequestCounters(), "processos_do_app_alvo",
+            baseFacts(targetDeclaredProcesses = listOf("com.activision.callofduty.warzone", ":game")))
+        assertEquals(Evidence.VERIFIED, claim.level)
+        assertTrue(claim.detail, claim.detail.contains(":game"))
+        assertTrue(claim.detail, claim.detail.contains("não prova execução"))
+        assertTrue(claim.detail, claim.detail.contains("10692"))
+
+        val unknown = claim(RequestCounters(), "processos_do_app_alvo", baseFacts(targetDeclaredProcesses = emptyList()))
+        assertEquals(Evidence.UNKNOWN, unknown.level)
+        assertTrue(unknown.detail, unknown.detail.contains("lista vazia não prova execução"))
     }
 
     @Test
