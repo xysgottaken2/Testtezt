@@ -12,10 +12,10 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) — roda sozinho em todo push **e** é chamado pelo workflow `build` (job `apk`), de modo que o artifact do APK aparece **nos dois runs** |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** · **artifact do APK verificado pelo CI: `37215523106` (commit `7a4ff2a`, M3.4, jobs `build` + `verify-artifact` verdes, 124 testes JVM sem falhas)** · **`37210339073` (commit `2d49ab0`, só documentação): também gerou e verificou o artifact — prova de que o workflow roda em todo push, sem filtro de `paths`** |
+| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** · **artifact do APK verificado pelo CI: `37215523106` (commit `7a4ff2a`, M3.4, jobs `build` + `verify-artifact` verdes, 124 testes JVM sem falhas)** · **`37210339073` (commit `2d49ab0`, só documentação): também gerou e verificou o artifact — prova de que o workflow roda em todo push, sem filtro de `paths`** · **M3.5.1 (hotfix de UI, commit `3841970`): `37226400849`/`37226396923` (`build` + `verify-artifact`) e `37226400873`/`37226396867` (`test`) verdes, 147 testes JVM sem falhas** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** · **verificado pelo job `verify-artifact` (run `37215523106`, commit `7a4ff2a`): `2dab7e3cb209f1e8044dcab7ec046dab743516d40896aa25427aebe79371470f`** · **`3c03870cd2f0e59ae6a96bd332f099a86aad0c27b4f88ae1cc81aef9a4b1f779` (run `37210339073`, 15.678.268 B)** |
-| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** · **verificado: 15.740.968 B (~14,9 MiB)** |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** · **verificado pelo job `verify-artifact` (run `37215523106`, commit `7a4ff2a`): `2dab7e3cb209f1e8044dcab7ec046dab743516d40896aa25427aebe79371470f`** · **`3c03870cd2f0e59ae6a96bd332f099a86aad0c27b4f88ae1cc81aef9a4b1f779` (run `37210339073`, 15.678.268 B)** · **M3.5: `59523bcd…d8ba` (run `37219267553`, 15.760.408 B)** · **M3.5.1: `ae82470dbd65826de294cc6d000064595204967022e5d6ee54c07ed03168a57f` (run `37226400849`, 15.768.244 B, verificado pelo job `verify-artifact`)** |
+| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** · **verificado: 15.740.968 B (~14,9 MiB)** · **M3.5.1: 15.768.244 B** |
 | Data | 2026-10-04 |
 | Diagnóstico de sessão | M3.3: `[DIAG]` (sessão, per-app, interfaces/rotas aplicadas), `dono=uid=…` nas conexões, motivo de cada descarte, avisos de inatividade do túnel — ver [docs/research/m3.3-diferenca-entre-os-testes.md](research/m3.3-diferenca-entre-os-testes.md) |
 
@@ -29,7 +29,7 @@
 > autoria (`getConnectionOwnerUid` → `INVALID_UID`). Desde o M3.5 o loopback tem contador próprio, é marcado como
 > **diagnóstico secundário** e nunca promove evidência sobre o WZM; ver
 > [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
-> `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **142 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 15 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 8 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 9 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **9 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`** + **8 `SyntheticFlowPathTest`** + `TunnelPacketsTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **147 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 15 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 8 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 9 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **9 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`** + **8 `SyntheticFlowPathTest`** + **5 `LauncherScreenScrollTest`** — este último é **teste de UI de layout na JVM com Robolectric**, roda no mesmo `testDebugUnitTest` do CI), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
 > `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
 
@@ -197,6 +197,18 @@ Ou instala manualmente tocando no `app-debug.apk` no gerenciador de arquivos (pe
 
 Todos os estados refletem instantaneamente na UI via `StateFlow`.
 
+### Tela principal rolável e painel de log (M3.5.1)
+
+O conteúdo inteiro da tela principal vive num **único `LazyColumn` rolável** (M3.5.1). O painel de preview do
+log tem **altura fixa (200 dp)**, rola por dentro e tem o botão **RECOLHER/MOSTRAR** — assim ele não consome o
+gesto de rolagem da tela nem empurra os controles para fora.
+
+> **Bug corrigido (relatado no device em 2026-10-04):** antes, a tela era um `Column` **sem rolagem** com o
+> painel de log em `weight(1f)`. Depois do **TESTE SINTÉTICO**, o relatório aumentava a altura do conteúdo e o
+> botão **INICIAR WARZONE MOBILE** (e os controles seguintes) ficava fora da tela, **inalcançável**. Nada de
+> rede foi alterado: só o container, a altura do painel e a auto-rolagem do preview (que usava `logs.size`
+> em vez do índice exibido).
+
 ---
 
 ## 5. Endpoints do stub (apenas teste, não são CDNI real)
@@ -351,6 +363,7 @@ logados corpos de requisição, cabeçalhos, cookies, tokens nem credenciais —
 - [x] **M3:** `CdnVpnService` (VpnService per-app + DNS em userspace + bounce/RST), `LocalHttpsServer` (:443 no endereço do túnel e loopback), `CdnRouteTable`/`BootstrapEndpoints` (só endpoints com evidência), `RequestLog` unificado, certificado local + botão EXPORTAR CA
 - [x] **M3:** testes JVM novos (`DnsRouterTest`, `TunnelPacketsTest`, `CdnRouteTableTest`, `LocalHttpsServerTest` fim-a-fim com TLS real, `CertificateAssetTest`)
 - [x] **M3 + VER LOGS:** tela de logs no APK (filtros por tag, contadores, status HTTP, timestamps, auto-rolar), botões LIMPAR/COPIAR/SALVAR .TXT, persistência do log em arquivo (sobrevive a reinício do processo) e testes `RequestLogTest` + `FileLogSinkTest`
+- [x] **M3.5.1 (UI):** tela principal rolável (`LazyColumn` único), painel de log com altura fixa + RECOLHER/MOSTRAR e teste de layout em JVM (Robolectric) que exige "INICIAR WARZONE MOBILE alcançável depois do teste sintético"
 - [x] **M3.5:** loopback como diagnóstico secundário (contadores por papel + marcador `WZM iniciado` antes/depois), listener do túnel com peer/UID/pacote, botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** e `cdni.meta` real servido localmente (Android/iOS)
 
 ---
