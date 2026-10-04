@@ -262,7 +262,7 @@ object IpPacketParser {
                         return PacketParse.Ok(
                             header(
                                 packet, read, declared, offset, TransportKind.OUTRO, nextHeader,
-                                extensions, null, null, null, payloadStart = offset
+                                extensions, null, null, null
                             )
                         )
                     }
@@ -280,7 +280,7 @@ object IpPacketParser {
         return PacketParse.Ok(
             header(
                 packet, read, declared, offset, protocol, protocolCode, extensions,
-                ports.src, ports.dst, ports.tcpFlags, ports.headerBytes
+                ports.src, ports.dst, ports.tcpFlags
             )
         )
     }
@@ -295,14 +295,15 @@ object IpPacketParser {
         extensions: List<Int>,
         srcPort: Int?,
         dstPort: Int?,
-        tcpFlags: Int?,
-        payloadStart: Int
+        tcpFlags: Int?
     ): PacketHeader = PacketHeader(
         version = IpVersion.IPV6,
         rawLength = read,
         declaredTotalLength = declared,
-        headerLength = payloadStart,
-        payloadLength = declared - payloadStart,
+        // M3.6: o cabeçalho termina em [headerEnd] (40 B + extensões) — antes o valor vinha do
+        // tamanho do cabeçalho de transporte (ou 0, no ICMP), o que corrompia `payload=` no log.
+        headerLength = headerEnd,
+        payloadLength = declared - headerEnd,
         transportPayloadLength = null,
         protocolCode = protocolCode,
         protocol = protocol,
@@ -313,7 +314,7 @@ object IpPacketParser {
         tcpFlags = tcpFlags,
         hopLimit = packet[7].toInt() and 0xFF,
         extensionHeaders = extensions,
-        icmpType = icmpType(packet, read, payloadStart, protocol)
+        icmpType = icmpType(packet, read, headerEnd, protocol)
     )
 
     private data class TransportPorts(

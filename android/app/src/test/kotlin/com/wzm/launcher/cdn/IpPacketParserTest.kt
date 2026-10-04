@@ -204,6 +204,9 @@ class IpPacketParserTest {
         assertEquals(TransportKind.ICMPV6, header.protocol)
         assertTrue(header.isIcmp)
         assertNull(header.srcPort)
+        // M3.6: regressão da correção de headerLength (antes vinha do cabeçalho de transporte: 0 no ICMP)
+        assertEquals("cabeçalho IPv6 termina em 40 B", 40, header.headerLength)
+        assertEquals("payload depois do cabeçalho IP", 8, header.payloadLength)
         assertEquals(TunDiscardReason.IPV6_SEM_ATENDIMENTO, TunPolicy.decide(header).reason)
     }
 
@@ -265,6 +268,9 @@ class IpPacketParserTest {
         assertEquals(TransportKind.TCP, header.protocol)
         assertEquals(CdnRouterConfig.DOT_PORT, header.dstPort)
         assertEquals(listOf(0), header.extensionHeaders)
+        // M3.6: com 8 B de extensão, o cabeçalho IPv6 termina em 48 B (não nos 20 B do TCP)
+        assertEquals(48, header.headerLength)
+        assertEquals(20, header.payloadLength)
         assertTrue(TunPolicy.decide(header).note.contains("DoT candidato"))
     }
 

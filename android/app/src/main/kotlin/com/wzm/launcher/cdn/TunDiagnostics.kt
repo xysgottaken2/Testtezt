@@ -403,7 +403,8 @@ object HypothesisBoard {
                 counters.tunIpv6DescobertaLocal > 0 ->
                     "todo o IPv6 descartado até agora (${counters.tunIpv6DescobertaLocal} pacote(s)) é descoberta local " +
                         "(multicast/link-local: vizinhança/MLD) — compatível com o sistema, NÃO com tráfego de jogo " +
-                        "; unicast=${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}"
+                        "(unicast=${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}; " +
+                        "antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm})"
                 counters.tunIpv6Packets > 0 ->
                     "há IPv6 no TUN mas sem classificação registrada ainda"
                 else -> "nenhum pacote IPv6 observado no TUN"
