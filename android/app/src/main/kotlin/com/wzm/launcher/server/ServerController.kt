@@ -15,43 +15,44 @@ class ServerController(
     private var server: LocalServer? = null
     private val factory: (String, Int) -> LocalServer = serverFactory ?: { h, p -> EmbeddedLocalServer(h, p) }
 
+    // NOTA: campo privado `currentStatus` (não `status`) para não colidir com fun getStatus()
+    // — a JVM geraria dois métodos getStatus()Lcom/wzm/launcher/server/ServerStatus; (clash).
     @Volatile
-    var status: ServerStatus = ServerStatus.PARADO
-        private set
+    private var currentStatus: ServerStatus = ServerStatus.PARADO
 
     suspend fun start(): ServerStatus = mutex.withLock {
-        if (status == ServerStatus.ONLINE || status == ServerStatus.INICIANDO) return status
+        if (currentStatus == ServerStatus.ONLINE || currentStatus == ServerStatus.INICIANDO) return currentStatus
         try {
-            status = ServerStatus.INICIANDO
+            currentStatus = ServerStatus.INICIANDO
             val s = factory(host, port)
             s.start()
             Thread.sleep(100)
             if (!s.isRunning()) throw IllegalStateException("Server failed to start")
             server = s
-            status = ServerStatus.ONLINE
+            currentStatus = ServerStatus.ONLINE
         } catch (e: Exception) {
             e.printStackTrace()
-            status = ServerStatus.ERRO
+            currentStatus = ServerStatus.ERRO
         }
-        status
+        currentStatus
     }
 
     suspend fun stop(): ServerStatus = mutex.withLock {
-        if (status == ServerStatus.PARADO || status == ServerStatus.PARANDO) return status
+        if (currentStatus == ServerStatus.PARADO || currentStatus == ServerStatus.PARANDO) return currentStatus
         try {
-            status = ServerStatus.PARANDO
+            currentStatus = ServerStatus.PARANDO
             server?.stop()
             server = null
-            status = ServerStatus.PARADO
+            currentStatus = ServerStatus.PARADO
         } catch (e: Exception) {
             e.printStackTrace()
-            status = ServerStatus.ERRO
+            currentStatus = ServerStatus.ERRO
         }
-        status
+        currentStatus
     }
 
-    fun isRunning(): Boolean = server?.isRunning() == true && status == ServerStatus.ONLINE
+    fun isRunning(): Boolean = server?.isRunning() == true && currentStatus == ServerStatus.ONLINE
     fun getPort(): Int = port
     fun getHost(): String = host
-    fun getStatus(): ServerStatus = status
+    fun getStatus(): ServerStatus = currentStatus
 }
