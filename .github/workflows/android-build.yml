@@ -94,20 +94,38 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           cat local.properties 2>&1 | head -n 20 || true
           ls -lh gradle/wrapper/ 2>&1 | head -n 20 || true
+          file gradle/wrapper/gradle-wrapper.jar 2>&1 | head -n 20 || true
+          echo "--- Gradle version ---"
+          gradle --version 2>&1 | head -n 20 || true
+          ./gradlew --version 2>&1 | head -n 20 || true
+          echo "--- Help to verify project config ---"
+          ./gradlew :app:help 2>&1 | head -n 100 || true
+          echo "--- Running testDebugUnitTest ---"
+          set -o pipefail
           if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Using ./gradlew (wrapper jar present)"
-            ./gradlew :app:testDebugUnitTest --stacktrace --info
+            ./gradlew :app:testDebugUnitTest --stacktrace --info 2>&1 | tee /tmp/gradle-test.log; TEST_EXIT=${PIPESTATUS[0]}
           else
             echo "Wrapper jar missing/empty — falling back to gradle directly"
-            gradle :app:testDebugUnitTest --stacktrace --info
+            gradle :app:testDebugUnitTest --stacktrace --info 2>&1 | tee /tmp/gradle-test.log; TEST_EXIT=${PIPESTATUS[0]}
           fi
+          echo "TEST_EXIT=$TEST_EXIT"
+          cp /tmp/gradle-test.log ./gradle-test.log 2>&1 || true
+          cp /tmp/gradle-test.log /tmp/gradle-test-full.log 2>&1 || true
+          echo "--- tail 200 of log ---"
+          tail -n 200 /tmp/gradle-test.log 2>&1 || true
+          echo "--- ls build ---"
+          find app/build -type f 2>/dev/null | head -n 50 | xargs ls -lh 2>&1 | head -n 100 || true
+          exit $TEST_EXIT
 
-      - name: Upload test reports on failure
+      - name: Upload test logs and reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-test-reports
+          name: android-test-logs
           path: |
+            android/gradle-test.log
+            /tmp/gradle-test.log
             android/app/build/reports/
             android/app/build/test-results/
           if-no-files-found: warn
