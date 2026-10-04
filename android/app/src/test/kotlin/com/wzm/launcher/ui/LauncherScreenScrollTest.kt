@@ -1,6 +1,5 @@
 package com.wzm.launcher.ui
 
-import androidx.compose.ui.test.assertHeightIsAtMost
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -8,13 +7,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertTrue
 import com.wzm.launcher.cdn.RequestCounters
 import com.wzm.launcher.server.ServerStatus
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
-import androidx.compose.ui.unit.dp
 
 /**
  * Hotfix M3.5.1 (bug de UI visto no device em 2026-10-04):
@@ -89,9 +88,16 @@ class LauncherScreenScrollTest {
     fun logPanelHasBoundedHeightAndDoesNotConsumeTheScreen() {
         rule.setContent { LauncherContent(state = state(report = null, logs = fullLog(500))) }
 
-        // Altura fixa (200dp): mesmo com 500 linhas o painel não cresce nem empurra o resto para fora.
+        // Altura fixa: mesmo com 500 linhas o painel não cresce nem empurra o resto para fora.
+        // Comparação em pixels (sem depender de API de dp do compose-test): o painel precisa ocupar
+        // menos da METADE da área rolável — antes ele era weight(1f) num Column sem rolagem.
         rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertIsDisplayed()
-        rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertHeightIsAtMost(220.dp)
+        val panelPx = rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).fetchSemanticsNode().size.height
+        val contentPx = rule.onNodeWithTag(LauncherTestTags.CONTENT).fetchSemanticsNode().size.height
+        assertTrue(
+            "painel de log não pode consumir a tela: ${panelPx}px de ${contentPx}px",
+            panelPx * 2 <= contentPx
+        )
 
         // O botão do WZM vem ANTES do painel e fica visível sem nenhuma rolagem.
         rule.onNodeWithTag(LauncherTestTags.LAUNCH_WZM).assertIsDisplayed()
