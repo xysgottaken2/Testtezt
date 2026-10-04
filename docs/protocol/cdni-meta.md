@@ -14,7 +14,7 @@
 - **Encryption:** `TLS` (Akamai edgesuite)
 - **Size:** ~320 B (android) / ~410 B (ios) — 2026-10-03 live
 - **Version:** `min_buildnum: 19854920`, `min_tu: 0` (ambas plataformas) — WZM 3.x até 4.x
-- **Observed:** `2026-10-03T…Z` via `fetch_page` (externo, sem auth, sem volume) — `200` para ambos; `Not a file` para diretórios, `Not found` para inexistente (prova Akamai diferencia)
+- **Observed:** `2026-10-03T…Z` e **reconfirmado em 2026-10-04** via `fetch_page` (externo, sem auth, sem volume) — `200` para ambos; `Not a file` para diretórios, `Not found` para inexistente (prova Akamai diferencia)
 
 ## Campos
 
@@ -59,6 +59,9 @@ iOS adiciona `"#x3febec63a7c2351ab": false` + `future_*`.
 
 - CDN retorna 200 sem auth — arquivo público, não assinado, sem `Authorization`.
 - Cliente deve comparar `buildnum` local com `min_buildnum` para decidir update obrigatório — `HYPOTHESIS` (não observado em pcap).
+- **2026-10-04:** o build instalado `3.10.0.19854920` é **igual** a `min_buildnum` (`19854920`) — a condição “build >= mínimo” já é satisfeita com o valor real do CDN (`VERIFIED` quanto aos valores; o uso pelo cliente segue `HYPOTHESIS`).
+- **Não contém** URL/hash de manifesto: quem fornece o caminho do manifesto de conteúdo é o cliente (a determinar no APK 3.10.0) — ver `docs/research/m4.0-verificando-atualizacoes.md` §6.
+- A ferramenta `warzone-offline/tools/apk-analysis/update-check-scan.py` (M4.0) procura `cdni.meta`, `min_buildnum`, `min_tu` e `app_store_url` no APK para dizer onde essa comparação acontece.
 - `Not a file` para diretório indica Akamai não permite listing — não brute-forceável.
 - Não contém lista de shards — não é catálogo; é config de versão/flags. Catálogo real ainda `UNKNOWN`.
 

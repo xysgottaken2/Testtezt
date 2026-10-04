@@ -32,5 +32,8 @@ jobs:
       - name: TLS/trust scanner self-test (M3.2)
         run: python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --self-test
 
+      - name: Update-check scanner self-test (M4.0)
+        run: python3 warzone-offline/tools/apk-analysis/update-check-scan.py --self-test
+
       - name: Docs check
         run: bash scripts/check-docs.sh

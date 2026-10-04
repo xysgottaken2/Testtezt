@@ -63,6 +63,7 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [CDN Build-Selector](docs/protocol/cdni-build-selector.md) | **NOVO M2:** `prod.cdni.callofduty.com/manifest/build-selector-103.js` VERIFIED |
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
+| [M4.0 — “Verificando atualizações”](docs/research/m4.0-verificando-atualizacoes.md) | **NOVO M4.0:** dá para pular a verificação de atualização? `CANNOT_SKIP_DIRECTLY` + cadeia concreta + scanner do APK |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |
 
@@ -192,6 +193,13 @@ Detalhes em [docs/launcher.md](docs/launcher.md) §5.2.
 certificado**. A investigação de TLS/trust/pinning do APK 3.10.0 (read-only, sem modificar/distribuir o APK e
 sem bypass) está em [docs/research/m3.2-apk-tls-trust-investigation.md](docs/research/m3.2-apk-tls-trust-investigation.md),
 com scanner pronto: `python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --apk <externo>` (self-test no CI).
+
+**M4.0 — dá para pular “Verificando atualizações”? (`CANNOT_SKIP_DIRECTLY`):** a etapa consome **bytes de um
+manifesto** (estados `MANIFEST_DOWNLOAD_ERROR`, `manifest_ver`, `num_files_manifest`, `CDNI_MANDATORY_NOT_INSTALLED`),
+não existe booleano “já atualizado”; `min_buildnum` do `cdni.meta` (público, 320 B) **já é satisfeito** pelo build
+instalado (`19854920`), e `build-selector-102/103.js` só escolhem UI de pré-login por faixa semver. Cadeia
+concreta e veredito em [docs/research/m4.0-verificando-atualizacoes.md](docs/research/m4.0-verificando-atualizacoes.md);
+scanner: `python3 warzone-offline/tools/apk-analysis/update-check-scan.py --apk <externo> --out /tmp/wzm/update-check.json`.
 
 **M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
 `prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um

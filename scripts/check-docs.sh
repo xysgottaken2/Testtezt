@@ -36,6 +36,8 @@ required=(
   "docs/research/m3-cdni-integration.md"
   "docs/research/m3.3-diferenca-entre-os-testes.md"
   "docs/research/m3.4-caminho-wzm-tun.md"
+  "docs/research/m4.0-verificando-atualizacoes.md"
+  "warzone-offline/tools/apk-analysis/update-check-scan.py"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
@@ -48,4 +50,5 @@ echo "all required docs present"
 # verifica marcações obrigatórias
 grep -q "DBD_REFERENCE" docs/research/dead-by-daylight-mobile.md || { echo "DBD_REFERENCE missing"; exit 1; }
 grep -q "WARZONE" docs/research/warzone-mobile-networking.md || { echo "WARZONE marker missing"; exit 1; }
+grep -q "CANNOT_SKIP_DIRECTLY" docs/research/m4.0-verificando-atualizacoes.md || { echo "M4.0 verdict marker missing"; exit 1; }
 echo "markers ok"
