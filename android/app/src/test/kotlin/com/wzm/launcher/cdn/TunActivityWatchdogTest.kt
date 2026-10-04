@@ -43,7 +43,7 @@ class TunActivityWatchdogTest {
         assertFalse("houve pacote: sem aviso de túnel vazio", events.contains(TunWatchdogEvent.NENHUM_PACOTE_NO_TUN))
         assertTrue("mas nenhum DNS do CDNI: aviso obrigatório", events.contains(TunWatchdogEvent.NENHUMA_CONSULTA_CDNI))
         assertEquals(2, watchdog.packetCount)
-        assertEquals(65L, watchdog.secondsSinceLastPacket(70_000))
+        assertEquals(68L, watchdog.secondsSinceLastPacket(70_000))
     }
 
     @Test
@@ -53,7 +53,9 @@ class TunActivityWatchdogTest {
         watchdog.onPacket(1_000)
         watchdog.onCdnDns(1_500)
         val events = watchdog.poll(70_000)
-        assertTrue(events.isEmpty())
+        assertFalse("houve DNS do CDNI: sem aviso de consulta ausente", events.contains(TunWatchdogEvent.NENHUMA_CONSULTA_CDNI))
+        assertFalse("houve pacote: sem aviso de túnel vazio", events.contains(TunWatchdogEvent.NENHUM_PACOTE_NO_TUN))
+        assertTrue("resumo periódico continua acontecendo", events.all { it == TunWatchdogEvent.RESUMO_PERIODICO })
         assertEquals(1, watchdog.cdnDnsCount)
     }
 
