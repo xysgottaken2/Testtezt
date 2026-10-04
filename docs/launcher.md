@@ -29,7 +29,9 @@
 | `The 'android.useAndroidX' property is not enabled` | deps AndroidX (Compose/Lifecycle) exigem a flag | `android/gradle.properties` com `android.useAndroidX=true` |
 | `Platform declaration clash: getStatus()` | propriedade `status` + `fun getStatus()` geram a mesma assinatura JVM | campo privado `currentStatus` + `fun getStatus()` |
 | Logs do CI inacessíveis deste ambiente (blob bloqueado) | — | pipeline emite `::error::`/`::notice::` (annotations) e artifact `android-test-logs` |
-| `e: …:116:33 Identifier expected` + `e: …:128:1 Unclosed comment` | string raw do Kotlin com aspas **coladas** ao delimitador (`""""campo":…`), que o lexer rejeita | montar JSON com concatenação/`jsonEscape` (nunca `"""` + `"`); o CI roda `scripts/check-kotlin-raw-strings.py` como preflight |
+| `e: …:130:42 Identifier expected` + `e: …:157:1 Unclosed comment` (linha errada, longe da causa) | **Kotlin aninha comentários de bloco**: um `/__wzm_offline/*` dentro de um KDoc abriu comentário aninhado e o `*/` seguinte fechou só o interno → o resto do arquivo virou comentário | nunca escrever `/*` ou `*/` dentro de comentário/KDoc (usar `/__wzm_offline/…`); preflight no CI pega isso |
+| `Identifier expected` em string raw `""""campo":…` | aspas **coladas** ao delimitador `"""`, que o lexer do Kotlin rejeita | montar JSON com concatenação/`jsonEscape` (nunca `"""` colado em `"`) |
+| Preflight local | — | `python3 scripts/check-kotlin-preflight.py --dir android` (roda no CI antes do build) |
 
 Compatibilidade VERIFIED: Kotlin `1.9.22` ↔ Compose Compiler `1.5.8` ↔ AGP `8.5.2` ↔ Gradle `8.7` ↔ JDK `17` ↔ compileSdk `34`.
 

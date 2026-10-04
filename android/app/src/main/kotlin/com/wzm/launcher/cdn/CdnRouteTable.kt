@@ -17,7 +17,7 @@ data class HttpOutcome(
  * - Endpoint comprovado (M2/M2.2) → 200 com placeholder marcado ([Confidence.VERIFIED]).
  * - Nome conhecido, caminho inferido → 200 marcado como [Confidence.HYPOTHESIS].
  * - Desconhecido → 404 com erro controlado + URL/path exatos (nunca inventamos manifest).
- * - Endpoints internos `/__wzm_offline/*` → diagnóstico.
+ * - Endpoints internos `/__wzm_offline/…` (health, requests) → diagnóstico.
  */
 object CdnRouteTable {
 

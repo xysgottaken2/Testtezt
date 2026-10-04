@@ -61,8 +61,8 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.jar
           echo "wrapper jar OK"
 
-      - name: Preflight — Kotlin raw strings (falha com linha exata)
-        run: python3 scripts/check-kotlin-raw-strings.py --dir android
+      - name: Preflight — sintaxe Kotlin (aspas raw + comentário aninhado)
+        run: python3 scripts/check-kotlin-preflight.py --dir android
 
       - name: Generate local CDNI certificate (throwaway, not versioned)
         run: |
