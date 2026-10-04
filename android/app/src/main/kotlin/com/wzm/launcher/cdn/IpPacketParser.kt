@@ -98,10 +98,10 @@ data class PacketHeader(
     val isIpv4: Boolean get() = version == IpVersion.IPV4
     val isIpv6: Boolean get() = version == IpVersion.IPV6
 
-    val isSyn: Boolean get() = isTcp && flags != null &&
-        (flags and TunnelPackets.FLAG_SYN) != 0 && (flags and TunnelPackets.FLAG_ACK) == 0
-    val isSynAck: Boolean get() = isTcp && flags != null &&
-        (flags and TunnelPackets.FLAG_SYN) != 0 && (flags and TunnelPackets.FLAG_ACK) != 0
+    val isSyn: Boolean get() = isTcp && tcpFlags != null &&
+        (tcpFlags and TunnelPackets.FLAG_SYN) != 0 && (tcpFlags and TunnelPackets.FLAG_ACK) == 0
+    val isSynAck: Boolean get() = isTcp && tcpFlags != null &&
+        (tcpFlags and TunnelPackets.FLAG_SYN) != 0 && (tcpFlags and TunnelPackets.FLAG_ACK) != 0
 
     /** Destino é o endereço IPv4 do túnel — o valor que o DNS local devolve. */
     val isCdnTargetV4: Boolean get() = dstAddress == CdnRouterConfig.VPN_ADDRESS

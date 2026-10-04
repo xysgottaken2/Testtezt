@@ -373,7 +373,7 @@ class CdnVpnService : VpnService() {
         val type = question?.qType ?: -1
         val serverClass = if (header.dstAddress == CdnRouterConfig.VPN_DNS) "virtual-do-tunel"
         else "externo(${header.dstAddress})"
-        val origin = "${header.srcAddress}:${header.srcPort} -> ${header.dstAddress}:${header.dstPort}"
+        val origin = "${header.srcAddress}:${header.srcPort ?: -1} -> ${header.dstAddress}:${header.dstPort ?: -1}"
 
         val intercepted = dnsResponder.answer(dnsPayload, dnsPayload.size)
         if (intercepted != null) {
@@ -388,7 +388,11 @@ class CdnVpnService : VpnService() {
             writePacket(
                 output,
                 TunnelPackets.buildUdpPacket(
-                    header.dstAddress, header.dstPort, header.srcAddress, header.srcPort, intercepted
+                    header.dstAddress,
+                    checkNotNull(header.dstPort) { "porta de origem ausente no pacote DNS" },
+                    header.srcAddress,
+                    checkNotNull(header.srcPort) { "porta do cliente ausente no pacote DNS" },
+                    intercepted
                 ),
                 direction = "tunel->app"
             )
@@ -417,7 +421,11 @@ class CdnVpnService : VpnService() {
         writePacket(
             output,
             TunnelPackets.buildUdpPacket(
-                header.dstAddress, header.dstPort, header.srcAddress, header.srcPort, upstream
+                header.dstAddress,
+                checkNotNull(header.dstPort) { "porta de origem ausente no pacote DNS" },
+                header.srcAddress,
+                checkNotNull(header.srcPort) { "porta do cliente ausente no pacote DNS" },
+                upstream
             ),
             direction = "tunel->app"
         )
@@ -440,7 +448,8 @@ class CdnVpnService : VpnService() {
             }
             RequestLog.add(
                 "CDNI",
-                "TCP SYN ${header.srcAddress}:${header.srcPort} -> ${header.dstAddress}:${header.dstPort} " +
+                "TCP SYN ${header.srcAddress}:${header.srcPort ?: -1} -> " +
+                    "${header.dstAddress}:${header.dstPort ?: -1} " +
                     "(${owner}) devolvido ao TUN -> listener HTTPS " +
                     "(bounce #${RequestLog.counters.value.tunBounces})"
             )

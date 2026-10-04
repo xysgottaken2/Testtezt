@@ -63,10 +63,11 @@ class TunDiagnosticsTest {
     @Test
     fun tcpSynToTunnelAddressBouncesToLocalListener() {
         val packet = tcp(CdnRouterConfig.VPN_ADDRESS)
-        val view = TunDiagnostics.view(packet, packet.size)
-        assertTrue("visão de compatibilidade precisa reconhecer IPv4", view != null)
+        val view = checkNotNull(TunDiagnostics.view(packet, packet.size)) {
+            "visão de compatibilidade precisa reconhecer IPv4"
+        }
         assertEquals(TunAction.BOUNCE, TunPolicy.decide(header(packet)).action)
-        assertTrue(view!!.isRedirectDest)
+        assertTrue(view.isRedirectDest)
         assertTrue(view.brief().contains("10.111.222.1:41234 -> 10.111.222.1:443"))
         assertEquals("SYN", view.flagNames())
     }

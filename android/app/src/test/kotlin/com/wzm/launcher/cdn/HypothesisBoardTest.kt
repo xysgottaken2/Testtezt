@@ -11,7 +11,7 @@ import org.junit.Test
  */
 class HypothesisBoardTest {
 
-    private fun facts(
+    private fun baseFacts(
         perAppApplied: Boolean = true,
         readable: Boolean = true,
         mode: String? = "off",
@@ -31,13 +31,13 @@ class HypothesisBoardTest {
         routerPhase = RouterPhase.LOCAL_SERVER_READY.label
     )
 
-    private fun claim(counters: RequestCounters, id: String, facts: DiagFacts = facts()): EvidenceClaim =
+    private fun claim(counters: RequestCounters, id: String, facts: DiagFacts = baseFacts()): EvidenceClaim =
         HypothesisBoard.claims(counters, facts).first { it.id == id }
 
     @Test
     fun perAppAndListenerClaimsAreVerifiedFromFacts() {
         assertEquals(Evidence.VERIFIED, claim(RequestCounters(), "app_alvo_na_vpn_per_app").level)
-        assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "app_alvo_na_vpn_per_app", facts(perAppApplied = false)).level)
+        assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "app_alvo_na_vpn_per_app", baseFacts(perAppApplied = false)).level)
 
         assertEquals(
             Evidence.PROBABLE,
@@ -45,7 +45,7 @@ class HypothesisBoardTest {
         )
         assertEquals(
             Evidence.VERIFIED,
-            claim(RequestCounters(), "listener_no_endereco_do_tunel", facts(tunnelListenerBound = true)).level
+            claim(RequestCounters(), "listener_no_endereco_do_tunel", baseFacts(tunnelListenerBound = true)).level
         )
     }
 
@@ -94,19 +94,19 @@ class HypothesisBoardTest {
 
     @Test
     fun privateDnsIsEvidenceOfSettingAndOnlyHypothesisOfEffect() {
-        val configured = claim(RequestCounters(), "dns_privado_configurado_no_aparelho", facts(mode = "hostname", specifier = "dns.adguard.com"))
+        val configured = claim(RequestCounters(), "dns_privado_configurado_no_aparelho", baseFacts(mode = "hostname", specifier = "dns.adguard.com"))
         assertEquals(Evidence.VERIFIED, configured.level)
         assertTrue(configured.detail.contains("dns.adguard.com"))
 
         assertEquals(
             Evidence.UNKNOWN,
-            claim(RequestCounters(), "dns_privado_configurado_no_aparelho", facts(readable = false)).level
+            claim(RequestCounters(), "dns_privado_configurado_no_aparelho", baseFacts(readable = false)).level
         )
 
         val effect = claim(RequestCounters(), "efeito_do_dns_privado_sobre_o_wzm")
         assertEquals("o efeito nunca pode ser afirmado como fato nesta fase", Evidence.HYPOTHESIS, effect.level)
 
-        val off = HypothesisBoard.claims(RequestCounters(), facts(mode = "off"))
+        val off = HypothesisBoard.claims(RequestCounters(), baseFacts(mode = "off"))
             .first { it.id == "dns_privado_configurado_no_aparelho" }
         assertTrue(off.detail.contains("off"))
     }
@@ -130,7 +130,7 @@ class HypothesisBoardTest {
 
     @Test
     fun everyLineIsSelfDescribing() {
-        val lines = HypothesisBoard.lines(RequestCounters(), facts())
+        val lines = HypothesisBoard.lines(RequestCounters(), baseFacts())
         assertTrue(lines.size >= 10)
         assertTrue(lines.all { it.startsWith("evidência ") && it.contains("—") })
         assertFalse("nenhuma linha pode afirmar causa do Private DNS", lines.any { it.contains("causa: Private") })
