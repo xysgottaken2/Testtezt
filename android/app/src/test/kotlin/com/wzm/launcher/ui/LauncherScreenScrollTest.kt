@@ -88,10 +88,14 @@ class LauncherScreenScrollTest {
     fun logPanelHasBoundedHeightAndDoesNotConsumeTheScreen() {
         rule.setContent { LauncherContent(state = state(report = null, logs = fullLog(500))) }
 
-        // Altura fixa: mesmo com 500 linhas o painel não cresce nem empurra o resto para fora.
-        // Comparação em pixels (sem depender de API de dp do compose-test): o painel precisa ocupar
-        // menos da METADE da área rolável — antes ele era weight(1f) num Column sem rolagem.
+        // O painel fica no fim do conteúdo: rola até ele, como o usuário faz.
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LOG_PANEL))
         rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertIsDisplayed()
+
+        // Altura fixa: mesmo com 500 linhas o painel não cresce. Comparação em pixels (sem depender
+        // de API de dp do compose-test): precisa ocupar menos da METADE da área rolável — antes ele
+        // era weight(1f) num Column sem rolagem e empurrava o resto para fora.
         val panelPx = rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).fetchSemanticsNode().size.height
         val contentPx = rule.onNodeWithTag(LauncherTestTags.CONTENT).fetchSemanticsNode().size.height
         assertTrue(
@@ -99,7 +103,9 @@ class LauncherScreenScrollTest {
             panelPx * 2 <= contentPx
         )
 
-        // O botão do WZM vem ANTES do painel e fica visível sem nenhuma rolagem.
+        // E o botão do WZM continua alcançável (é o que o teste sintético quebrava).
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LAUNCH_WZM))
         rule.onNodeWithTag(LauncherTestTags.LAUNCH_WZM).assertIsDisplayed()
     }
 
@@ -107,10 +113,23 @@ class LauncherScreenScrollTest {
     fun logPanelCanBeCollapsedAndExpandedAgain() {
         rule.setContent { LauncherContent(state = state(report = null)) }
 
+        // expandido (padrão): rola até o painel e confere que ele está visível
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LOG_PANEL))
         rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertIsDisplayed()
+
+        // RECOLHER: o item sai da lista (nada de altura residual)
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LOG_TOGGLE))
         rule.onNodeWithTag(LauncherTestTags.LOG_TOGGLE).performClick()
         rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertDoesNotExist()
+
+        // MOSTRAR de novo: volta a existir e a ser alcançável
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LOG_TOGGLE))
         rule.onNodeWithTag(LauncherTestTags.LOG_TOGGLE).performClick()
+        rule.onNodeWithTag(LauncherTestTags.CONTENT)
+            .performScrollToNode(hasTestTag(LauncherTestTags.LOG_PANEL))
         rule.onNodeWithTag(LauncherTestTags.LOG_PANEL).assertIsDisplayed()
     }
 
