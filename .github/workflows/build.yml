@@ -32,8 +32,9 @@ jobs:
       - name: Check docs
         run: bash scripts/check-docs.sh
       # ATENÇÃO: este artifact é TÉCNICO (código-fonte/documentação) e NÃO contém APK.
-      # O APK debug do launcher é publicado pelo workflow `android-build` no artifact
-      # `wzm-offline-launcher-debug` (app-debug.apk + app-debug.apk.sha256).
+      # O APK debug é publicado como artifact SEPARADO `wzm-offline-launcher-debug` pelo job `apk`
+      # deste MESMO run (que chama o workflow reutilizável `android-build.yml`); ele também é
+      # publicado no run do workflow `android-build`.
       - name: Upload artifact técnico (M1 — sem APK)
         uses: actions/upload-artifact@v4
         with:
@@ -61,13 +62,21 @@ jobs:
             exit 1
           fi
           echo "OK: warzone-offline-M1 é só código/documentação (sem APK)"
-          echo "::notice title=onde-esta-o-apk::O APK debug está no workflow 'android-build' → artifact 'wzm-offline-launcher-debug' (app-debug.apk + .sha256)"
+          echo "::notice title=onde-esta-o-apk::O APK debug está NESTE MESMO run (job 'apk') e também no run do workflow 'android-build' → artifact 'wzm-offline-launcher-debug' (app-debug.apk + app-debug.apk.sha256)"
           {
             echo "## Artifacts"
             echo
             echo "| artifact | conteúdo | onde |"
             echo "|---|---|---|"
-            echo "| \`wzm-offline-launcher-debug\` | **app-debug.apk** + app-debug.apk.sha256 | workflow \`android-build\` |"
+            echo "| \`wzm-offline-launcher-debug\` | **app-debug.apk** + app-debug.apk.sha256 | **este mesmo run** (job \`apk\`) e também o workflow \`android-build\` |"
             echo "| \`warzone-offline-M1\` | código-fonte + docs (sem APK) | este workflow (\`build\`) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Publica o APK debug no MESMO run do artifact técnico, chamando o workflow reutilizável
+  # `android-build.yml` (fonte da verdade: ./gradlew assembleDebug → android/app/build/outputs/apk/
+  # debug/app-debug.apk). Assim o run do `build` lista, na seção Artifacts:
+  #   - wzm-offline-launcher-debug  (app-debug.apk + app-debug.apk.sha256)  <- o APK
+  #   - warzone-offline-M1          (código-fonte + docs, sem APK)
+  apk:
+    name: APK debug (wzm-offline-launcher-debug)
+    uses: ./.github/workflows/android-build.yml

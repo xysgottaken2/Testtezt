@@ -10,7 +10,7 @@
 
 | Campo | Valor |
 |---|---|
-| Workflow | `.github/workflows/android-build.yml` (job `build`) |
+| Workflow | `.github/workflows/android-build.yml` (job `build`) — roda sozinho em todo push **e** é chamado pelo workflow `build` (job `apk`), de modo que o artifact do APK aparece **nos dois runs** |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
 | Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** · **artifact do APK verificado pelo CI: `37210054051` (commit `b761b07`, jobs `build` + `verify-artifact`)** · **`37210339073` (commit `2d49ab0`, só documentação): também gerou e verificou o artifact — prova de que o workflow roda em todo push, sem filtro de `paths`** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
@@ -99,17 +99,21 @@ Requer:
 O workflow gera o certificado local (`scripts/generate-local-cdni-cert.sh`), roda os testes JVM e monta o APK
 com `./gradlew assembleDebug`.
 
-**Onde baixar o APK (passo a passo):** Actions → escolha um run do workflow **`android-build`** →
-seção **Artifacts** → **`wzm-offline-launcher-debug`**. Dentro do artifact:
+**Onde baixar o APK (passo a passo):** Actions → abra um run recente do workflow **`build`** (o run principal do
+CI, que também publica o artifact técnico) **ou** do workflow **`android-build`** → seção **Artifacts** →
+**`wzm-offline-launcher-debug`** (fica listado ao lado do artifact técnico `warzone-offline-M1`). Dentro do artifact:
 
 | Caminho no artifact | Arquivo |
 |---|---|
 | `app-debug.apk` (raiz) | o APK debug instalável |
 | `app-debug.apk.sha256` (raiz) | hash SHA-256 do APK |
 
-> O workflow `android-build` roda em **todo push** (sem filtro de `paths`) justamente para o artifact nunca faltar.
+> Os workflows `build` e `android-build` rodam em **todo push** (nenhum dos dois tem filtro de `paths`)
+> justamente para o artifact nunca faltar; o `build` chama o `android-build.yml` como workflow reutilizável
+> (`workflow_call`), então o APK está no mesmo run do artifact técnico **e** no run próprio do `android-build`.
 > O artifact técnico `warzone-offline-M1` (workflow `build`) contém **somente código-fonte e docs — nunca APK**,
-> e o `<provider>`/guardas do CI impedem que qualquer APK que não seja o nosso entre nos artifacts.
+> e as guardas do CI (pacote `com.wzm.launcher*` via aapt2 + varredura de extensões proprietárias + guarda
+> anti-`.apk` fora do build) impedem que qualquer APK que não seja o nosso entre nos artifacts.
 > Nenhum APK do Warzone Mobile original é publicado.
 
 O CI **verifica o artifact depois de publicar** (job `verify-artifact`: baixa de volta, exige exatamente os 2
@@ -121,8 +125,10 @@ artifact=wzm-offline-launcher-debug caminho-no-artifact=app-debug.apk (+app-debu
 arquivos=2 size=15.678.120 sha256=a3206af64f993751bba21ffc07c2e86adba7d428d105a17b1fd7c6c0f10456af
 ```
 
-O workflow `android-build` roda em **todo push** (não tem filtro de `paths`) exatamente para o artifact nunca
-faltar, inclusive em commits só de documentação.
+O APK é publicado em **todo push** (nenhum filtro de `paths`, inclusive commits só de documentação) por dois
+caminhos que usam o **mesmo** `.github/workflows/android-build.yml`: o próprio workflow `android-build` e o job
+`apk` do workflow `build` (via `uses: ./.github/workflows/android-build.yml`) — por isso o artifact
+`wzm-offline-launcher-debug` aparece na seção Artifacts do run do `build`, ao lado de `warzone-offline-M1`.
 
 Workflow `.github/workflows/android-build.yml`:
 
@@ -136,7 +142,7 @@ Workflow `.github/workflows/android-build.yml`:
 8. `sha256sum app-debug.apk` + **annotation com o hash** + `upload-artifact@v4` nome `wzm-offline-launcher-debug`
 9. Guarda anti-commit: falha se houver `*.apk/*.xapk/*.shard` fora de `android/app/build/`
 
-Artefato disponível em **Actions → android-build → Artifacts → wzm-offline-launcher-debug**.
+Artefato disponível em **Actions → `build` ou `android-build` → Artifacts → `wzm-offline-launcher-debug`**.
 
 ---
 

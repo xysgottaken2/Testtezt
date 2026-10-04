@@ -3,15 +3,20 @@ name: android-build
 # Publica SEMPRE o artifact do APK debug: `wzm-offline-launcher-debug`
 # (app-debug.apk + app-debug.apk.sha256 na raiz do artifact).
 #
-# Não há filtro de `paths`: qualquer push nas branches abaixo gera o APK, para que o artifact
-# esteja sempre disponível e fácil de achar (o artifact técnico `warzone-offline-M1`, do workflow
-# `build`, NÃO contém APK e não o substitui).
+# Este arquivo é a ÚNICA fonte da verdade do APK e roda de duas formas:
+#   1. sozinho em todo push/PR (sem filtro de `paths`) — workflow `android-build`;
+#   2. como workflow reutilizável (`workflow_call`) chamado pelo workflow `build`, para que o
+#      artifact do APK apareça TAMBÉM no mesmo run do artifact técnico `warzone-offline-M1`.
+# Assim o APK nunca depende de o usuário adivinhar qual workflow abrir: o run do `build` e o run
+# do `android-build` listam `wzm-offline-launcher-debug` lado a lado com o artifact técnico, que
+# NÃO contém APK e não o substitui.
 on:
   push:
     branches: [main, "arena/**", "research/**", "feature/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:
@@ -250,4 +255,6 @@ jobs:
             echo "| origem | \`./gradlew assembleDebug\` → \`android/app/build/outputs/apk/debug/app-debug.apk\` |"
             echo
             echo "O artifact técnico \`warzone-offline-M1\` (workflow \`build\`) **não** contém APK."
+            echo
+            echo "Onde encontrar o APK: **Actions → run do \`build\` (mesmo run, artifact ao lado do técnico) ou run do \`android-build\` → Artifacts → \`wzm-offline-launcher-debug\` → \`app-debug.apk\`**."
           } >> "$GITHUB_STEP_SUMMARY"
