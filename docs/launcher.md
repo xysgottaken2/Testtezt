@@ -10,16 +10,17 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Runs verdes | `37177649488` (commit `18ae95c`), `37177973604` (commit `d6feff9`) |
+| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · **M3: `37179735648` (commit `622a97b`, `arena/01a10449-testtezt`)** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | run `37177649488`: `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` · run `37177973604`: `68caf1f7f2e7547b09ed19a2b11e82b7d363f755e1c6a756dd2550b6497caa04` |
-| Tamanho | ~15.573.600 bytes (~14,9 MiB) |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · **M3: `75474ede1c936294bb7259dece8b1f98e3232e2f5fc456546cf3a2d0da6eb558`** |
+| Tamanho | M2 ~15.573.600 B (~14,9 MiB) · **M3 15.640.840 B (~14,9 MiB)** |
 | Data | 2026-10-04 |
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
 
-> `[VERIFIED]` em CI: compilação Kotlin/Compose, **13 testes JVM** (10 em `ServerTest` + 3 em `WzmLauncherConfigTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, empacotamento do APK, SHA-256 e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
-> `[PENDING DEVICE]` ainda não verificado em hardware: instalação no S23 Ultra, abertura sem crash, botões na UI e `startActivity` do WZM — depende do device do usuário.
+> `[VERIFIED]` em CI (M3): compilação Kotlin/Compose, **43 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 5 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
+> `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
 
 ### Correções de build descobertas (para não repetir)
 
