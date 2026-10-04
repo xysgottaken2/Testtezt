@@ -70,12 +70,13 @@ class LocalHttpsServerDiagnosticsTest {
             tunnelBindRetryDelayMs = 1,
             addressAssigned = { attempts >= 3 },
             sleep = { },
-            bindOverride = { endpoint ->
+            bindOverride = { _ ->
                 attempts++
                 if (attempts < 3) {
                     throw BindException("Cannot assign requested address")
                 }
-                ServerSocket(endpoint.port, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS))
+                // Porta efêmera: no runner do CI não há privilégio para bindar :443.
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS))
             }
         )
         assertTrue("com retry limitado o listener do túnel precisa subir", server.start())

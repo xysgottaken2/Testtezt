@@ -172,7 +172,8 @@ class RequestLogTest {
         )) {
             assertTrue("export deve conter $name", export.contains(name))
         }
-        assertTrue("export não pode conter payload", export.contains("NÃO são registrados corpos"))
+        assertTrue("export não pode conter payload", export.contains("nada de payload"))
+        assertTrue(export.contains("não são registrados corpos de requisição"))
     }
 
     @Test

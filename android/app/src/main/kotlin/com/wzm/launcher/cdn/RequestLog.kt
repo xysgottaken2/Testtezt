@@ -291,8 +291,9 @@ object RequestLog {
             append("# resumo: ${TunDiagnostics.summaryLine(current)}\n")
             append("# linhas: ${buffer.size} (buffer máximo: $MAX_ENTRIES)\n")
             append(
-                "# privacidade: registramos apenas metadados (tag, horário, destino, porta, protocolo, status).\n" +
-                    "#              NÃO são registrados corpos de requisição, cabeçalhos HTTP, cookies, tokens nem payloads.\n"
+                "# privacidade: não são registrados corpos de requisição nem cabeçalhos HTTP (sem cookies, tokens\n" +
+                    "#              ou credenciais); dos pacotes do TUN só metadados de cabeçalho (versão, protocolo,\n" +
+                    "#              endereço, porta, flags) — nada de payload; hexadecimal apenas de pacote inválido (até 32 B).\n"
             )
             append("\n")
             buffer.forEach { append(it).append("\n") }
