@@ -19,6 +19,9 @@ const PATTERNS = [
   { name: 'demonware', re: /demonware\.net/gi, confidence: 'PROBABLE' },
   { name: 'activision', re: /activision\.com/gi, confidence: 'PROBABLE' },
   { name: 'callofduty', re: /callofduty\.com/gi, confidence: 'PROBABLE' },
+  { name: 'cdni_callofduty', re: /prod\.cdni\.callofduty\.com/gi, confidence: 'VERIFIED — WZM 3.10.0 bootstrap' },
+  { name: 'build_selector', re: /build-selector-[0-9]+\.js/gi, confidence: 'VERIFIED — WZM 3.10.0 bootstrap' },
+  { name: 'bootstrap_asset', re: /bootstrap\/index\.html/gi, confidence: 'VERIFIED — WZM 3.10.0 asset' },
   { name: 'bhvronline', re: /bhvronline\.com/gi, confidence: 'DBD_REFERENCE' },
   { name: 'cdn_keyword', re: /\bcdn\.[a-z0-9.-]+\b/gi, confidence: 'HYPOTHESIS' },
   { name: 'analytic_keyword', re: /analytic\.[a-z0-9.-]+\b/gi, confidence: 'HYPOTHESIS' },
@@ -26,6 +29,7 @@ const PATTERNS = [
   { name: 'port_3074', re: /:3074\b/g, confidence: 'HYPOTHESIS' },
   { name: 'manifest', re: /manifest\.json/gi, confidence: 'PROBABLE' },
   { name: 'shard', re: /\.shard\b/gi, confidence: 'PROBABLE' },
+  { name: 'wbootstrap', re: /WBootstrap|isUsingPreLoginGVS|nativeBootstrapPermissionsResult/gi, confidence: 'VERIFIED — WZM dex' },
 ];
 
 function walk(dir, out = []) {

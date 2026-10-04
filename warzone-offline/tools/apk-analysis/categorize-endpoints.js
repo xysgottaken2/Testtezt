@@ -11,16 +11,17 @@
 import fs from 'node:fs';
 
 const CATEGORY_RULES = [
-  { category: 'auth', test: (f) => /activision|callofduty|auth|login|token/i.test(f.match) || f.pattern === 'activision' || f.pattern === 'callofduty' },
-  { category: 'matchmaking', test: (f) => /matchmaking|lobby|session|match/i.test(f.match) },
   { category: 'demonware', test: (f) => f.pattern === 'demonware' || /demonware|stun\./i.test(f.match) || f.pattern === 'port_3074' || f.pattern === 'stun_keyword' },
-  { category: 'manifest_cdn', test: (f) => f.pattern === 'manifest' || f.pattern === 'shard' || /manifest|shard|cdn\./i.test(f.match) || f.pattern === 'cdn_keyword' },
+  { category: 'manifest_cdn', test: (f) => f.pattern === 'manifest' || f.pattern === 'shard' || f.pattern === 'cdni_callofduty' || f.pattern === 'build_selector' || f.pattern === 'bootstrap_asset' || /manifest|shard|cdn\.|cdni/i.test(f.match) || f.pattern === 'cdn_keyword' },
+  { category: 'bootstrap', test: (f) => f.pattern === 'wbootstrap' || /WBootstrap|isUsingPreLoginGVS|nativeBootstrapPermissionsResult/i.test(f.match) },
   { category: 'telemetry', test: (f) => f.pattern === 'analytic_keyword' || /analytic|telemetry|crash|tracking/i.test(f.match) },
   { category: 'game_server', test: (f) => /DemonwarePortMapping|game.*server|udp.*port|27000|3074/i.test(f.match) },
+  { category: 'auth', test: (f) => /activision|callofduty|auth|login|token/i.test(f.match) || f.pattern === 'activision' || f.pattern === 'callofduty' },
+  { category: 'matchmaking', test: (f) => /matchmaking|lobby|session|match/i.test(f.match) },
 ];
 
 export function categorize(findings) {
-  const categorized = { auth: [], matchmaking: [], demonware: [], manifest_cdn: [], telemetry: [], game_server: [], other: [] };
+  const categorized = { auth: [], matchmaking: [], demonware: [], manifest_cdn: [], telemetry: [], game_server: [], bootstrap: [], other: [] };
   for (const f of findings) {
     let placed = false;
     for (const rule of CATEGORY_RULES) {

@@ -1,7 +1,7 @@
 # Warzone Mobile Offline Server — Projeto Experimental de Preservação / Interoperabilidade
 
-> **STATUS:** `M1 — Client communication` | Branch: `research/m1-endpoint-discovery` → PR #2 `research: M1 endpoint discovery + localhost redirection mechanism`  
-> **Anterior:** `M0 — Research` em `arena/01a10449-testtezt` → PR #1 merged
+> **STATUS:** `M2 — Bootstrap Offline (WZM 3.10.0)` | Branch: `research/m2-bootstrap-offline` → PR #11 `research: WZM 3.10.0 bootstrap WebView + local CDN stub (sem Activision)`  
+> **Anterior:** `M1 — Client communication` em `research/m1-unlock-preparation` → PR #10
 > **Objetivo de longo prazo:** fazer o cliente de **Call of Duty: Warzone Mobile** entrar em uma partida local contra bots, sem depender da infraestrutura online oficial, via servidor local/privado.
 
 ```
@@ -55,8 +55,13 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [Networking & Backend](docs/research/warzone-mobile-networking.md) | Demonware, endpoints, protocolos, TLS |
 | [Asset Streaming](docs/research/warzone-mobile-streaming.md) | CDN, manifests, .shard, cache |
 | [Metodologia de Reversão](docs/reverse-engineering/methodology.md) | Ferramentas, fluxos, evidências |
-| [M1 — Endpoint Discovery](docs/research/m1-endpoint-discovery.md) | **NOVO M1:** como o cliente resolve endpoints e mecanismo para localhost |
-| [Frida / Cert Pinning](docs/reverse-engineering/frida-bypass.md) | **NOVO M1:** procedimento quando APK disponível |
+| [M1 — Endpoint Discovery](docs/research/m1-endpoint-discovery.md) | M1: como o cliente resolve endpoints e mecanismo para localhost |
+| [M2 — Bootstrap 3.10.0](docs/research/wzm-310-bootstrap.md) | **NOVO M2:** WebView `bootstrap/index.html → build-selector-103.js → offline pt-BR` VERIFIED |
+| [Permissões & GVS](docs/research/wzm-permissions-gvs.md) | **NOVO M2:** `WBootstrap / pre_login_GVS / Meta Fetch` VERIFIED vs UNKNOWN |
+| [Frida / Cert Pinning](docs/reverse-engineering/frida-bypass.md) | Procedimento quando APK disponível |
+| [Runbook APK](docs/reverse-engineering/apk-analysis-runbook.md) | Runbook para APK em /tmp/wzm |
+| [CDN Build-Selector](docs/protocol/cdni-build-selector.md) | **NOVO M2:** `prod.cdni.callofduty.com/manifest/build-selector-103.js` VERIFIED |
+| [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |
 
@@ -140,15 +145,19 @@ LOG_LEVEL=debug
 ## 🧪 Como testar localmente (skeleton)
 
 ```bash
-# Server (M1 capture — genérico, sem hipótese WZM)
-cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 14 testes
-npm run dev   # sobe capture em 0.0.0.0:8080 — /health e /__capture
+# Server — bootstrap local CDN (M2, VERIFIED chain)
+cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 26 testes
+npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
+# ou bootstrap stub:
+node -e "import('./src/bootstrap/index.js').then(m=>new m.BootstrapServer({host:'127.0.0.1',port:18081}).listen().then(()=>console.log('bootstrap listening')))"
 
-# Launcher hosts-patch (metodologia DbD REFERENCE)
+# Launcher hosts-patch + webview-patch (metodologia DbD REFERENCE)
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
+# hosts para bootstrap: 127.0.0.1 prod.cdni.callofduty.com
 
 # Scanner (quando APK disponível)
 node warzone-offline/tools/apk-analysis/endpoint-scanner.js /tmp/wzm/jadx-output /tmp/wzm/apktool-output/lib
+node warzone-offline/tools/apk-analysis/categorize-endpoints.js /tmp/wzm/endpoints.json
 ```
 
 Workflow CI roda em todo PR: checkout → deps → build → testes → artifacts.
@@ -160,7 +169,8 @@ Workflow CI roda em todo PR: checkout → deps → build → testes → artifact
 | Milestone | Nome |
 |---|---|
 | M0 | Research — concluído (PR #1) |
-| M1 | Client communication (localhost) — **em andamento nesta branch** |
+| M1 | Client communication — concluído (PR #9 + #10) |
+| M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **em andamento nesta branch** |
 | M2 | Local configuration |
 | M3 | Local auth/profile |
 | M4 | Local matchmaking |

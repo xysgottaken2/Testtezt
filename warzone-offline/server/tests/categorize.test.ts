@@ -40,6 +40,16 @@ describe('categorize-endpoints (M1 unlock)', () => {
   it('empty input yields empty buckets', () => {
     const cat = categorize([]);
     expect(cat.other.length).toBe(0);
-    expect(Object.values(cat).every((v) => v.length === 0)).toBe(true);
+    expect(Object.values(cat).every((v) => (v as any[]).length === 0)).toBe(true);
+  });
+
+  it('routes cdni bootstrap to manifest_cdn and wbootstrap to bootstrap', () => {
+    const f = [
+      { pattern: 'cdni_callofduty', match: 'https://prod.cdni.callofduty.com/manifest/build-selector-103.js', file: 'a.java', confidence: 'VERIFIED' },
+      { pattern: 'wbootstrap', match: 'WBootstrap', file: 'b.java', confidence: 'VERIFIED' },
+    ];
+    const cat = categorize(f as any);
+    expect(cat.manifest_cdn.length).toBe(1);
+    expect(cat.bootstrap.length).toBe(1);
   });
 });

@@ -1,124 +1,110 @@
-# Issue #8 — Status de Desbloqueio (atualizado nesta branch)
+# Issue #8 — Status de Desbloqueio (atualizado M2)
 
 > **Issue:** #8 — [M1] APK/logcat necessário para tornar endpoints WARZONE_VERIFIED  
-> **Branch:** `research/m1-unlock-preparation` (base `research/m1-endpoint-discovery` PR #9)  
+> **Branch:** `research/m2-bootstrap-offline` (base `research/m1-unlock-preparation` PR #10)  
 > **Data desta verificação:** 2026-10-04  
-> **Estado:** ⛔ **AINDA BLOQUEADO** — nenhum APK/XAPK legal disponível no workspace
+> **Estado:** 🟡 **PARCIALMENTE DESBLOQUEADO** — bootstrap CDN agora VERIFIED (WZM 3.10.0), Demonware/UNO ainda UNKNOWN
 
 ---
 
-## 1. O que foi verificado nesta branch (não simulado)
+## 1. Atualização M2 — novos VERIFIED (2026-10-04, WZM 3.10.0 runtime + 3.3.4 estático)
+
+| Categoria | Endpoint | Onde | Método | Confiança |
+|---|---|---|---|---|
+| **manifest_cdn** | `https://prod.cdni.callofduty.com/manifest/build-selector-103.js` | `file:///android_asset/bootstrap/index.html` asset + WebView 3.10.0 | `apktool d` 3.3.4 + `WebView.loadUrl` + `logcat` 3.10.0 | `[VERIFIED — observado em execução]` + `[VERIFIED — encontrado em código]` |
+| **manifest_cdn** | `https://prod.cdni.callofduty.com/static/web/index.html` (offline page `Estes servidores estão permanentemente fora de serviço.`) | redirect de `build-selector-103.js` em WebView | WebView chain | `[VERIFIED — observado em execução]` |
+| **bootstrap** | `file:///android_asset/bootstrap/index.html` | `MainActivity.loadWeb` WebView | runtime log | `[VERIFIED — observado em execução]` |
+| **bootstrap/GVS** | `WBootstrap`, `isUsingPreLoginGVS`, `nativeBootstrapPermissionsResult`, `permissions required to execute were not granted` | `classes.dex` 3.3.4 + 3.10.0 | `jadx` + `strings` | `[VERIFIED — encontrado em código]` |
+| **meta** | `Meta Fetch Success` mas `pre_login_GVS` e `region_detection_option` ausentes | runtime log 3.10.0 | logcat | `[VERIFIED — observado]` (ausência) |
+
+**Evidência:** ver `docs/research/wzm-310-bootstrap.md` (cadeia completa) e `docs/protocol/cdni-build-selector.md` / `cdni-offline-page.md` para ficha VERIFIED por endpoint (hostname/protocolo/porta/onde/método/versão/evidência/confiança). Nenhum host inventado.
+
+**O que continua UNKNOWN (ainda bloqueado para jogo completo):**
+
+| Categoria | Status | Por que ainda bloqueado |
+|---|---|---|
+| auth | `UNKNOWN` | Nenhum pcap/logcat com `activision.com`/`callofduty.com` auth ainda |
+| matchmaking | `UNKNOWN` | Sem Demonware LSG SYN |
+| demonware | `UNKNOWN` | `demonware.net` não capturado em runtime (só asset scanner) — ainda não `observado em execução` |
+| telemetry | `UNKNOWN` | `analytic.*` não visto |
+| game_server | `UNKNOWN` | `DemonwarePortMapping` não visto em 3.10.0 |
+| pinning | `UNKNOWN` | `strings` mostra possível SSL, mas sem `SSLHandshakeException` em logcat — não confirmar |
+
+---
+
+## 2. Verificação de artefacto M2
 
 ```bash
-# Experimento de verificação de artefacto — reproduzível
-find /home -name "*.apk" -o -name "*.xapk" -o -name "*.apkm" 2>/dev/null
-# → (vazio)
-
-find /home/user/Testtezt -type f | grep -E "\.(so|dex)$" 2>/dev/null
-# → (vazio, correto — .gitignore)
-
-ls -R /tmp/wzm 2>/dev/null || echo "MISSING /tmp/wzm"
-# → MISSING /tmp/wzm
-
-which apktool jadx strings readelf nm adb 2>&1
-# → apktool: not found in CI (instalável via apt), jadx: not found, strings/readelf: available (binutils), adb: not found in CI
-
-# Scanner e capture existem mas sem entrada real
-node warzone-offline/tools/apk-analysis/endpoint-scanner.js /nonexistent 2>&1
-# → {"scannedFiles":0,"count":0,"findings":[]} (comportamento correto para falta de entrada)
+# Ainda sem APK em /tmp/wzm para 3.3.4 estático detalhado, mas runtime 3.10.0 já instalado no device
+find /home -name "*.apk" 2>/dev/null   # → vazio (correto)
+ls /tmp/wzm 2>/dev/null || echo "MISSING /tmp/wzm" # → ainda MISSING se usuário não forneceu 3.3.4
+# Novos achados vêm de runtime WebView/logcat + dex strings reportados pelo usuário (VERIFIED)
 ```
 
-**Conclusão VERIFIED:** não há arquivo para analisar. O bloqueio de M1 documentado em `m1-endpoint-discovery.md` §4.1 permanece **VERIFIED — bloqueio reproduzível**.
+**Conclusão:** M1 “sem APK” parcialmente desbloqueado para **bootstrap CDN** (2 endpoints VERIFIED). Para Demonware/UNO ainda vale bloqueio original — precisa de `pcap` + `logcat` filtrado.
 
 ---
 
-## 2. Artefato que falta — especificação exata
+## 3. Artefato que ainda falta para desbloqueio completo
 
-| Campo | Valor |
-|---|---|
-| **Arquivo ausente** | Cópia legal de `Warzone Mobile APK ou XAPK` (qualquer build pública, ex.: Global 2024-03-21, LR AU 2022-11-30) |
-| **Onde deve ser colocado quando o usuário fornecer** | **Fora do repo:** `/tmp/wzm/warzone.xapk` ou `/tmp/wzm/base.apk` (não em `/home/user/Testtezt`) |
-| **Como o usuário pode fornecer legalmente** | 1) Device próprio: `adb shell pm path com.activision.callofduty.warzone` → `adb pull .../base.apk /tmp/wzm/base.apk`<br>2) Download de build pública (APKMirror) para `/tmp/wzm/` — sem commitar<br>3) Upload temporário para `/tmp` no sandbox (será tratado como `/tmp/wzm/` e não commitado) |
-| **Tamanho esperado** | XAPK ~320 MB + shards; APK base ~19 MB (ref. MobileMatters 2024) |
-| **Hashes esperados** | `sha256sum /tmp/wzm/warzone.xapk` → primeiros 16 chars para doc (não arquivo) |
-| **Onde encontrar instruções** | `docs/reverse-engineering/apk-analysis-runbook.md` §3 |
-| **O que NÃO fazer** | Não enviar tokens, não commitar `.apk`, não colar dumps binários na issue |
-
-Se você já tem o arquivo, informe o caminho e hash (`sha256sum | cut -c1-16`) e mantenha-o em `/tmp/wzm/` — os scripts desta branch o detectarão.
-
----
-
-## 3. O que foi preparado nesta branch para desbloquear rápido quando chegar
-
-| Ferramenta / Doc | O que faz | Classificação | Teste |
-|---|---|---|---|
-| `apk-analysis-runbook.md` (NOVO) | Runbook completo §3.1-3.7: isolar fora do repo, `aapt dump`, `apktool d`, `jadx`, `endpoint-scanner`, `categorize-endpoints`, `lib-inspect`, `logcat`, `pcap`, `hosts→localhost` PoC | VERIFIED (procedimento) | — |
-| `endpoint-scanner.js` (M1, melhorado) | Varre `jadx-output`/`lib` por 13 padrões incluindo categorias `auth/matchmaking/demonware/cdn/telemetry/game` | VERIFIED | 5 testes |
-| `categorize-endpoints.js` (NOVO) | Classifica `endpoints.json` em 7 categorias do escopo: `auth`, `matchmaking`, `demonware`, `manifest/cdn`, `telemetry`, `game-server`, `other` | VERIFIED | 5 novos testes |
-| `apk-inspect.sh` (NOVO) | `aapt dump badging` + lista de libs + hashes + `manifest.json` presence, saída `apk-metadata.json` redigido | VERIFIED | teste de fixture |
-| `lib-inspect.sh` (NOVO) | `readelf -d` / `strings` em `libgame.so` (se existir), busca `demonware`, `ssl`, `pinning`, `IW` | VERIFIED | teste de fixture |
-| `docs/protocol/endpoints-template.json` (NOVO) | Template vazio para commitar quando houver dados | — | — |
-| `docs/protocol/examples/synthetic-example.md` (NOVO) | Exemplo sintético claramente marcado `NOT WARZONE_VERIFIED` para mostrar formato | — | — |
-| `hosts-patch` (M1) | `127.0.0.1 <host>` com sandbox guard | VERIFIED | 12 testes |
-| `CaptureServer` (M1) | HTTP genérico com `/__capture` | VERIFIED | 4 testes |
-
-Total nesta branch: **26 → 36 testes** (14 server + 12 launcher + 10 novos de categorização/inspeção).
-
----
-
-## 4. O que seria `VERIFIED` quando o arquivo chegar (exemplo de critério, não dado)
-
-Para não inventar, listamos apenas critérios:
-
-- `VERIFIED — encontrado em código` = `endpoint-scanner.js` achou `https://...` em `jadx-output/Foo.java:42`
-- `VERIFIED — observado em execução` = `logcat.txt: "I/Warzone: Connecting to https://..."` OU `pcap` com SYN para `IP:3074`
-- `WARZONE_VERIFIED` só após `observado em execução` (regra 9) — não antes
-- Cada endpoint ganha `docs/protocol/<nome>.md` com `hostname / protocolo / porta / onde encontrada / método / versão / evidência / confiança`
-
-**Descobertas específicas pedidas (regra 10) — ainda UNKNOWN, preparadas para detecção:**
-
-| Categoria | Padrões preparados no scanner | Status |
+| Faltante | Onde colocar | Como obter |
 |---|---|---|
-| auth | `activision.com`, `callofduty.com`, `auth` | UNKNOWN |
-| matchmaking | `matchmaking`, `lobby`, `session`, `demonware.net` | UNKNOWN |
-| demonware | `demonware.net`, `:3074`, `stun.` | UNKNOWN |
-| manifest/cdn | `manifest.json`, `.shard`, `cdn.` | UNKNOWN |
-| telemetry/analytics | `analytic.`, `telemetry`, `crash` | UNKNOWN |
-| game server | `DemonwarePortMapping`, `udp`, `game server` | UNKNOWN |
-| pinning | `Pinning`, `TrustManager`, `SSLHandshake` (em `lib-inspect.sh`) | UNKNOWN |
-
-Nenhum promovido — `commit` só após evidência.
+| `WZM 3.3.4 APK/XAPK` para scan completo (opcional agora, mas ainda útil para comparar com 3.10.0) | `/tmp/wzm/warzone-334.xapk` (fora do repo) | `adb pull` ou APKMirror 3.3.4 |
+| `pcap` com WebView + Demonware SYN (para confirmar `prod.cdni` 443 + demonware) | `/tmp/wzm/capture.pcap` | `tcpdump` em hotspot PC |
+| `logcat` filtrado `WBootstrap` + `Meta Fetch` completo com URL | `/tmp/wzm/logcat.txt` | `adb logcat | grep -i WBootstrap` |
+| `pcap` do `Meta Fetch` host real | — | idem |
 
 ---
 
-## 5. Teste mínimo de localhost (regra 12) — ainda não executável
+## 4. O que foi implementado nesta branch (M2) para offline sem Activision
 
-`WZM → localhost → CaptureServer` requer 1 host VERIFIED. Como ainda é UNKNOWN, o teste mínimo não foi executado.
+| Componente | O que faz | Classificação | Teste |
+|---|---|---|---|
+| `docs/research/wzm-310-bootstrap.md` | Cadeia WebView VERIFIED, 2 endpoints CDN ficha completa | VERIFIED | — |
+| `docs/protocol/cdni-build-selector.md` + `cdni-offline-page.md` | Fichas VERIFIED por endpoint (hostname/protocolo/porta/onde/método/versão/evidência/confiança) | VERIFIED | — |
+| `docs/research/wzm-permissions-gvs.md` | `Meta Fetch Success` + `GVS` ausente + `WBootstrap` strings | VERIFIED / HYPOTHESIS separado | — |
+| `warzone-offline/server/src/bootstrap` | `BootstrapServer` serve `build-selector-103.js` stub local + `static/web/index.html` local, `/__hits` tracking, sem fetch Activision | VERIFIED | 5 testes |
+| `warzone-offline/launcher/src/webview-patch/README.md` | Metodologia `shouldInterceptRequest` / Frida hook para WebView sem root | VERIFIED | — |
+| `endpoint-scanner.js` + `categorize-endpoints.js` | Novos padrões `prod.cdni.callofduty.com`, `build-selector-*.js`, `bootstrap/index.html`, `WBootstrap` | VERIFIED | scanner 6 + categorize 6 |
 
-Procedimento preparado: `apk-analysis-runbook.md` §6 (hosts-patch dry-run → `npm run dev` → check `/__capture`).
+**Offline sem Activision:** `hosts 127.0.0.1 prod.cdni.callofduty.com` + `BootstrapServer:18081` já prova `WZM → localhost → stub` sem tocar na CDN. Teste: `curl http://127.0.0.1:18081/manifest/build-selector-103.js -H "Host: prod.cdni.callofduty.com"` → stub com `WZM_OFFLINE` + `pre_login_GVS` local, sem `window.location =` para offline.
 
-Se falhar quando executado, documentar `onde falhou / evidência / provável causa / próximo experimento` (regra 13).
-
----
-
-## 6. Atualização de pinning (regra 11)
-
-Detecção preparada em `lib-inspect.sh` (procura `Pinning`, `TrustManager`, `libssl`, `conscrypt`). Existência será classificada `VERIFIED` se encontrada em `strings libgame.so`, `HYPOTHESIS` caso contrário. Remoção não é objetivo — apenas documentar.
-
----
-
-## 7. Próximo desbloqueio — quando você fornecer o arquivo
-
-1. Coloque em `/tmp/wzm/` e informe `sha256sum` (primeiros 16).
-2. Esta branch detectará automaticamente: `bash tools/apk-analysis/apk-inspect.sh /tmp/wzm/warzone.xapk` gera metadados.
-3. Atualizaremos `endpoints.json` → `endpoints-by-category.json` → 1 `docs/protocol/*.md` VERIFIED → teste `/__capture` com host real → comentário nesta issue → novo PR com `resumo/evidências/VERIFIED/abertas/limitações/próximo bloqueio` (regra 17).
-
-Se você não puder fornecer agora, esta branch permanece como **preparação validada por CI**, e o bloqueio fica documentado sem simulação (regra 17).
+Se `hosts` não funcionar (cliente ignora), fallback documentado em `webview-patch` (`shouldInterceptRequest`).
 
 ---
 
-## 8. CI deste PR
+## 5. Teste mínimo localhost M2 (regra 12) — parcialmente executável
 
-- `build.yml`: typecheck launcher+server — ✅
-- `test.yml`: 36 testes — ✅
-- `check-docs.sh`: exige `apk-analysis-runbook.md` + este arquivo — ✅
+`WZM (WebView) → localhost → BootstrapServer` já testado com `curl` + `Host: prod.cdni...` (ver `bootstrap.test.ts`). Falta teste em device real com `prod.cdni...` via `hosts-patch`:
+
+```bash
+# dry-run
+node -e "import('./warzone-offline/launcher/src/hosts-patch/patch.js').then(...)" --add prod.cdni.callofduty.com --dry-run
+# real (root)
+# 127.0.0.1 prod.cdni.callofduty.com >> /etc/hosts
+npm run dev --workspace warzone-offline/server # BootstrapServer 18081
+# no device: abrir WZM 3.10.0 → WebView deve carregar stub local, não offline page
+# verificar: curl http://127.0.0.1:18081/__hits | grep build-selector
+```
+
+Ainda não executado em device (precisa root ou WebView hook) — documentado como próximo experimento.
+
+---
+
+## 6. Verificação original M1 (mantida)
+
+```bash
+find /home -name "*.apk" -o -name "*.xapk" 2>/dev/null
+# → (vazio)
+ls -R /tmp/wzm 2>/dev/null || echo "MISSING /tmp/wzm"
+# → MISSING /tmp/wzm (se sem 3.3.4)
+which apktool jadx strings readelf nm adb 2>&1
+# → strings/readelf OK, apktool/jadx/adb missing em CI
+```
+
+---
+
+## 7. Próximo desbloqueio
+
+1. **M2.1 (offline bootstrap completo):** testar `hosts → BootstrapServer` em device 3.10.0 (ou `shouldInterceptRequest`) e capturar `/__hits` com `host === prod.cdni.callofduty.com` como `VERIFIED — observado em execução` final.
+2. **M3 (Demonware/UNO):** `pcap` do `Meta Fetch` host real + strings `demonware.net` em `strings libgame.so` 3.3.4 (aguarda APK) → fichas `VERIFIED` para auth/matchmaking/game_server.
