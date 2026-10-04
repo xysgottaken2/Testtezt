@@ -395,6 +395,7 @@ está em `docs/research/m4.1-dono-das-conexoes-loopback.md`.
 - [x] **M3:** testes JVM novos (`DnsRouterTest`, `TunnelPacketsTest`, `CdnRouteTableTest`, `LocalHttpsServerTest` fim-a-fim com TLS real, `CertificateAssetTest`)
 - [x] **M3 + VER LOGS:** tela de logs no APK (filtros por tag, contadores, status HTTP, timestamps, auto-rolar), botões LIMPAR/COPIAR/SALVAR .TXT, persistência do log em arquivo (sobrevive a reinício do processo) e testes `RequestLogTest` + `FileLogSinkTest`
 - [x] **M3.5.1 (UI):** tela principal rolável (`LazyColumn` único), painel de log com altura fixa + RECOLHER/MOSTRAR e teste de layout em JVM (Robolectric) que exige "INICIAR WARZONE MOBILE alcançável depois do teste sintético"
+- [x] **M4.1:** autoria das conexões pela API pública (`INVALID_UID` classificado em 6 estados, nunca "não é do jogo"), veredito de origem por conexão com nível de evidência, janela de portas do processo, teste de controle com sockets reais (card na tela + log) e invariante `dnsRespostasParaLoopback=0`
 - [x] **M3.5:** loopback como diagnóstico secundário (contadores por papel + marcador `WZM iniciado` antes/depois), listener do túnel com peer/UID/pacote, botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** e `cdni.meta` real servido localmente (Android/iOS)
 
 ---
