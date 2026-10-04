@@ -181,10 +181,10 @@ Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar,
 
 | Item | Valor |
 |---|---|
-| Artifact | `wzm-offline-launcher-debug` (Actions → run verde `37177649488` → Artifacts) |
+| Artifact | `wzm-offline-launcher-debug` (Actions → runs verdes `37177649488` / `37177973604` → Artifacts) |
 | Arquivo | `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 | `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` |
-| Tamanho | 15.573.665 bytes (~14,9 MiB) |
+| SHA-256 | por execução (ex.: `68caf1f7f2e7547b09ed19a2b11e82b7d363f755e1c6a756dd2550b6497caa04`) — use o `.sha256` do artifact |
+| Tamanho | ~15.573.600 bytes (~14,9 MiB) |
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 

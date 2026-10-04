@@ -8,11 +8,13 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Run (verde) | https://github.com/xysgottaken2/Testtezt/actions/runs/37177649488 |
-| Artifact | **`wzm-offline-launcher-debug`** (30 dias de retenção) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 do APK | `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` |
-| Tamanho | `15573665` bytes (~14,9 MiB) |
+| Runs verdes | `37177649488` (commit `18ae95c`), `37177973604` (commit `d6feff9`) |
+| Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
+| SHA-256 observados | run `37177649488`: `ca21f32ddca825b704d9be5ad9ce963af3a1ba914a5a89fbc0e3a845e976eded` · run `37177973604`: `68caf1f7f2e7547b09ed19a2b11e82b7d363f755e1c6a756dd2550b6497caa04` |
+| Tamanho | ~15.573.600 bytes (~14,9 MiB) |
 | Data | 2026-10-04 |
+
+> **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
 
 > `[VERIFIED]` em CI: compilação Kotlin/Compose, **13 testes JVM** (10 em `ServerTest` + 3 em `WzmLauncherConfigTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, empacotamento do APK, SHA-256 e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[PENDING DEVICE]` ainda não verificado em hardware: instalação no S23 Ultra, abertura sem crash, botões na UI e `startActivity` do WZM — depende do device do usuário.
@@ -137,7 +139,7 @@ Todos os estados refletem instantaneamente na UI via `StateFlow`.
 ## 6. O que já funciona (MVP)
 
 - [x] Projeto Android compilável **e compilado em CI** (Kotlin 1.9.22, AGP 8.5.2, Gradle 8.7, Compose Compiler 1.5.8, minSdk 24, target 34)
-- [x] APK debug gerado e publicado como artifact (`wzm-offline-launcher-debug`, sha256 `ca21f32d…`, 15.573.665 bytes)
+- [x] APK debug gerado e publicado como artifact (`wzm-offline-launcher-debug`, ~14,9 MiB; hash por execução, ver `app-debug.apk.sha256` do artifact)
 - [x] `EmbeddedLocalServer` em `127.0.0.1:18081`, background thread, shutdown limpo
 - [x] `ServerController` com estados `PARADO/INICIANDO/ONLINE/PARANDO/ERRO`, `isRunning()`, `getPort()`, mutex
 - [x] `WzmLauncher` detecta instalação, `getInstalledVersion()`, `launch()` via `PackageManager` dinâmico (sem hardcode Activity)
