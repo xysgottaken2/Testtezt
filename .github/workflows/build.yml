@@ -1,0 +1,42 @@
+name: build
+on:
+  push:
+    branches: [main, "arena/**", "research/**", "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            warzone-offline/server/package.json
+            warzone-offline/launcher/package.json
+      - name: Install server
+        working-directory: warzone-offline/server
+        run: npm ci || npm install
+      - name: Install launcher
+        working-directory: warzone-offline/launcher
+        run: npm ci || npm install
+      - name: Typecheck server
+        working-directory: warzone-offline/server
+        run: npx tsc --noEmit
+      - name: Typecheck launcher
+        working-directory: warzone-offline/launcher
+        run: npx tsc --noEmit
+      - name: Check docs
+        run: bash scripts/check-docs.sh
+      - name: Upload artifact (M1)
+        uses: actions/upload-artifact@v4
+        with:
+          name: warzone-offline-M1
+          path: |
+            warzone-offline/server/src
+            warzone-offline/launcher/src
+            warzone-offline/tools/apk-analysis/endpoint-scanner.js
+            docs/

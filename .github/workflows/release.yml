@@ -1,0 +1,37 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: warzone-offline/server/package.json
+      - name: Install & typecheck
+        working-directory: warzone-offline/server
+        run: |
+          npm ci || npm install
+          npx tsc --noEmit
+      - name: Create zip (no proprietary assets)
+        run: |
+          zip -r warzone-offline-M0.zip \
+            docs/ warzone-offline/ scripts/ .github/ README.md .gitignore \
+            -x "*.apk" "*.obb" "*.shard" "*.pak" "*.ucas" "*.utoc" "*.sig" "*.db" "node_modules/*" "dist/*"
+          ls -lh warzone-offline-M0.zip
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: warzone-offline-M0
+          path: warzone-offline-M0.zip
+      # Para criar GitHub Release, descomentar:
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: warzone-offline-M0.zip
