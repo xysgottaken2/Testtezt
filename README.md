@@ -160,12 +160,14 @@ npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
 
 # Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
-cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM (ServerTest, WzmLauncher)
+cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM (ServerTest, WzmLauncher + 5 suítes do roteador CDNI M3)
 ./gradlew :app:assembleDebug  # APK em android/app/build/outputs/apk/debug/app-debug.apk
 # instalar no S23 Ultra:
 adb install android/app/build/outputs/apk/debug/app-debug.apk
-# testar health:
+# testar health do stub:
 adb shell 'curl -v http://127.0.0.1:18081/health'  # deve dar 200 OK
+# M3: subir o roteador no app (INICIAR ROTEADOR CDNI) e conferir o log de requests do WZM,
+# ou no device: adb shell 'curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/health'
 
 # Scanner (quando APK disponível, fora do repo)
 bash warzone-offline/tools/asset-tools/run-external-apk.sh --apk /storage/emulated/0/Download/warzone.xapk --out-dir /storage/emulated/0/Download/wzm-out
@@ -175,7 +177,15 @@ Workflow CI roda em todo PR: checkout → deps → build → testes → artifact
 
 ### Android Launcher
 
-Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar, endpoints `/health`/`/__hits`, o que funciona e o que ainda não (CDNI stub).
+Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar, o **roteador CDNI local (M3)** e o que ainda não funciona.
+
+**M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
+`prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um
+servidor embarcado com **certificado nosso** (SAN `prod.cdni.callofduty.com`). Endpoints já comprovados em M2/M2.2
+respondem `200` com placeholder marcado; **endpoint desconhecido → `404` controlado com a URL/path exatos no log**
+(nada de manifest inventado). Tudo aparece no log do launcher: `[DNS]`, `[CDNI] TCP SYN`, `[TLS]`, `[CDNI] GET …`.
+Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk ≥ 24`):
+[docs/research/m3-cdni-integration.md](docs/research/m3-cdni-integration.md).
 
 **APK instalável (CI VERIFIED, 2026-10-04):**
 
@@ -188,7 +198,9 @@ Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar,
 | Package | `com.wzm.launcher.debug` (debug) |
 | Instalar | `adb install app-debug.apk` (ou tocar no arquivo no device) |
 
-Servidor embutido escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 OK`, `GET /` → página, `GET /__hits`, `POST /__reset`). Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.callofduty.warzone` (sem Activity hardcoded, sem modificar o APK do jogo).
+Servidor stub escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 OK`, `GET /` → página, `GET /__hits`, `POST /__reset`).
+O caminho real do CDNI é o roteador M3: listeners HTTPS **somente** em endereços específicos (`10.111.222.1:443`, `127.0.0.1:443`), nunca `0.0.0.0`.
+Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.callofduty.warzone` (sem Activity hardcoded, sem modificar o APK do jogo).
 
 ---
 
@@ -198,7 +210,8 @@ Servidor embutido escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 O
 |---|---|
 | M0 | Research — concluído (PR #1) |
 | M1 | Client communication — concluído (PR #9 + #10) |
-| M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **em andamento nesta branch** |
+| M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **concluído no launcher MVP** |
+| M3 | Integração real do CDNI local (DNS + HTTPS embarcado + log de requests do WZM) — **implementado; bloqueio conhecido = confiança TLS do cliente** |
 | M2 | Local configuration |
 | M3 | Local auth/profile |
 | M4 | Local matchmaking |

@@ -2,6 +2,9 @@
 # Preservação / pesquisa / interoperabilidade
 
 # Secrets & credentials
+# NOTA (M3): o certificado TLS LOCAL do launcher NÃO é versionado por esta regra — ele é
+# descartável e gerado no build por scripts/generate-local-cdni-cert.sh (não é credencial de
+# terceiros e não tem valor de segurança).
 *.pem
 *.key
 *.p12

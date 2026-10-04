@@ -1,0 +1,46 @@
+package com.wzm.launcher.cdn
+
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.net.Socket
+
+/**
+ * Atende UMA conexão já descriptografada (o TLS terminou no socket): lê o head HTTP,
+ * decide a resposta em [CdnRouteTable] e registra tudo no [RequestLog].
+ *
+ * Este é o ponto onde o log do launcher passa a mostrar as requisições reais vindas do WZM.
+ */
+class TcpRelay(
+    private val log: (String, String) -> Unit = { tag, message -> RequestLog.add(tag, message) },
+    private val socketTimeoutMs: Int = 15_000
+) {
+
+    fun serve(socket: Socket, peer: String) {
+        socket.use { connection ->
+            runCatching { connection.soTimeout = socketTimeoutMs }
+            val input = BufferedInputStream(connection.getInputStream())
+            val readResult = try {
+                HttpHeadReader.read(input)
+            } catch (e: Exception) {
+                log("CDNI?", "erro lendo head HTTP de $peer: ${e.javaClass.simpleName}: ${e.message}")
+                return@use
+            }
+            if (readResult == null) {
+                log("CDNI?", "conexão de $peer sem head HTTP válido (não-HTTP ou abortada) — descartada")
+                return@use
+            }
+            val head = readResult.head
+            val outcome = CdnRouteTable.respond(head)
+            RequestLog.incHttpRequest()
+            if (!outcome.isKnown) RequestLog.incUnknownRequest()
+            log(outcome.logTag, "${outcome.logMessage} [cliente=$peer]")
+            try {
+                val output = BufferedOutputStream(connection.getOutputStream())
+                output.write(outcome.bytes)
+                output.flush()
+            } catch (e: Exception) {
+                log("CDNI?", "falha ao responder $peer: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+}

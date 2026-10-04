@@ -61,6 +61,14 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.jar
           echo "wrapper jar OK"
 
+      - name: Generate local CDNI certificate (throwaway, not versioned)
+        run: |
+          bash scripts/generate-local-cdni-cert.sh
+          ls -l android/app/src/main/assets/
+          test -s android/app/src/main/assets/cdn_local.p12
+          test -s android/app/src/main/assets/cdn_local_ca.pem
+          echo "certificado local OK"
+
       - name: Run unit tests
         id: unit_tests
         working-directory: android

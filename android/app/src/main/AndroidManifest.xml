@@ -4,10 +4,15 @@
 
     <!-- Launcher não precisa de permissões sensíveis nesta versão.
          INTERNET é necessária apenas para o servidor loopback (127.0.0.1) em alguns OEMs,
-         mas não para acessar rede externa. QUERY_ALL_PACKAGES para detectar WZM. -->
+         mas não para acessar rede externa. QUERY_ALL_PACKAGES para detectar WZM.
+         M3: FOREGROUND_SERVICE(+SPECIAL_USE) para manter o roteador CDNI local (VpnService)
+         enquanto o WZM inicia. POST_NOTIFICATIONS apenas para exibir a notificação do serviço. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.activision.callofduty.warzone" />
@@ -29,6 +34,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Roteador CDNI local (M3). O sistema é o único que pode bindar (permissão
+             signature-level BIND_VPN_SERVICE); o app nunca encaminha tráfego para a internet. -->
+        <service
+            android:name=".cdn.CdnVpnService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Roteamento DNS/HTTPS local para o servidor CDNI embarcado de preservação (offline)" />
+        </service>
     </application>
 
 </manifest>
