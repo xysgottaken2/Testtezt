@@ -27,6 +27,11 @@
 3. Documentar exatamente **qual etapa** bloqueia o boot hoje.
 4. "CDNI real não implementado" deixa de ser aceitável: tem que existir roteamento + logging de fato.
 
+**Status após o teste no S23 Ultra (2026-10-04):** critérios 1, 2 e 4 **cumpridos** (ver §6.1 — 5 conexões do WZM
+chegaram ao listener local e apareceram no log). O critério 3 está isolado: o bloqueio é **validação do
+certificado pelo cliente** (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), investigado em
+[docs/research/m3.2-apk-tls-trust-investigation.md](m3.2-apk-tls-trust-investigation.md).
+
 ## 3. Decisão de arquitetura (sem root)
 
 **Fatos verificados por pesquisa (2026-10-04):**
@@ -122,26 +127,40 @@ bash scripts/generate-local-cdni-cert.sh --force   # regenera (invalida CA já i
 `CertificateAssetTest` valida em CI que o asset carrega com a senha configurada, tem chave privada,
 cobre `prod.cdni.callofduty.com`, **não** tem "activision" no subject/issuer e não é CA.
 
-## 6. Bloqueio conhecido (a etapa que trava o boot hoje)
+## 6. Bloqueio confirmado (o que trava o boot hoje)
 
-Depois do roteamento (critérios 1–2), o próximo bloqueio é **confiança no certificado** (fato F/G da §3):
+O bloqueio previsto nesta seção **foi confirmado no device** (§6.1): o cliente do WZM recusa o certificado
+local na validação da cadeia (`certificate_unknown`). O roteamento funciona; o que falta é uma *trust chain*
+que o app aceite — e isso só pode ser resolvido de forma legítima (CA confiável pelo app) ou não é resolvível
+dentro das nossas regras (sem root, sem patch do APK, sem bypass de pinning).
 
-* `targetSdk >= 24`: o app do WZM **não** confia em CA instalada pelo usuário; confiar num certificado
-  nosso exigiria CA no *system store* (root) ou `networkSecurityConfig` do próprio WZM (modificar o APK = proibido).
-* Consequência esperada: o **handshake TLS falha no lado do cliente** e o launcher registra
-  `[TLS] FALHA no handshake ... o cliente RECUSOU o certificado local ...` — o que **prova** o critério 1/2
-  (a requisição chegou ao servidor), mas não completa o bootstrap.
-* Se o WZM usar cliente nativo com bundle de CAs próprio/pinning, o resultado é o mesmo por outro motivo.
-* **Não vamos contornar isso**: nada de patchar trust do WZM, nada de root, nada de fingerprint spoof.
+* `targetSdk >= 24`: o app **não** confia em CA instalada pelo usuário por padrão; confiar exigiria
+  `<certificates src="user"/>` no NSC do próprio WZM (não temos controle) ou CA no *system store* (root — fora de escopo).
+* Se houver **pinning**, nem CA de sistema resolve: ver a matriz de decisão em
+  [docs/research/m3.2-apk-tls-trust-investigation.md](m3.2-apk-tls-trust-investigation.md) §4.
+* **Não contornamos nada disso**: sem patch de trust, sem root, sem fingerprint spoof, sem Frida.
 
-Outras incógnitas registradas honestamente:
+### 6.1. Evidência do device — 2026-10-04 (S23 Ultra, WARZONE_VERIFIED)
 
-| Incógnita | Status |
-|---|---|
-| App Android consegue `bind` em `:443` sem root? | UNKNOWN (em Linux, `ip_unprivileged_port_start` default 1024; se negado, o launcher loga a falha e tenta 18443) |
-| Tabela `local` vence as regras da VPN no Android 14 (fato D) | PROBABLE (existe o fallback E de qualquer forma) |
-| Corpo real dos arquivos do CDNI | UNKNOWN (não capturado em M2/M2.2; servimos placeholder marcado) |
-| Quais paths exatos o boot pede depois de `build-selector-103.js` | será **observado** no log da §7 |
+| Medida | Valor | Significado |
+|---|---|---|
+| `tcpConnections` | **5** | o WZM abriu 5 conexões contra o servidor local |
+| listener | **127.0.0.1:443** | chegou pelo loopback (não pelo endereço do túnel `10.111.222.1`) |
+| TLS | **5 × `SSLV3_ALERT_CERTIFICATE_UNKNOWN`** | o cliente alcançou o listener e **recusou a cadeia de certificados** |
+| `httpRequests` | 0 | nenhuma requisição HTTP completou (sem TLS não há HTTP) |
+| `tlsOk` / `tlsFailed` | 0 / 5 | nenhum handshake aceito |
+| `dnsIntercepted` | 0 | nesta tentativa o WZM **não** usou o DNS do túnel (anomalia analisada em §1.1 do doc M3.2) |
+
+Leitura: **M3 comprovado ponta a ponta no device** — o tráfego do jogo chega ao servidor embarcado e é
+registrado. O único bloqueio restante é confiança TLS, e o launcher passa a classificar a falha no log
+(`motivo=CLIENTE_RECUSOU_CERTIFICADO`), incluindo isso nos testes automatizados.
+
+Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteamento):
+
+* cada conexão TCP é registrada com `via loopback` ou `via túnel` (explica o `127.0.0.1:443` observado);
+* falhas de TLS ganham `motivo=<CÓDIGO>` classificado por `TlsTrust` (com dica acionável);
+* consultas DNS **encaminhadas** (que não são do CDNI) passam a ser registradas uma vez por nome — para
+  descobrir por que `dnsIntercepted=0` na tentativa do device.
 
 ## 7. Como validar no device (passo a passo)
 
@@ -179,6 +198,8 @@ curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callo
 | `CdnRouteTableTest` | endpoints VERIFIED → 200 + marcador; HYPOTHESIS marcado; desconhecido → 404 com path/query exatos no corpo e no log; `/__wzm_offline/health` |
 | `LocalHttpsServerTest` | **fim-a-fim com TLS real** (certificado do app): handshake, GET, 404 controlado, contadores e o log contendo path + SNI |
 | `CertificateAssetTest` | p12 abre com a senha, tem chave privada, SAN correto, não é Activision, CA separada |
+| `TlsTrustTest` | classificação das falhas de TLS, incluindo a **string exata do device** (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`) → `CLIENTE_RECUSOU_CERTIFICADO`, e os casos de cleartext/hostname/expirado/cifra/conexão encerrada |
+| `LocalHttpsServerTest.untrustedClientHandshakeCountsAsTlsFailureAndNeverAsHttpRequest` | reproduz a evidência do device em JVM: cliente sem confiança no certificado → `tlsFailed=1`, `httpRequests=0`, `tlsOk=0`, log com `motivo=` e `via loopback` |
 | `ServerTest`, `WzmLauncherTest` | regressão da fase M2 (inalterados, continuam verdes) |
 | `RequestLogTest` | armazenamento/consulta do log mostrado em VER LOGS: ordem/timestamp/tag, filtro por tag (inclusive `CDNI?`), sanitização de linha longa/multilinha, limite do buffer, contadores (DNS/TCP/HTTP/TLS), export, restore e sink sem duplicar linhas restauradas |
 | `FileLogSinkTest` | persistência em arquivo: append/readTail, rotação por tamanho, clear, criação de diretório, export `.txt` e escrita concorrente (4 threads) |
@@ -192,3 +213,5 @@ curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callo
 * `POST`/outros métodos nos endpoints conhecidos são atendidos como `GET` (semântica real UNKNOWN);
   métodos em paths desconhecidos caem no 404 controlado.
 * Se o device negar `:443`, o log mostra a negativa e sobe em 18443 (diagnóstico) — nesse caso o próximo passo é o responder TCP em userspace sobre o tun (M3.1), o que **não** foi implementado nesta rodada.
+* **Bloqueio ativo (M3.2):** confiança TLS do cliente. Nenhuma solução será implementada sem antes responder,
+  com evidência do APK, se existe cadeia suportável (§4 de `m3.2-apk-tls-trust-investigation.md`).

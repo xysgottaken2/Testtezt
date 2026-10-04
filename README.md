@@ -186,6 +186,13 @@ botões **LIMPAR LOGS**, **COPIAR LOGS** e **SALVAR/EXPORTAR .TXT**. O log tamb�
 `filesDir/request-log.txt` (sobrevive a reabrir o app) e nada sensível é registrado (sem corpos/cabeçalhos).
 Detalhes em [docs/launcher.md](docs/launcher.md) §5.2.
 
+**M3 comprovado no device (S23 Ultra, 2026-10-04):** 5 conexões do WZM chegaram ao servidor local
+(`127.0.0.1:443`) e foram registradas em VER LOGS; todas recusadas pelo cliente no TLS
+(`SSLV3_ALERT_CERTIFICATE_UNKNOWN`, `httpRequests=0`) → **o bloqueio restante é exclusivamente confiança de
+certificado**. A investigação de TLS/trust/pinning do APK 3.10.0 (read-only, sem modificar/distribuir o APK e
+sem bypass) está em [docs/research/m3.2-apk-tls-trust-investigation.md](docs/research/m3.2-apk-tls-trust-investigation.md),
+com scanner pronto: `python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --apk <externo>` (self-test no CI).
+
 **M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
 `prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um
 servidor embarcado com **certificado nosso** (SAN `prod.cdni.callofduty.com`). Endpoints já comprovados em M2/M2.2
@@ -220,6 +227,7 @@ Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.call
 | M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **concluído no launcher MVP** |
 | M3 | Integração real do CDNI local (DNS + HTTPS embarcado + log de requests do WZM) — **implementado; bloqueio conhecido = confiança TLS do cliente** |
 | M3.1 | Tela VER LOGS no APK (RequestLog em tempo real, filtros, contadores, LIMPAR/COPIAR/SALVAR .TXT) — **implementado** |
+| M3.2 | Investigação TLS/trust/pinning do APK 3.10.0 (read-only) — **roteamento provado no device; scanner + matriz de decisão prontos; análise do APK pendente do artefato externo** |
 | M2 | Local configuration |
 | M3 | Local auth/profile |
 | M4 | Local matchmaking |

@@ -29,5 +29,8 @@ jobs:
       - name: Run launcher tests (12)
         working-directory: warzone-offline/launcher
         run: npx vitest run --reporter=verbose
+      - name: TLS/trust scanner self-test (M3.2)
+        run: python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --self-test
+
       - name: Docs check
         run: bash scripts/check-docs.sh

@@ -1,8 +1,10 @@
 # WZM Offline Launcher — Android
 
-> **Status:** M3 — **roteamento CDNI local implementado** (DNS interceptado + servidor HTTPS :443 + log de requests reais do WZM).
-> O stub de 18081 (M2) continua existindo, mas o caminho real do CDNI é o `cdn/` (ver §5.1 e [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md)).
-> Bloqueio conhecido e documentado: confiança no certificado local (targetSdk ≥ 24) — ver §5.1/§7.
+> **Status:** M3/M3.2 — **roteamento CDNI local COMPROVADO no device** (S23 Ultra, 2026-10-04): 5 conexões do WZM
+> chegaram ao listener `127.0.0.1:443` e apareceram no log; todas foram recusadas pelo cliente no TLS
+> (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`) → **o bloqueio restante é exclusivamente confiança de certificado**.
+> O stub de 18081 (M2) continua existindo, mas o caminho real do CDNI é o `cdn/` (ver §5.1 e [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §6.1).
+> Investigação do trust/pinning do APK 3.10.0: [docs/research/m3.2-apk-tls-trust-investigation.md](research/m3.2-apk-tls-trust-investigation.md).
 
 ## 0. Build verificado (CI)
 
@@ -18,6 +20,9 @@
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
 
+> `[WARZONE_VERIFIED — device]` **M3 comprovado no S23 Ultra (2026-10-04):** `tcpConnections=5` em `127.0.0.1:443`,
+> `tlsFailed=5` (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), `httpRequests=0`, `dnsIntercepted=0`. O tráfego do jogo
+> chega ao servidor local e aparece em VER LOGS; o bloqueio é confiança de certificado.
 > `[VERIFIED]` em CI (M3 + VER LOGS): compilação Kotlin/Compose, **60 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 5 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + **10 `RequestLogTest`** + **7 `FileLogSinkTest`**), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
 > `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
@@ -181,6 +186,8 @@ Sem root não há `bind` em `:443` nem `iptables`; a solução implementada é:
    devolve ("bounce") o pacote para a interface — mesmo resultado.
 4. **TLS** termina no kernel com um **certificado nosso** (SAN `prod.cdni.callofduty.com`, `*.cdni.callofduty.com`);
    cada handshake (sucesso **ou falha**) é logado — é a prova de que a requisição do WZM chegou.
+   Falhas saem classificadas: `[TLS] FALHA no handshake TLS em …: motivo=CLIENTE_RECUSOU_CERTIFICADO (…) — …`
+   (`TlsTrust`), o que distingue recusa de certificado, HTTP em claro, cifra sem comum, etc.
 5. **HTTP** → `CdnRouteTable`:
    * endpoint com evidência (M2/M2.2) → `200` + corpo placeholder **marcado** (`wzm-offline-local`);
    * nome conhecido com caminho inferido → `200` marcado `HYPOTHESIS`;
@@ -219,6 +226,9 @@ em primeiro plano).
 | Recurso | Detalhe |
 |---|---|
 | Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[LAUNCHER]` |
+| Conexões TCP | cada uma traz o listener usado e o caminho: `via loopback` ou `via túnel` (explica a evidência de 5 conexões em `127.0.0.1:443`) |
+| Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
+| DNS | consultas interceptadas e também as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
 | Status/código HTTP | linha `[HTTP]` dedicada: `GET /path -> 200 OK (resposta N B, cliente=…)`; desconhecidos aparecem como `404 Not Found` |
 | Timestamps | `[HH:mm:ss.SSS]` em cada linha (fuso local do aparelho) |
 | Contadores | `DNS: consultas/interceptadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas` |
@@ -266,7 +276,7 @@ logados corpos de requisição, cabeçalhos, cookies, tokens nem credenciais —
 ## 7. O que ainda NÃO funciona / próximo
 
 - **Corpo real dos arquivos do CDNI (UNKNOWN):** servimos placeholder marcado; nenhum manifest é inventado
-- **Confiança TLS do lado do WZM (bloqueio atual):** `targetSdk ≥ 24` não confia em CA de usuário; CA no *system store* exige root → o handshake pode falhar no cliente (o log registra isso com a requisição exata)
+- **Confiança TLS do lado do WZM (bloqueio CONFIRMADO no device):** 5/5 conexões recusadas com `SSLV3_ALERT_CERTIFICATE_UNKNOWN`; `targetSdk ≥ 24` não confia em CA de usuário e CA no *system store* exige root → investigação de pinning/trust no APK em `docs/research/m3.2-apk-tls-trust-investigation.md` (sem bypass, sem patch)
 - **Paths exatos da cadeia do boot (ex.: `popup/events/dailylogin`):** hoje marcados `HYPOTHESIS`; o 404 controlado revela o path real quando o cliente pedir
 - Persistência de logs (o buffer é em memória, 400 linhas), splash, onboarding
 

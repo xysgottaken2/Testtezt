@@ -120,6 +120,26 @@ bash /home/user/Testtezt/warzone-offline/tools/apk-analysis/lib-inspect.sh \
   /tmp/wzm/apktool-output/lib/arm64-v8a/libgame.so > /tmp/wzm/lib-inspect.json
 ```
 
+### 3.4b. TLS/trust/pinning (M3.2) — scanner read-only
+
+```bash
+# self-test (fixture sintética; roda no CI)
+python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --self-test
+
+# APK/XAPK externo (ZIP, sem extrair, sem copiar para o repo)
+python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py \
+  --apk /caminho/externo/warzone-3.10.0.19854920.xapk --out /tmp/wzm-tls-trust.json
+
+# melhor cenário (NSC decodificado = VERIFIED): apktool/jadx fora do repo
+python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py \
+  --dir /caminho/externo/apktool-out --out /tmp/wzm-tls-trust.json
+```
+
+Saída: manifest/NSC, trust anchors, `pin-set`, certificados embutidos, assinaturas de pinning/stacks TLS,
+literais de loopback e hosts CDNI + **matriz de decisão** de cadeia de confiança. Preencher a tabela §5 de
+`docs/research/m3.2-apk-tls-trust-investigation.md` com o resultado. **Read-only**: nada de patch/repack,
+nada de Frida (ver as regras do doc M3.2).
+
 ### 3.5. Logcat + pcap (precisa device físico)
 
 ```bash
@@ -166,13 +186,18 @@ cp /tmp/wzm/apk-metadata.json /home/user/Testtezt/docs/research/_tmp-apk-metadat
 
 ## 5. Certificate pinning — como detectar (sem remover)
 
-```bash
-# 1. Tentar hosts → localhost sem Frida
-# 2. Se logcat mostrar "SSLHandshakeException / Pinning failure / Trust anchor",
-#    então pinning existe → documentar em docs/reverse-engineering/pinning-report.md
-# 3. Pesquisar metodologia (Frida, network_security_config.xml repack em sandbox)
-#    — documentar, não tratar remoção como objetivo em si (regra 11)
-```
+Método atualizado (M3.2), **somente leitura**:
+
+1. `python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --apk ... --out ...` (ou `--dir` com apktool/jadx)
+   → responde: NSC (`<pin-set>`?), trust anchors (`system`/`user`/CA embutida), APIs de pinning
+   (okhttp `CertificatePinner`, TrustKit, `checkServerTrusted` próprio), pins em `.so`, stack que fala com o CDNI.
+2. Evidência de runtime: no device, o launcher (tela VER LOGS) mostra `[TLS] FALHA ... motivo=<CÓDIGO>`;
+   o alerta `certificate_unknown` visto pelo servidor **não** distingue "CA não confiável" de "pinning recusou"
+   — o scanner é quem decide.
+3. Preencher a tabela de evidência de `docs/research/m3.2-apk-tls-trust-investigation.md` e concluir pela
+   matriz de decisão (VIAVEL / BLOQUEADO / FORA DE ESCOPO).
+4. **Nunca** remover pins, patchar trust, usar Frida/Xposed/root: fora das regras do projeto (regra 11 e
+   decisão explícita do usuário em 2026-10-04).
 
 ---
 

@@ -31,6 +31,9 @@ required=(
   "warzone-offline/tools/asset-tools/shard-reference-scanner.py"
   "warzone-offline/tools/asset-tools/shard-cdn-check.sh"
   "warzone-offline/tools/asset-tools/run-external-apk.sh"
+  "warzone-offline/tools/apk-analysis/tls-trust-scan.py"
+  "docs/research/m3.2-apk-tls-trust-investigation.md"
+  "docs/research/m3-cdni-integration.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
