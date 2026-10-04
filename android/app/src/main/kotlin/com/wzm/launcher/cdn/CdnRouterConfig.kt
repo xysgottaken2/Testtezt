@@ -30,6 +30,12 @@ object CdnRouterConfig {
     val INTERCEPT_HOSTS = listOf(EXACT_HOST)
 
     /**
+     * Caminho do meta do shard CDN — **VERIFIED** (M2.2 2026-10-03, reconfirmado 2026-10-04/M4.0).
+     * Desde o M3.5 o servidor local devolve o **corpo real** (~320 B) deste caminho em vez de placeholder.
+     */
+    const val CDNI_META_PATH = "/wzm/shard_cdn/android/_manifest/cdni.meta"
+
+    /**
      * Destino devolvido no DNS: o próprio endereço do túnel.
      *
      * Motivo (ver docs/research/m3-cdni-integration.md §3): com VPN per-app, o tráfego do WZM

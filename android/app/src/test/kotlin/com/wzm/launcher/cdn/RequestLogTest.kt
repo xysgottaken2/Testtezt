@@ -31,6 +31,7 @@ class RequestLogTest {
     fun setUp() {
         RequestLog.attachSink(null)
         RequestLog.clear()
+        RequestLog.clearWzmMarker()
     }
 
     @After
@@ -212,6 +213,50 @@ class RequestLogTest {
         assertFalse("quebra de linha não sanitizada: $multiline", multiline.contains("\n"))
         assertEquals("CDNI", RequestLog.tagOf(multiline))
         assertTrue("conteúdo perdido na sanitização: $multiline", multiline.contains("duas linhas  aqui"))
+    }
+
+    @Test
+    fun listenerCountersSeparateTunnelFromLoopback() {
+        RequestLog.incTcpConnectionLoopback(beforeWzm = true)
+        RequestLog.incTcpConnectionLoopback(beforeWzm = false)
+        RequestLog.incTcpConnectionTunel()
+        RequestLog.incTlsFailedLoopback()
+        RequestLog.incTlsOkTunel()
+
+        val counters = RequestLog.counters.value
+        assertEquals(2, counters.tcpConnectionsLoopback)
+        assertEquals(1, counters.tcpConnectionsTunel)
+        assertEquals("total continua somando os dois", 3, counters.tcpConnections)
+        assertEquals(1, counters.loopbackAntesDoWzm)
+        assertEquals(1, counters.loopbackDepoisDoWzm)
+        assertEquals(1, counters.tlsFailedLoopback)
+        assertEquals(1, counters.tlsOkTunel)
+        assertEquals(0, counters.tlsOkLoopback)
+
+        val export = RequestLog.exportText(Date(0))
+        assertTrue(export.contains("tcpConnectionsTunel=1"))
+        assertTrue(export.contains("tcpConnectionsLoopback=2"))
+        assertTrue(export.contains("tlsFailedLoopback=1"))
+        assertTrue(export.contains("loopbackAntesDoWzm=1"))
+        assertTrue(export.contains("loopbackDepoisDoWzm=1"))
+    }
+
+    @Test
+    fun wzmMarkerTellsBeforeFromAfter() {
+        val now = System.currentTimeMillis()
+        RequestLog.markWzmStarted(now)
+
+        val before = RequestLog.wzmRelation(now - 5_000)
+        val after = RequestLog.wzmRelation(now + 5_000)
+        assertTrue("antes precisa ser explícito: $before", before.contains("antes do WZM iniciado"))
+        assertTrue(before.contains("NÃO pode ser atribuída ao WZM"))
+        assertTrue("depois precisa ser explícito: $after", after.contains("depois do WZM iniciado"))
+        assertTrue(RequestLog.isBeforeWzmStart(now - 1))
+        assertFalse(RequestLog.isBeforeWzmStart(now + 1))
+
+        RequestLog.clearWzmMarker()
+        assertTrue(RequestLog.wzmRelation(now).contains("WZM não iniciado nesta sessão"))
+        assertTrue("sem WZM iniciado, qualquer conexão é 'antes'", RequestLog.isBeforeWzmStart(now))
     }
 
     @Test

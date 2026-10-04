@@ -12,14 +12,17 @@ import com.wzm.launcher.cdn.LogExport
 import com.wzm.launcher.cdn.LogPersistence
 import com.wzm.launcher.cdn.RequestCounters
 import com.wzm.launcher.cdn.RequestLog
+import com.wzm.launcher.cdn.SyntheticFlowTest
 import com.wzm.launcher.server.ServerController
 import com.wzm.launcher.server.ServerStatus
 import com.wzm.launcher.wzm.WzmLauncher
 import com.wzm.launcher.wzm.WzmStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class LauncherUiState(
@@ -29,7 +32,9 @@ data class LauncherUiState(
     val isServerStarting: Boolean = false,
     val router: CdnRouterStatus = CdnRouterStatus(),
     val counters: RequestCounters = RequestCounters(),
-    val logs: List<String> = emptyList()
+    val logs: List<String> = emptyList(),
+    /** Resultado do teste sintético do caminho CDNI (M3.5) — null = ainda não rodou. */
+    val syntheticReport: String? = null
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -169,6 +174,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ---------------- teste sintético do caminho CDNI (M3.5) ----------------
+
+    /**
+     * Executa `DNS CDNI → 10.111.222.1:443 → listener local → cdni.meta` sem envolver o WZM.
+     * Se este caminho não estiver VERIFIED, o teste com o WZM não teria como concluir nada.
+     */
+    fun runSyntheticTest() {
+        val state = _uiState.value
+        if (!state.router.httpsRunning && !state.router.vpnActive) {
+            log("Teste sintético: inicie o roteador CDNI primeiro (VPN + listener em :443)")
+            return
+        }
+        log("Teste sintético do caminho CDNI iniciado (DNS → 10.111.222.1:443 → cdni.meta; sem WZM)")
+        viewModelScope.launch {
+            val report = withContext(Dispatchers.IO) { SyntheticFlowTest.run(getApplication()) }
+            _uiState.value = _uiState.value.copy(syntheticReport = report.summary())
+            log(report.summary())
+        }
+    }
+
     // ---------------- tela de logs (VER LOGS) ----------------
 
     fun clearLog() {
@@ -225,7 +250,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(wzmStatus = WzmStatus.INICIANDO)
         val result = wzmLauncher.launch()
         if (result.success) {
-            log("Warzone Mobile iniciado")
+            // M3.5: marcador de sessão — conexões anteriores a este instante não podem ser do WZM.
+            val startedAt = System.currentTimeMillis()
+            RequestLog.markWzmStarted(startedAt)
+            log(
+                "Warzone Mobile iniciado — marcador de sessão epochMs=$startedAt: conexões anteriores a " +
+                    "este instante (inclusive em 127.0.0.1:443) NÃO podem ser atribuídas ao WZM"
+            )
             _uiState.value = _uiState.value.copy(wzmStatus = WzmStatus.EXECUTANDO)
         } else {
             log("Erro: ${result.message}")

@@ -24,7 +24,12 @@
 > `[WARZONE_VERIFIED — device]` **M3 comprovado no S23 Ultra (2026-10-04):** `tcpConnections=5` em `127.0.0.1:443`,
 > `tlsFailed=5` (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), `httpRequests=0`, `dnsIntercepted=0`. O tráfego do jogo
 > chega ao servidor local e aparece em VER LOGS; o bloqueio é confiança de certificado.
-> `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **124 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 11 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 8 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 5 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **7 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`**), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
+> `[M3.5]` **ressalva importante sobre esses 5 números:** a 1ª conexão em `127.0.0.1:443` foi às **13:20:16** e o
+> WZM só foi iniciado às **13:20:21** — ou seja, ela **não pode** ser do jogo, e as outras quatro ficaram sem
+> autoria (`getConnectionOwnerUid` → `INVALID_UID`). Desde o M3.5 o loopback tem contador próprio, é marcado como
+> **diagnóstico secundário** e nunca promove evidência sobre o WZM; ver
+> [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
+> `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **138 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 13 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 8 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 8 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **9 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`** + **7 `SyntheticFlowPathTest`** + `TunnelPacketsTest`), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
 > `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
 
@@ -226,7 +231,9 @@ Sem root não há `bind` em `:443` nem `iptables`; a solução implementada é:
    Falhas saem classificadas: `[TLS] FALHA no handshake TLS em …: motivo=CLIENTE_RECUSOU_CERTIFICADO (…) — …`
    (`TlsTrust`), o que distingue recusa de certificado, HTTP em claro, cifra sem comum, etc.
 5. **HTTP** → `CdnRouteTable`:
-   * endpoint com evidência (M2/M2.2) → `200` + corpo placeholder **marcado** (`wzm-offline-local`);
+   * endpoint com evidência (M2/M2.2) → `200`: com **corpo real observado** quando ele existe
+     (`cdni.meta`, M3.5) ou com corpo **placeholder marcado** (`wzm-offline-local`) quando o conteúdo
+     upstream ainda é `UNKNOWN` — o manifesto de conteúdo segue placeholder;
    * nome conhecido com caminho inferido → `200` marcado `HYPOTHESIS`;
    * qualquer outro → `404` controlado com URL/path **exatos** no corpo e no log (é assim que os paths
      ainda desconhecidos serão descobertos — nada de inventar manifest).
@@ -239,7 +246,7 @@ Endpoints servidos (detalhes e evidência por path em [docs/research/m3-cdni-int
 | `/manifest/build-selector-102.js` | bootstrap (M2.2) | 200 JS placeholder marcado |
 | `/static/web/index.html` | WebView (M2) | 200 HTML placeholder marcado |
 | `/manifest/manifest.json`, `/prelogin/boot-15.0.0/web/**` | boot web (M2.2) | 200 placeholder marcado |
-| `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta` | shard_cdn (M2.2) | 200 placeholder marcado |
+| `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta` | shard_cdn (M2.2/M4.0) | 200 **corpo real** (`CdniMetaBody`: `min_buildnum=19854920`, `min_tu`, `app_store_url`, flags) — M3.5 |
 | `/__wzm_offline/health`, `/__wzm_offline/requests` | diagnóstico do launcher | JSON com contadores e o log |
 
 Exemplo de leitura no próprio device:
@@ -260,6 +267,18 @@ IPv6), protocolo, endereço, porta e flags; cada descarte sai com `motivo=<CODIG
 **quadro de evidências** (`VERIFIED`/`PROBABLE`/`HYPOTHESIS`/`UNKNOWN`). Detalhes:
 [docs/research/m3.4-caminho-wzm-tun.md](research/m3.4-caminho-wzm-tun.md).
 
+**Loopback separado + teste sintético (M3.5):** `127.0.0.1:443` virou **diagnóstico secundário** de verdade —
+contadores próprios (`tcpConnectionsLoopback`, `tlsOkLoopback`, `tlsFailedLoopback`), papel explícito em cada
+linha e a frase "NÃO conta como evidência de tráfego do WZM". Todo evento de conexão carrega a relação com o
+**marcador de sessão** gravado ao iniciar o WZM: `antes do WZM iniciado (Δ -X s)`, `depois (Δ +X s)` ou
+`WZM não iniciado nesta sessão` (`loopbackAntesDoWzm`/`loopbackDepoisDoWzm`). No listener do túnel, a linha de
+**conexão aceita** traz peer (IP:porta de origem), `dono=uid=<n> (<pacote>)` quando a API resolve e o contador
+do túnel — só ele pode promover `tcp_para_o_alvo_cdni_443`/`tls_no_listener_do_tunel` a `VERIFIED`.
+O botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** prova esse caminho sem o WZM (consulta DNS por
+bytes + TCP + TLS com a CA local + `GET cdni.meta`), e o `cdni.meta` passou a ser servido com o **corpo real**
+(~320 B, `min_buildnum=19854920`) em vez de placeholder. Detalhes e o procedimento no device:
+[docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
+
 **Diagnóstico de sessão (M3.3):** como dois testes no mesmo device deram resultados diferentes
 (5 conexões em um, 0 no outro), o launcher passou a registrar dono da conexão, rota/interfaces aplicadas,
 inatividade do túnel e motivo de cada descarte — sem alterar o roteamento. Investigação completa, hipóteses
@@ -279,8 +298,8 @@ em primeiro plano).
 
 | Recurso | Detalhe |
 |---|---|
-| Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]` |
-| Conexões TCP | cada tentativa traz o listener, o caminho (`via loopback`/`via túnel`) e o **dono** da conexão: `dono=uid=<n> (<pacote>)` — sem isso não se sabe se quem conectou foi o WZM ou outro app (M3.3) |
+| Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]`, `[SINTETICO]` |
+| Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = só este promove), **peer** (IP:porta de origem) e **dono** `dono=uid=<n> (<pacote>)`; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados (M3.3/M3.5) |
 | Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
 | Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
 | DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
@@ -289,10 +308,10 @@ em primeiro plano).
 | Quadro de evidências (M3.4) | bloco `[DIAG] evidência <id>: VERIFIED|PROBABLE|HYPOTHESIS|UNKNOWN — <motivo>` a cada ciclo do vigia e no fim da sessão (per-app, tráfego no TUN, DNS virtual, consulta CDNI, IPv6, SYN ao alvo, listener do túnel, Private DNS) |
 | Descarte de pacote | `[TUN] pacote descartado: motivo=<CODIGO> …` — política: `IPV6_SEM_ATENDIMENTO`, `PROTO_NAO_SUPORTADO`, `UDP_PORTA_NAO_DNS`, `TCP_SEM_ATENDIMENTO`; parser: `CURTO_DEMAIS`, `VERSAO_DESCONHECIDA`, `IPV4_CABECALHO_INCONSISTENTE`, `TAMANHO_DECLARADO_MENOR_QUE_CABECALHO`, `TAMANHO_DECLARADO_MAIOR_QUE_LIDO`, `TRANSPORTE_CABECALHO_CURTO`, `IPV6_CABECALHO_CURTO` (pacote inválido sai com prévia hexadecimal de até 32 B) |
 | Bind dos listeners | `[CDNI] listener NÃO subiu em …: motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e aviso explícito quando o endereço do túnel fica sem listener |
-| Resumo do túnel | `[DIAG] resumo do túnel: pacotes=… para-10.111.222.1=… devolvidos-bounce=… descartados=… dns-total=… dns-cdni-interceptado=… dns-encaminhado=… tcp-conexoes=… tls-ok=… tls-falha=…` (a cada 20 s e no fim) |
+| Resumo do túnel | `[DIAG] resumo do túnel: pacotes=… para-10.111.222.1=… descartados=… dns-total=… dns-cdni-interceptado=… tcp-conexoes=… listener-tunel=… listener-loopback=… (antes-do-wzm/depois-do-wzm) tls-tunel=…/… tls-loopback=…/…` (a cada 20 s e no fim) |
 | Status/código HTTP | linha `[HTTP]` dedicada: `GET /path -> 200 OK (resposta N B, cliente=…)`; desconhecidos aparecem como `404 Not Found` |
 | Timestamps | `[HH:mm:ss.SSS]` em cada linha (fuso local do aparelho) |
-| Contadores | `DNS: consultas/interceptadas/encaminhadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas • TUN: total (IPv4/IPv6/inválidos; TCP/UDP/ICMP) • alvo-CDNI: bounces/descartes` |
+| Contadores | `DNS: consultas/interceptadas/encaminhadas • TCP: conexões • HTTP: requests/desconhecidos • TLS: ok/falhas (túnel · loopback) • listener: túnel/loopback (antes-do-WZM/depois) • TUN: total (IPv4/IPv6/inválidos; TCP/UDP/ICMP) • alvo-CDNI: bounces/descartes` |
 | Filtros | chips por tag + contagem de linhas visíveis |
 | Leitura | fonte monoespaçada, cor por tag, toggle **auto-rolar** (desligue para ler enquanto chegam linhas novas) |
 | LIMPAR LOGS | com confirmação; apaga buffer, contadores e o arquivo persistido |
@@ -306,9 +325,10 @@ Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
 ```
 # WZM Offline Launcher — RequestLog do roteador CDNI local
 # exportado em: 2026-10-04T14:22:31.512-03:00
-# contadores: dnsQueries=3 dnsIntercepted=1 dnsForwarded=2 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 tunPacketsTotal=12 tunIpv4Packets=10 tunIpv6Packets=2 tunTcpPackets=6 tunUdpPackets=4 tunIcmpPackets=0 tunInvalidPackets=1 tunIpv4ToCdnTarget=5 tunIpv6ToCdnTarget=2 tunToRedirect=5 tunBounces=5 tunDiscards=6 tunTcpSyn=6 tunTcpSynToRedirect=5 tunTcpSynOther=1 tunUdpDns53=2 tunUdpDnsNoVirtualDns=2 tunDotFlows=0 tunDohCandidates=1 tunTcp443Externo=0 tunUidVerifiedFlows=1
+# contadores: dnsQueries=3 dnsIntercepted=1 dnsForwarded=2 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 … tcpConnectionsTunel=2 tcpConnectionsLoopback=0 tlsOkTunel=1 tlsFailedTunel=0 tlsOkLoopback=0 tlsFailedLoopback=0 loopbackAntesDoWzm=0 loopbackDepoisDoWzm=0 tunPacketsTotal=12 tunIpv4Packets=10 tunIpv6Packets=2 tunTcpPackets=6 tunUdpPackets=4 tunIcmpPackets=0 tunInvalidPackets=1 tunIpv4ToCdnTarget=5 tunIpv6ToCdnTarget=2 tunToRedirect=5 tunBounces=5 tunDiscards=6 tunTcpSyn=6 tunTcpSynToRedirect=5 tunTcpSynOther=1 tunUdpDns53=2 tunUdpDnsNoVirtualDns=2 tunDotFlows=0 tunDohCandidates=1 tunTcp443Externo=0 tunUidVerifiedFlows=1
 # linhas: 12 (buffer máximo: 400)
-# privacidade: não são registrados corpos de requisição nem cabeçalhos (sem cookies/tokens)
+# privacidade: não são registrados corpos de requisição nem cabeçalhos HTTP (sem cookies, tokens ou
+#              credenciais); dos pacotes do TUN só metadados de cabeçalho — nada de payload
 ```
 
 **Privacidade:** registramos apenas tag, horário, método, host/path, status e contadores. Não são
@@ -331,12 +351,13 @@ logados corpos de requisição, cabeçalhos, cookies, tokens nem credenciais —
 - [x] **M3:** `CdnVpnService` (VpnService per-app + DNS em userspace + bounce/RST), `LocalHttpsServer` (:443 no endereço do túnel e loopback), `CdnRouteTable`/`BootstrapEndpoints` (só endpoints com evidência), `RequestLog` unificado, certificado local + botão EXPORTAR CA
 - [x] **M3:** testes JVM novos (`DnsRouterTest`, `TunnelPacketsTest`, `CdnRouteTableTest`, `LocalHttpsServerTest` fim-a-fim com TLS real, `CertificateAssetTest`)
 - [x] **M3 + VER LOGS:** tela de logs no APK (filtros por tag, contadores, status HTTP, timestamps, auto-rolar), botões LIMPAR/COPIAR/SALVAR .TXT, persistência do log em arquivo (sobrevive a reinício do processo) e testes `RequestLogTest` + `FileLogSinkTest`
+- [x] **M3.5:** loopback como diagnóstico secundário (contadores por papel + marcador `WZM iniciado` antes/depois), listener do túnel com peer/UID/pacote, botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** e `cdni.meta` real servido localmente (Android/iOS)
 
 ---
 
 ## 7. O que ainda NÃO funciona / próximo
 
-- **Corpo real dos arquivos do CDNI (UNKNOWN):** servimos placeholder marcado; nenhum manifest é inventado
+- **Corpo real dos arquivos do CDNI:** o `cdni.meta` já é servido com o **corpo real observado** (M3.5); os demais (manifesto de conteúdo, JS/CSS do boot) seguem **placeholder marcado** — nenhum manifest é inventado até o WZM chegar ao roteador (ver M4.0/M3.5)
 - **Confiança TLS do lado do WZM (bloqueio CONFIRMADO no device):** 5/5 conexões recusadas com `SSLV3_ALERT_CERTIFICATE_UNKNOWN`; `targetSdk ≥ 24` não confia em CA de usuário e CA no *system store* exige root → investigação de pinning/trust no APK em `docs/research/m3.2-apk-tls-trust-investigation.md` (sem bypass, sem patch)
 - **Paths exatos da cadeia do boot (ex.: `popup/events/dailylogin`):** hoje marcados `HYPOTHESIS`; o 404 controlado revela o path real quando o cliente pedir
 - Persistência de logs (o buffer é em memória, 400 linhas), splash, onboarding

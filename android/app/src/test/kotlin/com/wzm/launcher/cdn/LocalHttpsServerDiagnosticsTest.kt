@@ -52,6 +52,142 @@ class LocalHttpsServerDiagnosticsTest {
         }
     }
 
+    @Test
+    fun loopbackConnectionsAreCountedApartAndNeverAsWzmEvidence() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        val port = ServerSocket(0).use { it.localPort }
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=uid=10692 (com.activision.callofduty.warzone)" }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals("loopback conta em separado", 1, counters.tcpConnectionsLoopback)
+            assertEquals("nada de loopback pode virar conexão do túnel", 0, counters.tcpConnectionsTunel)
+            assertEquals("conexão feita depois do marcador", 1, counters.loopbackDepoisDoWzm)
+            assertEquals(0, counters.loopbackAntesDoWzm)
+
+            val snapshot = RequestLog.snapshot()
+            assertTrue("relação com o WZM é obrigatória", snapshot.contains("depois do WZM iniciado"))
+            assertTrue(
+                "o log precisa dizer que loopback não é evidência",
+                snapshot.contains("NÃO conta como evidência de tráfego do WZM")
+            )
+            assertTrue(snapshot.contains("DIAGNÓSTICO SECUNDÁRIO"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun tunnelListenerCountsAndLogsTheTunnelPath() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        var bound: ServerSocket? = null
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 1,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { },
+            addressAssigned = { true },
+            ownerDescription = { "dono=uid=10692 (com.activision.callofduty.warzone)" },
+            // :443 exige privilégio no runner; o socket real vai para uma porta efêmera do loopback,
+            // mas o PAPEL do endpoint continua sendo TUNEL_PRIMARIO (é o papel que decide a contagem).
+            bindOverride = { _ ->
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)).also { bound = it }
+            }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket(CdnRouterConfig.LOOPBACK_ADDRESS, checkNotNull(bound).localPort)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals("conexão do listener do túnel", 1, counters.tcpConnectionsTunel)
+            assertEquals("nada de loopback nesta contagem", 0, counters.tcpConnectionsLoopback)
+
+            val snapshot = RequestLog.snapshot()
+            assertTrue(snapshot.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443"))
+            assertTrue(snapshot.contains("papel=TUNEL_PRIMARIO"))
+            assertTrue("a relação temporal é obrigatória", snapshot.contains("depois do WZM iniciado"))
+            assertFalse(
+                "o listener do túnel nunca pode ser rotulado como diagnóstico secundário",
+                snapshot.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443 (via túnel, " +
+                    "papel=TUNEL_PRIMARIO, DIAGNÓSTICO SECUNDÁRIO)")
+            )
+            assertFalse(
+                "a negação de evidência é exclusiva do loopback",
+                snapshot.contains("NÃO conta como evidência de tráfego do WZM")
+            )
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun loopbackBeforeTheWzmMarkerIsExplicitlyBefore() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        // Marcador no futuro: qualquer conexão agora é "antes do WZM iniciado".
+        RequestLog.markWzmStarted(System.currentTimeMillis() + 60_000)
+
+        val port = ServerSocket(0).use { it.localPort }
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=NAO_RESOLVIDO (getConnectionOwnerUid devolveu INVALID_UID)" }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("INVALID_UID")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals(1, counters.loopbackAntesDoWzm)
+            assertEquals(0, counters.loopbackDepoisDoWzm)
+            val snapshot = RequestLog.snapshot()
+            assertTrue(snapshot.contains("antes do WZM iniciado"))
+            assertTrue(
+                "a linha precisa negar a atribuição",
+                snapshot.contains("NÃO pode ser atribuída ao WZM")
+            )
+        } finally {
+            server.stop()
+        }
+        RequestLog.clearWzmMarker()
+    }
+
     /**
      * O coração da correção de ciclo de vida: o bind no endereço do túnel pode falhar no começo
      * (EADDRNOTAVAIL) e funcionar depois. O retry é **limitado** e cada tentativa é registrada.

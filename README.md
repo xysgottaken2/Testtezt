@@ -64,6 +64,7 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
 | [M4.0 — “Verificando atualizações”](docs/research/m4.0-verificando-atualizacoes.md) | **NOVO M4.0:** dá para pular a verificação de atualização? `CANNOT_SKIP_DIRECTLY` + cadeia concreta + scanner do APK |
+| [M3.5 — Loopback separado + teste sintético](docs/research/m3.5-loopback-e-teste-sintetico.md) | **NOVO M3.5:** `127.0.0.1:443` só diagnóstico (antes/depois do WZM), listener do túnel com peer/UID, botão TESTE SINTÉTICO e `cdni.meta` real |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |
 
@@ -200,6 +201,14 @@ não existe booleano “já atualizado”; `min_buildnum` do `cdni.meta` (públi
 instalado (`19854920`), e `build-selector-102/103.js` só escolhem UI de pré-login por faixa semver. Cadeia
 concreta e veredito em [docs/research/m4.0-verificando-atualizacoes.md](docs/research/m4.0-verificando-atualizacoes.md);
 scanner: `python3 warzone-offline/tools/apk-analysis/update-check-scan.py --apk <externo> --out /tmp/wzm/update-check.json`.
+
+**M3.5 — loopback não é evidência + teste sintético antes do WZM:** `127.0.0.1:443` passou a ser **diagnóstico
+secundário** (contadores próprios, papel no log, e a relação `antes/depois do WZM iniciado` em cada conexão —
+a 1ª conexão do teste anterior foi 5 s **antes** de o jogo abrir), o listener `10.111.222.1:443` registra
+**conexão aceita + peer + UID/pacote**, e o botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** prova o
+caminho sem o WZM. O `cdni.meta` deixou de ser placeholder e é servido com o **corpo real** (~320 B,
+`min_buildnum=19854920`). Procedimento e critério em
+[docs/research/m3.5-loopback-e-teste-sintetico.md](docs/research/m3.5-loopback-e-teste-sintetico.md).
 
 **M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
 `prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um

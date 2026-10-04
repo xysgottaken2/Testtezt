@@ -228,12 +228,27 @@ class LocalHttpsServer(
             val via = ListenerFailures.via(endpoint.address)
             val owner = runCatching { ownerDescription(client) }
                 .getOrElse { "dono=NAO_RESOLVIDO (${it.javaClass.simpleName})" }
-            RequestLog.incTcpConnection()
-            log(
-                "CDNI",
-                "tentativa de conexão em $endpoint (via $via): peer=$peer $owner — " +
-                    "total=${RequestLog.counters.value.tcpConnections}"
-            )
+            // M3.5: papel do listener + relação temporal com o WZM iniciado.
+            // Loopback é DIAGNÓSTICO SECUNDÁRIO: não conta como evidência de tráfego do WZM.
+            val now = System.currentTimeMillis()
+            val relation = RequestLog.wzmRelation(now)
+            if (endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO) {
+                RequestLog.incTcpConnectionLoopback(RequestLog.isBeforeWzmStart(now))
+                log(
+                    "CDNI",
+                    "tentativa de conexão em $endpoint (via $via, papel=${endpoint.role.name}, " +
+                        "DIAGNÓSTICO SECUNDÁRIO): peer=$peer $owner · epochMs=$now · $relation — " +
+                        "este caminho NÃO conta como evidência de tráfego do WZM"
+                )
+            } else {
+                RequestLog.incTcpConnectionTunel()
+                log(
+                    "CDNI",
+                    "conexão aceita em $endpoint (via $via, papel=${endpoint.role.name}): peer=$peer " +
+                        "$owner · epochMs=$now · $relation · total-no-túnel=" +
+                        "${RequestLog.counters.value.tcpConnectionsTunel}"
+                )
+            }
             if (!connections.tryAcquire()) {
                 log("CDNI", "conexões simultâneas no limite ($maxConcurrentConnections) — conexão descartada")
                 closeQuietly(client)
@@ -255,36 +270,62 @@ class LocalHttpsServer(
     private fun handle(client: Socket, endpoint: BindEndpoint) {
         val sslSocket = client as? SSLSocket
         if (sslSocket == null) {
-            log("CDNI?", "conexão não-TLS em $endpoint (classe ${client.javaClass.simpleName}) — tratada como HTTP em claro")
-            relay.serve(client, client.remoteSocketAddress?.toString() ?: "?")
+            log(
+                "CDNI?",
+                "conexão não-TLS em $endpoint (papel=${endpoint.role.name}, " +
+                    "classe ${client.javaClass.simpleName}, peer=${client.remoteSocketAddress}) — " +
+                    "tratada como HTTP em claro"
+            )
+            relay.serve(
+                client,
+                client.remoteSocketAddress?.toString() ?: "?",
+                "papel=${endpoint.role.name}"
+            )
             return
+        }
+        val loopback = endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO
+        val peer = client.remoteSocketAddress?.toString() ?: "?"
+        val relation = RequestLog.wzmRelation(System.currentTimeMillis())
+        val roleNote = if (loopback) {
+            "papel=${endpoint.role.name} (DIAGNÓSTICO: não é evidência de tráfego do WZM)"
+        } else {
+            "papel=${endpoint.role.name} (caminho do túnel: é este que pode promover evidência do WZM)"
         }
         try {
             sslSocket.soTimeout = 15_000
             sslSocket.startHandshake()
-            RequestLog.incTlsOk()
+            if (loopback) RequestLog.incTlsOkLoopback() else RequestLog.incTlsOkTunel()
             val sni = sniOf(sslSocket)
             log(
                 "TLS",
-                "handshake OK (SNI=${sni ?: "?"}, ${sslSocket.session.protocol}) — o cliente aceitou o certificado local"
+                "handshake OK em $endpoint (peer=$peer, $roleNote, SNI=${sni ?: "?"}, " +
+                    "${sslSocket.session.protocol}) · $relation — o cliente aceitou o certificado local"
             )
-            relay.serve(sslSocket, sni ?: (client.remoteSocketAddress?.toString() ?: "?"))
+            relay.serve(
+                sslSocket,
+                peer,
+                "papel=${endpoint.role.name} · $relation"
+            )
         } catch (e: SSLHandshakeException) {
-            RequestLog.incTlsFailed()
+            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel()
             val message = e.message ?: ""
             val failure = TlsTrust.analyze(message)
             // Linha com código estável (motivo=...) para leitura máquina/humana na tela VER LOGS.
             log(
                 "TLS",
-                "FALHA no handshake TLS em $endpoint: motivo=${failure.code} " +
-                    "(${e.javaClass.simpleName}: $message) — ${failure.hint}"
+                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote): motivo=${failure.code} " +
+                    "(${e.javaClass.simpleName}: $message) — ${failure.hint} · $relation"
             )
             if (failure.code == TlsFailure.CLIENT_CLEARTEXT) {
-                relay.serve(client, client.remoteSocketAddress?.toString() ?: "?")
+                relay.serve(client, peer, "papel=${endpoint.role.name} · $relation")
             }
         } catch (e: Exception) {
-            RequestLog.incTlsFailed()
-            log("TLS", "FALHA no handshake TLS em $endpoint: ${e.javaClass.simpleName}: ${e.message}")
+            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel()
+            log(
+                "TLS",
+                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote): " +
+                    "${e.javaClass.simpleName}: ${e.message} · $relation"
+            )
         }
     }
 

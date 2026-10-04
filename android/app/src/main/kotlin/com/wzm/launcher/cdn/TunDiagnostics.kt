@@ -243,10 +243,13 @@ object HypothesisBoard {
             "tcp_para_o_alvo_cdni_443",
             if (counters.tunTcpSynToRedirect > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
             if (counters.tunTcpSynToRedirect > 0) {
-                "${counters.tunTcpSynToRedirect} SYN para ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT}"
+                "${counters.tunTcpSynToRedirect} SYN para ${CdnRouterConfig.VPN_ADDRESS}:" +
+                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} observado(s) no TUN — único caminho que promove " +
+                    "esta afirmação (conexões em ${CdnRouterConfig.LOOPBACK_ADDRESS} NÃO promovem)"
             } else {
                 "nenhum SYN para ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
-                    "(SYN no total: ${counters.tunTcpSyn}, para outros destinos: ${counters.tunTcpSynOther})"
+                    "(SYN no total: ${counters.tunTcpSyn}, para outros destinos: ${counters.tunTcpSynOther}); " +
+                    "conexões de loopback (${counters.tcpConnectionsLoopback}) são diagnóstico e NÃO promovem"
             }
         ),
         EvidenceClaim(
@@ -256,7 +259,42 @@ object HypothesisBoard {
                 "listener ativo em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT}"
             } else {
                 "AUSENTE: bind no endereço do túnel não subiu (endereço atribuído=${facts.tunnelAddressAssigned}); " +
-                    "só o caminho ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} atende"
+                    "só o caminho ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
+                    "atende — e ele é DIAGNÓSTICO (não conta como evidência de tráfego do WZM)"
+            }
+        ),
+        EvidenceClaim(
+            "conexoes_no_listener_do_tunel",
+            if (counters.tcpConnectionsTunel > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.tcpConnectionsTunel > 0) {
+                "${counters.tcpConnectionsTunel} conexão(ões) aceita(s) em ${CdnRouterConfig.VPN_ADDRESS}:" +
+                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} — caminho que veio pelo DNS do túnel " +
+                    "(com UID quando resolvido; sem UID a autoria continua não provada)"
+            } else {
+                "nenhuma conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} até agora"
+            }
+        ),
+        EvidenceClaim(
+            "conexoes_de_loopback_sao_diagnostico",
+            if (counters.tcpConnectionsLoopback > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.tcpConnectionsLoopback > 0) {
+                "${counters.tcpConnectionsLoopback} conexão(ões) em " +
+                    "${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
+                    "(antes do WZM iniciado=${counters.loopbackAntesDoWzm}, depois=${counters.loopbackDepoisDoWzm}) — " +
+                    "DIAGNÓSTICO SECUNDÁRIO: NÃO são evidência de tráfego do WZM, nem a favor nem contra"
+            } else {
+                "nenhuma conexão em ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} nesta sessão"
+            }
+        ),
+        EvidenceClaim(
+            "tls_no_listener_do_tunel",
+            if (counters.tlsOkTunel + counters.tlsFailedTunel > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.tlsOkTunel + counters.tlsFailedTunel > 0) {
+                "handshakes em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT}: " +
+                    "${counters.tlsOkTunel} aceito(s) / ${counters.tlsFailedTunel} recusado(s) pelo cliente"
+            } else {
+                "nenhum handshake no listener do túnel (loopback: ${counters.tlsOkLoopback} ok / " +
+                    "${counters.tlsFailedLoopback} falha(s) — diagnóstico, fora do critério)"
             }
         ),
         EvidenceClaim(
@@ -440,7 +478,11 @@ object TunDiagnostics {
             "dot=${counters.tunDotFlows} quic/doh=${counters.tunDohCandidates} " +
             "dns-total=${counters.dnsQueries} dns-cdni-interceptado=${counters.dnsIntercepted} " +
             "dns-encaminhado=${counters.dnsForwarded} " +
-            "tcp-conexoes=${counters.tcpConnections} tls-ok=${counters.tlsOk} tls-falha=${counters.tlsFailed}"
+            "tcp-conexoes=${counters.tcpConnections} tls-ok=${counters.tlsOk} tls-falha=${counters.tlsFailed} " +
+            "listener-tunel=${counters.tcpConnectionsTunel} listener-loopback=${counters.tcpConnectionsLoopback} " +
+            "(antes-do-wzm=${counters.loopbackAntesDoWzm} depois-do-wzm=${counters.loopbackDepoisDoWzm}) " +
+            "tls-tunel=${counters.tlsOkTunel}/${counters.tlsFailedTunel} " +
+            "tls-loopback=${counters.tlsOkLoopback}/${counters.tlsFailedLoopback}"
 }
 
 /** Eventos que o vigia do túnel pode emitir — cada um vira uma linha no log. */

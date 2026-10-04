@@ -46,13 +46,29 @@ data class RequestCounters(
     val tunTcp443Externo: Int = 0,
     val tunUidVerifiedFlows: Int = 0,
     /** Consultas DNS que NÃO eram do CDNI e foram encaminhadas ao DNS real. */
-    val dnsForwarded: Int = 0
+    val dnsForwarded: Int = 0,
+    // ---- Listener local: separação por papel (M3.5) ----
+    /** Conexões aceitas no listener do ENDEREÇO DO TÚNEL (10.111.222.1:443) — único caminho com valor de evidência. */
+    val tcpConnectionsTunel: Int = 0,
+    /** Conexões aceitas em 127.0.0.1:443 — DIAGNÓSTICO; nunca contam como evidência de tráfego do WZM. */
+    val tcpConnectionsLoopback: Int = 0,
+    val tlsOkTunel: Int = 0,
+    val tlsFailedTunel: Int = 0,
+    val tlsOkLoopback: Int = 0,
+    val tlsFailedLoopback: Int = 0,
+    /** Conexões de loopback que ocorreram ANTES do WZM iniciado (não podem ser dele). */
+    val loopbackAntesDoWzm: Int = 0,
+    /** Conexões de loopback que ocorreram DEPOIS do WZM iniciado (ainda assim: só diagnóstico). */
+    val loopbackDepoisDoWzm: Int = 0
 ) {
     /** Linha única com todos os contadores (UI e cabeçalho de exportação). */
     fun summary(): String =
         "DNS: $dnsQueries consultas / $dnsIntercepted interceptadas / $dnsForwarded encaminhadas • " +
             "TCP: $tcpConnections conexões • HTTP: $httpRequests requests / $unknownRequests desconhecidos • " +
-            "TLS: $tlsOk ok / $tlsFailed falhas • " +
+            "TLS: $tlsOk ok / $tlsFailed falhas " +
+            "(túnel $tlsOkTunel/$tlsFailedTunel · loopback $tlsOkLoopback/$tlsFailedLoopback) • " +
+            "listener: túnel $tcpConnectionsTunel conexão(ões) / loopback $tcpConnectionsLoopback " +
+            "(diagnóstico; antes-do-WZM $loopbackAntesDoWzm, depois $loopbackDepoisDoWzm) • " +
             "TUN: $tunPacketsTotal pacotes (IPv4 $tunIpv4Packets / IPv6 $tunIpv6Packets / inválidos $tunInvalidPackets; " +
             "TCP $tunTcpPackets / UDP $tunUdpPackets / ICMP $tunIcmpPackets) • " +
             "alvo-CDNI: $tunToRedirect bounce $tunBounces / $tunDiscards descartes"
@@ -60,7 +76,9 @@ data class RequestCounters(
     /** Versão curta para os cards. */
     fun compact(): String =
         "DNS $dnsQueries/$dnsIntercepted/$dnsForwarded • TCP $tcpConnections • HTTP $httpRequests/$unknownRequests • " +
-            "TLS $tlsOk/$tlsFailed • TUN $tunPacketsTotal(v4 $tunIpv4Packets/v6 $tunIpv6Packets/inv $tunInvalidPackets) " +
+            "TLS $tlsOk/$tlsFailed (túnel $tlsOkTunel/$tlsFailedTunel) • " +
+            "listener túnel $tcpConnectionsTunel / loopback $tcpConnectionsLoopback • " +
+            "TUN $tunPacketsTotal(v4 $tunIpv4Packets/v6 $tunIpv6Packets/inv $tunInvalidPackets) " +
             "bounce $tunBounces desc $tunDiscards"
 
     /** Linha `chave=valor` com os nomes exatos usados no log e no relatório (export .txt). */
@@ -76,7 +94,11 @@ data class RequestCounters(
             "tunTcpSyn=$tunTcpSyn tunTcpSynToRedirect=$tunTcpSynToRedirect tunTcpSynOther=$tunTcpSynOther " +
             "tunUdpDns53=$tunUdpDns53 tunUdpDnsNoVirtualDns=$tunUdpDnsNoVirtualDns " +
             "tunDotFlows=$tunDotFlows tunDohCandidates=$tunDohCandidates tunTcp443Externo=$tunTcp443Externo " +
-            "tunUidVerifiedFlows=$tunUidVerifiedFlows"
+            "tunUidVerifiedFlows=$tunUidVerifiedFlows " +
+            "tcpConnectionsTunel=$tcpConnectionsTunel tcpConnectionsLoopback=$tcpConnectionsLoopback " +
+            "tlsOkTunel=$tlsOkTunel tlsFailedTunel=$tlsFailedTunel " +
+            "tlsOkLoopback=$tlsOkLoopback tlsFailedLoopback=$tlsFailedLoopback " +
+            "loopbackAntesDoWzm=$loopbackAntesDoWzm loopbackDepoisDoWzm=$loopbackDepoisDoWzm"
 }
 
 /**
@@ -143,6 +165,14 @@ object RequestLog {
     private val tunDohCandidates = AtomicInteger(0)
     private val tunTcp443Externo = AtomicInteger(0)
     private val tunUidVerifiedFlows = AtomicInteger(0)
+    private val tcpConnectionsTunel = AtomicInteger(0)
+    private val tcpConnectionsLoopback = AtomicInteger(0)
+    private val tlsOkTunel = AtomicInteger(0)
+    private val tlsFailedTunel = AtomicInteger(0)
+    private val tlsOkLoopback = AtomicInteger(0)
+    private val tlsFailedLoopback = AtomicInteger(0)
+    private val loopbackAntesDoWzm = AtomicInteger(0)
+    private val loopbackDepoisDoWzm = AtomicInteger(0)
 
     @Volatile
     private var sink: LogSink? = null
@@ -165,11 +195,45 @@ object RequestLog {
     fun incDnsQuery() { dnsQueries.incrementAndGet(); publishCounters() }
     fun incDnsIntercepted() { dnsIntercepted.incrementAndGet(); publishCounters() }
     fun incDnsForwarded() { dnsForwarded.incrementAndGet(); publishCounters() }
+    /**
+     * Total de conexões aceitas (legado). **Não é evidência:** para o quadro use
+     * [incTcpConnectionTunel] (túnel) e [incTcpConnectionLoopback] (diagnóstico).
+     */
     fun incTcpConnection() { tcpConnections.incrementAndGet(); publishCounters() }
     fun incHttpRequest() { httpRequests.incrementAndGet(); publishCounters() }
     fun incUnknownRequest() { unknownRequests.incrementAndGet(); publishCounters() }
     fun incTlsOk() { tlsOk.incrementAndGet(); publishCounters() }
     fun incTlsFailed() { tlsFailed.incrementAndGet(); publishCounters() }
+
+    /**
+     * Conexão aceita no listener do endereço do túnel (papel principal).
+     * Este é o único contador de conexão com valor de evidência sobre o WZM (M3.5).
+     */
+    fun incTcpConnectionTunel() {
+        tcpConnectionsTunel.incrementAndGet()
+        tcpConnections.incrementAndGet()
+        publishCounters()
+    }
+
+    /** Conexão aceita em 127.0.0.1:443 (diagnóstico). [beforeWzm] separa "antes" de "depois" do WZM. */
+    fun incTcpConnectionLoopback(beforeWzm: Boolean) {
+        tcpConnectionsLoopback.incrementAndGet()
+        tcpConnections.incrementAndGet()
+        if (beforeWzm) loopbackAntesDoWzm.incrementAndGet() else loopbackDepoisDoWzm.incrementAndGet()
+        publishCounters()
+    }
+
+    fun incTlsOkTunel() { tlsOkTunel.incrementAndGet(); tlsOk.incrementAndGet(); publishCounters() }
+
+    fun incTlsFailedTunel() { tlsFailedTunel.incrementAndGet(); tlsFailed.incrementAndGet(); publishCounters() }
+
+    fun incTlsOkLoopback() { tlsOkLoopback.incrementAndGet(); tlsOk.incrementAndGet(); publishCounters() }
+
+    fun incTlsFailedLoopback() {
+        tlsFailedLoopback.incrementAndGet()
+        tlsFailed.incrementAndGet()
+        publishCounters()
+    }
 
     fun incTunPacketsTotal() { tunPacketsTotal.incrementAndGet(); publishCounters() }
     fun incTunIpv4Packet() { tunIpv4Packets.incrementAndGet(); publishCounters() }
@@ -230,7 +294,15 @@ object RequestLog {
             tunDotFlows = tunDotFlows.get(),
             tunDohCandidates = tunDohCandidates.get(),
             tunTcp443Externo = tunTcp443Externo.get(),
-            tunUidVerifiedFlows = tunUidVerifiedFlows.get()
+            tunUidVerifiedFlows = tunUidVerifiedFlows.get(),
+            tcpConnectionsTunel = tcpConnectionsTunel.get(),
+            tcpConnectionsLoopback = tcpConnectionsLoopback.get(),
+            tlsOkTunel = tlsOkTunel.get(),
+            tlsFailedTunel = tlsFailedTunel.get(),
+            tlsOkLoopback = tlsOkLoopback.get(),
+            tlsFailedLoopback = tlsFailedLoopback.get(),
+            loopbackAntesDoWzm = loopbackAntesDoWzm.get(),
+            loopbackDepoisDoWzm = loopbackDepoisDoWzm.get()
         )
     }
 
@@ -245,6 +317,9 @@ object RequestLog {
         tunTcpSyn.set(0); tunTcpSynToRedirect.set(0); tunTcpSynOther.set(0)
         tunUdpDns53.set(0); tunUdpDnsNoVirtualDns.set(0); tunDotFlows.set(0)
         tunDohCandidates.set(0); tunTcp443Externo.set(0); tunUidVerifiedFlows.set(0)
+        tcpConnectionsTunel.set(0); tcpConnectionsLoopback.set(0)
+        tlsOkTunel.set(0); tlsFailedTunel.set(0); tlsOkLoopback.set(0); tlsFailedLoopback.set(0)
+        loopbackAntesDoWzm.set(0); loopbackDepoisDoWzm.set(0)
         publishCounters()
     }
 
@@ -254,6 +329,43 @@ object RequestLog {
         buffer.clear()
         _entries.value = emptyList()
         resetCounters()
+    }
+
+    // ---- Marcador de sessão: quando o WZM foi iniciado (M3.5) ----
+    // Sem isso, as conexões de loopback de 2026-10-04 (13:20:16) pareciam do WZM (iniciado 13:20:21).
+
+    @Volatile
+    private var wzmStartedAtMs: Long = -1L
+
+    /** Registra o instante em que o WZM foi iniciado (chamado pelo launcher ao iniciá-lo). */
+    fun markWzmStarted(atMillis: Long = System.currentTimeMillis()) {
+        wzmStartedAtMs = atMillis
+    }
+
+    /** Apaga o marcador (usado por testes e por uma nova sessão explícita). */
+    fun clearWzmMarker() {
+        wzmStartedAtMs = -1L
+    }
+
+    val wzmStartedAt: Long? get() = wzmStartedAtMs.takeIf { it > 0 }
+
+    /** `true` quando [atMillis] é anterior ao WZM iniciado (ou quando ele não foi iniciado). */
+    fun isBeforeWzmStart(atMillis: Long): Boolean = wzmStartedAt?.let { atMillis < it } ?: true
+
+    /**
+     * Relação temporal de uma conexão com o WZM iniciado — parte obrigatória do log de conexão (M3.5):
+     * "antes" nunca pode ser atribuído ao WZM; "sem WZM iniciado" também não.
+     */
+    fun wzmRelation(atMillis: Long): String {
+        val started = wzmStartedAt
+            ?: return "WZM não iniciado nesta sessão — conexão NÃO pode ser atribuída ao WZM"
+        val deltaSeconds = (atMillis - started) / 1000.0
+        val formatted = String.format(Locale.US, "%.1f", kotlin.math.abs(deltaSeconds))
+        return if (deltaSeconds < 0) {
+            "antes do WZM iniciado (Δ -$formatted s) — NÃO pode ser atribuída ao WZM"
+        } else {
+            "depois do WZM iniciado (Δ +$formatted s)"
+        }
     }
 
     /** Linhas do buffer, mais recentes por último. */

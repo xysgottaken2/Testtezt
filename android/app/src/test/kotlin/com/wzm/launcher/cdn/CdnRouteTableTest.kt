@@ -120,7 +120,18 @@ class CdnRouteTableTest {
             assertTrue("nota de evidência ausente em ${endpoint.path}", endpoint.note.length > 10)
             assertTrue("path normalizado difere em ${endpoint.path}", endpoint.path.startsWith("/"))
             val body = String(endpoint.body(), Charsets.UTF_8)
-            assertTrue("corpo sem marcador em ${endpoint.path}", body.contains(PLACEHOLDER_MARKER))
+            if (endpoint.realUpstreamBody) {
+                assertTrue(
+                    "corpo real de ${endpoint.path} precisa manter a assinatura observada",
+                    CdniMetaBody.looksLikeRealBody(body)
+                )
+                assertFalse(
+                    "corpo real de ${endpoint.path} não pode virar placeholder",
+                    body.contains(PLACEHOLDER_MARKER)
+                )
+            } else {
+                assertTrue("corpo sem marcador em ${endpoint.path}", body.contains(PLACEHOLDER_MARKER))
+            }
         }
     }
 }

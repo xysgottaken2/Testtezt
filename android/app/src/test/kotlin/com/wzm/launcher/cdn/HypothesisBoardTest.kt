@@ -93,6 +93,48 @@ class HypothesisBoardTest {
     }
 
     @Test
+    fun onlyTheTunnelListenerPromotesConnectionEvidence() {
+        // Conexões de loopback (a evidência de 2026-10-04: 5 conexões sem dono) NÃO promovem nada.
+        val loopbackOnly = RequestCounters(tcpConnectionsLoopback = 5, tlsFailedLoopback = 5)
+        assertEquals(Evidence.UNKNOWN, claim(loopbackOnly, "conexoes_no_listener_do_tunel").level)
+        assertEquals(Evidence.UNKNOWN, claim(loopbackOnly, "tls_no_listener_do_tunel").level)
+        assertEquals(
+            "só SYN observado no TUN promove tcp_para_o_alvo_cdni_443",
+            Evidence.UNKNOWN,
+            claim(loopbackOnly, "tcp_para_o_alvo_cdni_443").level
+        )
+
+        val loopbackClaim = claim(loopbackOnly, "conexoes_de_loopback_sao_diagnostico")
+        assertEquals(Evidence.VERIFIED, loopbackClaim.level)
+        assertTrue(loopbackClaim.detail.contains("NÃO são evidência"))
+        assertFalse(
+            "o detalhe do loopback não pode virar afirmação de autoria",
+            loopbackClaim.detail.contains("do WZM chegou")
+        )
+
+        // Uma conexão no listener do túnel (com TLS) já promove os dois claims para VERIFIED.
+        val tunnelOnly = RequestCounters(tcpConnectionsTunel = 1, tlsOkTunel = 1)
+        assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "conexoes_no_listener_do_tunel").level)
+        assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "tls_no_listener_do_tunel").level)
+        assertTrue(claim(tunnelOnly, "tls_no_listener_do_tunel").detail.contains("1 aceito"))
+
+        assertEquals(
+            Evidence.UNKNOWN,
+            claim(RequestCounters(), "conexoes_de_loopback_sao_diagnostico").level
+        )
+    }
+
+    @Test
+    fun loopbackBeforeWzmStartIsReportedAsSuch() {
+        val claim = claim(
+            RequestCounters(tcpConnectionsLoopback = 5, loopbackAntesDoWzm = 5),
+            "conexoes_de_loopback_sao_diagnostico"
+        )
+        assertTrue(claim.detail.contains("antes do WZM iniciado=5"))
+        assertTrue(claim.detail.contains("depois=0"))
+    }
+
+    @Test
     fun privateDnsIsEvidenceOfSettingAndOnlyHypothesisOfEffect() {
         val configured = claim(RequestCounters(), "dns_privado_configurado_no_aparelho", baseFacts(mode = "hostname", specifier = "dns.adguard.com"))
         assertEquals(Evidence.VERIFIED, configured.level)

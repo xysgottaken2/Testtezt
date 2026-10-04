@@ -15,7 +15,7 @@ class TcpRelay(
     private val socketTimeoutMs: Int = 15_000
 ) {
 
-    fun serve(socket: Socket, peer: String) {
+    fun serve(socket: Socket, peer: String, context: String = "") {
         socket.use { connection ->
             runCatching { connection.soTimeout = socketTimeoutMs }
             val input = BufferedInputStream(connection.getInputStream())
@@ -33,12 +33,14 @@ class TcpRelay(
             val outcome = CdnRouteTable.respond(head)
             RequestLog.incHttpRequest()
             if (!outcome.isKnown) RequestLog.incUnknownRequest()
-            log(outcome.logTag, "${outcome.logMessage} [cliente=$peer]")
+            val suffix = if (context.isEmpty()) "" else " · $context"
+            log(outcome.logTag, "${outcome.logMessage} [cliente=$peer]$suffix")
             // Linha dedicada ao status HTTP (filtro "[HTTP]" na tela de logs).
             log(
                 "HTTP",
                 "${head.method} ${head.path} -> ${outcome.status} " +
-                    "${HttpResponses.reason(outcome.status)} (resposta ${outcome.bytes.size} B, cliente=$peer)"
+                    "${HttpResponses.reason(outcome.status)} (resposta ${outcome.bytes.size} B, " +
+                    "cliente=$peer)$suffix"
             )
             try {
                 val output = BufferedOutputStream(connection.getOutputStream())

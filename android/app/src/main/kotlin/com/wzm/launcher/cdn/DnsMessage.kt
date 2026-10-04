@@ -118,6 +118,89 @@ object DnsMessage {
         return name.split('.').filter { it.isNotEmpty() }.sumOf { it.length + 1 } + 1
     }
 
+    /**
+     * Consulta DNS "de verdade" montada em memória (M3.5) — usada pelo teste sintético do caminho
+     * `DNS CDNI -> 10.111.222.1 -> listener :443`. Não é usada no caminho do túnel (lá a consulta vem
+     * do cliente); existe para que o launcher possa **produzir e verificar** a própria consulta.
+     */
+    fun buildQuery(name: String, qType: Int = TYPE_A, id: Int = 0x4D35): ByteArray {
+        val out = ByteArrayOutputStream(32)
+        out.write((id shr 8) and 0xFF)
+        out.write(id and 0xFF)
+        out.write(0x01) // RD=1
+        out.write(0x00)
+        out.write(0x00) // QDCOUNT = 1
+        out.write(0x01)
+        out.write(0x00)
+        out.write(0x00) // ANCOUNT = 0
+        out.write(0x00)
+        out.write(0x00)
+        out.write(0x00) // NSCOUNT = 0
+        out.write(0x00)
+        out.write(0x00) // ARCOUNT = 0
+        for (label in name.trimEnd('.').split('.')) {
+            if (label.isEmpty()) continue
+            val bytes = label.toByteArray(Charsets.US_ASCII)
+            out.write(bytes.size)
+            out.write(bytes, 0, bytes.size)
+        }
+        out.write(0)
+        out.write((qType shr 8) and 0xFF)
+        out.write(qType and 0xFF)
+        out.write(0x00) // CLASS = IN
+        out.write(0x01)
+        return out.toByteArray()
+    }
+
+    /**
+     * Lê os registros A de uma resposta DNS (só o necessário para conferir a resposta virtual do
+     * caminho CDNI). Devolve lista vazia quando não há resposta A ou o pacote está malformado —
+     * nunca lança. Nenhum conteúdo além dos endereços é lido.
+     */
+    fun extractARecords(response: ByteArray, length: Int): List<String> {
+        if (length < HEADER_SIZE) return emptyList()
+        val questions = u16(response, 4)
+        val answers = u16(response, 6)
+        var pos = HEADER_SIZE
+        for (index in 0 until questions) {
+            pos = skipName(response, pos, length)
+            if (pos < 0) return emptyList()
+            pos += 4
+            if (pos > length) return emptyList()
+        }
+        val records = mutableListOf<String>()
+        for (index in 0 until answers) {
+            pos = skipName(response, pos, length)
+            if (pos < 0 || pos + 10 > length) return records
+            val type = u16(response, pos)
+            val rdLength = u16(response, pos + 8)
+            val rdataStart = pos + 10
+            if (rdataStart + rdLength > length) return records
+            if (type == TYPE_A && rdLength == 4) {
+                records += "${response[rdataStart].toInt() and 0xFF}." +
+                    "${response[rdataStart + 1].toInt() and 0xFF}." +
+                    "${response[rdataStart + 2].toInt() and 0xFF}." +
+                    "${response[rdataStart + 3].toInt() and 0xFF}"
+            }
+            pos = rdataStart + rdLength
+        }
+        return records
+    }
+
+    /** Avança além de um nome (labels ou ponteiro de compressão). -1 quando o pacote acaba antes. */
+    private fun skipName(data: ByteArray, start: Int, length: Int): Int {
+        var pos = start
+        var guard = 0
+        while (pos < length && guard++ < 128) {
+            val labelLength = data[pos].toInt() and 0xFF
+            if (labelLength and 0xC0 == 0xC0) return pos + 2
+            pos++
+            if (labelLength == 0) return pos
+            pos += labelLength
+        }
+        return -1
+    }
+
     fun ipv4Bytes(address: String): ByteArray? {
         val parts = address.split('.')
         if (parts.size != 4) return null

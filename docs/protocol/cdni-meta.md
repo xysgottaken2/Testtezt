@@ -65,6 +65,15 @@ iOS adiciona `"#x3febec63a7c2351ab": false` + `future_*`.
 - `Not a file` para diretório indica Akamai não permite listing — não brute-forceável.
 - Não contém lista de shards — não é catálogo; é config de versão/flags. Catálogo real ainda `UNKNOWN`.
 
+## Servido localmente (M3.5)
+
+- O launcher passou a devolver este **corpo real observado** (não um placeholder) em
+  `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta`, em `CdniMetaBody` — sem acrescentar/remover campos
+  (a marcação de servidor local fica no cabeçalho HTTP `X-WZM-Offline`).
+- Motivo: é o primeiro recurso a servir quando o WZM chegar ao roteador e o único cujo conteúdo **existe**;
+  o manifesto de conteúdo segue `UNKNOWN` (não implementado). Ver
+  `docs/research/m3.5-loopback-e-teste-sintetico.md` §6 e `docs/research/m4.0-verificando-atualizacoes.md`.
+
 ## Notas
 
 - Não confundir com `manifest.json` do bootstrap (`/manifest/manifest.json`) — `cdni.meta` é **shard CDN** (`wzm/shard_cdn`), `manifest.json` é **WebView prelogin** (`/manifest/`).

@@ -135,6 +135,15 @@ fun LauncherScreen(vm: LauncherViewModel, onOpenLogs: () -> Unit = {}) {
                 ) { Text("PARAR ROTEADOR", fontSize = 12.sp) }
             }
 
+            OutlinedButton(
+                onClick = { vm.runSyntheticTest() },
+                enabled = state.router.httpsRunning,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta", fontSize = 11.sp) }
+            state.syntheticReport?.let { report ->
+                Text(report, color = Color(0xFFD7C36B), fontSize = 11.sp)
+            }
+
             Button(
                 onClick = { vm.launchWzm() },
                 modifier = Modifier.fillMaxWidth(),

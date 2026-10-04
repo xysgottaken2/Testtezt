@@ -15,9 +15,13 @@ enum class Confidence {
 /**
  * Endpoint CDNI servido pelo servidor local.
  *
- * [body] é o corpo efetivamente devolvido. Para os endpoints VERIFIED o corpo upstream real
- * NÃO foi capturado (M2/M2.2 nunca obteve o conteúdo completo), então servimos um placeholder
- * marcado — nunca um manifest inventado. Ver `docs/research/m3-cdni-integration.md`.
+ * [body] é o corpo efetivamente devolvido. Dois casos:
+ *  * [realUpstreamBody] = `true` → o corpo é o **conteúdo real público** já observado (hoje só o
+ *    `cdni.meta`, M3.5) e é servido sem alterações (a marcação de servidor local vai no cabeçalho HTTP);
+ *  * `false` → o corpo upstream nunca foi obtido (manifest de conteúdo, JS/CSS) e servimos um
+ *    **placeholder marcado** — nunca um manifest inventado.
+ *
+ * Ver `docs/research/m3-cdni-integration.md` e `docs/research/m3.5-loopback-e-teste-sintetico.md`.
  */
 data class CdnEndpoint(
     val path: String,
@@ -25,7 +29,9 @@ data class CdnEndpoint(
     val contentType: String,
     val body: () -> ByteArray,
     val confidence: Confidence,
-    val note: String
+    val note: String,
+    /** Corpo real observado servido localmente (não é placeholder). */
+    val realUpstreamBody: Boolean = false
 )
 
 /** Marcador presente em todo corpo servido localmente (facilita grep/log). */
@@ -126,20 +132,23 @@ object BootstrapEndpoints {
             note = "M2.2: css referenciado pelo boot web."
         ),
         CdnEndpoint(
-            path = "/wzm/shard_cdn/android/_manifest/cdni.meta",
+            path = CdnRouterConfig.CDNI_META_PATH,
             method = "GET",
             contentType = "application/json; charset=utf-8",
-            body = { jsonPlaceholder("/wzm/shard_cdn/android/_manifest/cdni.meta", "320 B") },
+            body = { CdniMetaBody.android() },
             confidence = Confidence.VERIFIED,
-            note = "M2.2: metadados shard_cdn (android, 320 B)."
+            note = "M2.2/M4.0: corpo REAL observado (android, ~320 B; min_buildnum=19854920) — " +
+                "servido sem alterações para o teste do caminho CDNI (M3.5).",
+            realUpstreamBody = true
         ),
         CdnEndpoint(
             path = "/wzm/shard_cdn/ios/_manifest/cdni.meta",
             method = "GET",
             contentType = "application/json; charset=utf-8",
-            body = { jsonPlaceholder("/wzm/shard_cdn/ios/_manifest/cdni.meta", "410 B") },
+            body = { CdniMetaBody.ios() },
             confidence = Confidence.VERIFIED,
-            note = "M2.2: metadados shard_cdn (ios, 410 B)."
+            note = "M2.2/M4.0: corpo REAL observado (ios, ~410 B; inclui future_*) — servido sem alterações.",
+            realUpstreamBody = true
         )
     )
 
