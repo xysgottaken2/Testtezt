@@ -1,0 +1,23 @@
+name: Research Task
+description: Tracking de pesquisa incremental
+title: "[research] "
+labels: [research]
+body:
+  - type: textarea
+    id: goal
+    attributes: { label: Goal }
+  - type: textarea
+    id: evidence
+    attributes: { label: Evidence }
+  - type: textarea
+    id: unknowns
+    attributes: { label: Unknowns }
+  - type: textarea
+    id: experiment
+    attributes: { label: Experiment }
+  - type: textarea
+    id: expected
+    attributes: { label: Expected result }
+  - type: textarea
+    id: actual
+    attributes: { label: Actual result }
