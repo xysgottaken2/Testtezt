@@ -145,6 +145,44 @@ class LocalHttpsServerTest {
         assertEquals("prod.cdni.callofduty.com", head.host)
     }
 
+    /**
+     * Espelha a evidência do device (S23 Ultra, 2026-10-04): o cliente ALCANÇA o listener e é
+     * recusado na validação do certificado. O servidor precisa contabilizar a falha de TLS,
+     * **não** contabilizar HTTP e registrar o motivo classificado.
+     */
+    @Test
+    fun untrustedClientHandshakeCountsAsTlsFailureAndNeverAsHttpRequest() {
+        RequestLog.clear()
+        val untrusting = SSLContext.getInstance("TLS").apply { init(null, null, null) }
+        val client = untrusting.socketFactory.createSocket("127.0.0.1", port) as SSLSocket
+        val clientFailure = try {
+            client.startHandshake()
+            null
+        } catch (e: Exception) {
+            e
+        } finally {
+            runCatching { client.close() }
+        }
+        assertNotNull("o cliente JVM SEM confiança no certificado local deve falhar", clientFailure)
+
+        // o atendimento acontece na thread do servidor: espera curta até o contador aparecer
+        val deadline = System.currentTimeMillis() + 4_000
+        while (RequestLog.counters.value.tlsFailed == 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50)
+        }
+
+        val counters = RequestLog.counters.value
+        assertEquals("falha de TLS deve ser contabilizada", 1, counters.tlsFailed)
+        assertEquals("nenhum handshake pode ter dado OK", 0, counters.tlsOk)
+        assertEquals("HTTP só conta depois do TLS", 0, counters.httpRequests)
+        assertEquals("conexão TCP deve ter sido contabilizada", 1, counters.tcpConnections)
+
+        val snapshot = RequestLog.snapshot()
+        assertTrue("log precisa trazer o motivo classificado", snapshot.contains("motivo="))
+        assertTrue("conexão precisa indicar o caminho usado", snapshot.contains("via loopback"))
+        assertTrue("log precisa citar a conexão TCP", snapshot.contains("conexão TCP recebida"))
+    }
+
     @Test
     fun serverOnlyListensOnRequestedEndpoint() {
         assertEquals(listOf(LocalHttpsServer.BindEndpoint("127.0.0.1", port)), server.boundEndpoints)

@@ -223,12 +223,20 @@ class CdnVpnService : VpnService() {
             return
         }
 
+        val question = DnsMessage.parseQuery(dnsPayload, dnsPayload.size)
         val upstream = upstreamDns.exchange(dnsPayload, dnsPayload.size)
         if (upstream == null) {
-            val question = DnsMessage.parseQuery(dnsPayload, dnsPayload.size)
             logThrottled("DNS", "sem resposta para ${question?.name ?: "consulta desconhecida"} (encaminhamento falhou)")
             return
         }
+        // Diagnóstico: registra (uma vez por nome) que a consulta NÃO era do CDNI e foi encaminhada.
+        // Foi a ausência desse dado que deixou dúvida na evidência do device de 2026-10-04
+        // (5 conexões TCP com dnsIntercepted=0) — ver docs/research/m3-cdni-integration.md §6.1.
+        logThrottled(
+            "DNS",
+            "${question?.name ?: "consulta"} (tipo ${question?.qType ?: -1}) -> encaminhado ao DNS real " +
+                "(não é host CDNI; resposta ${upstream.size} B)"
+        )
         writePacket(output, TunnelPackets.buildUdpPacket(dstAddress, dstPort, srcAddress, srcPort, upstream))
     }
 

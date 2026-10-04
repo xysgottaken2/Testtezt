@@ -129,10 +129,13 @@ class LocalHttpsServer(
                 break
             }
             val peer = client.remoteSocketAddress?.toString() ?: "?"
+            // "via" ajuda a distinguir o caminho usado pelo cliente (evidência do device de 2026-10-04:
+            // as conexões chegaram em 127.0.0.1:443, ou seja, pelo loopback, e não pelo endereço do túnel).
+            val via = if (endpoint.address == CdnRouterConfig.LOOPBACK_ADDRESS) "loopback" else "túnel"
             RequestLog.incTcpConnection()
             log(
                 "CDNI",
-                "conexão TCP recebida de $peer em $endpoint (total ${RequestLog.counters.value.tcpConnections})"
+                "conexão TCP recebida de $peer em $endpoint (via $via, total ${RequestLog.counters.value.tcpConnections})"
             )
             if (!connections.tryAcquire()) {
                 log("CDNI", "conexões simultâneas no limite ($maxConcurrentConnections) — conexão descartada")
@@ -172,19 +175,14 @@ class LocalHttpsServer(
         } catch (e: SSLHandshakeException) {
             RequestLog.incTlsFailed()
             val message = e.message ?: ""
-            val hint = when {
-                message.contains("certificate", ignoreCase = true) ||
-                    message.contains("alert", ignoreCase = true) ->
-                    "o cliente RECUSOU o certificado local (a CA local não é confiável para o WZM sem NSC próprio); " +
-                        "a requisição chegou ao servidor — ver docs/research/m3-cdni-integration.md §6"
-                message.contains("Unrecognized SSL message", ignoreCase = true) ->
-                    "o cliente falou HTTP em claro nesta porta"
-                else -> "ver mensagem acima"
-            }
-            log("TLS", "FALHA no handshake TLS em $endpoint: ${e.javaClass.simpleName}: $message [$hint]")
-            if (message.contains("Unrecognized SSL message", ignoreCase = true) ||
-                message.contains("plaintext", ignoreCase = true)
-            ) {
+            val failure = TlsTrust.analyze(message)
+            // Linha com código estável (motivo=...) para leitura máquina/humana na tela VER LOGS.
+            log(
+                "TLS",
+                "FALHA no handshake TLS em $endpoint: motivo=${failure.code} " +
+                    "(${e.javaClass.simpleName}: $message) — ${failure.hint}"
+            )
+            if (failure.code == TlsFailure.CLIENT_CLEARTEXT) {
                 relay.serve(client, client.remoteSocketAddress?.toString() ?: "?")
             }
         } catch (e: Exception) {
