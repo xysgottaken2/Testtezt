@@ -12,10 +12,10 @@
 |---|---|
 | Workflow | `.github/workflows/android-build.yml` (job `build`) |
 | Resultado | **success** — `testDebugUnitTest` + `assembleDebug` + SHA256 + upload |
-| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** |
+| Runs verdes | M2: `37177649488` (`18ae95c`), `37177973604` (`d6feff9`) · M3: `37179735648` (`622a97b`) · M3 + VER LOGS: `37205801261`/`37206351532` · **M3.2 (classificador TLS + evidência do device): `37209458668` (commit `d69a731`)** · **artifact do APK verificado pelo CI: `37210054051` (commit `b761b07`, jobs `build` + `verify-artifact`)** |
 | Artifact | **`wzm-offline-launcher-debug`** (30 dias) — `app-debug.apk` + `app-debug.apk.sha256` |
-| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** |
-| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** |
+| SHA-256 observados | M2: `ca21f32d…eded`, `68caf1f7…aa04` · M3: `75474ede…6eb558` · M3 + VER LOGS: `c358af7b…60ec5b`, `e9beba63…48847` · **M3.2 (run `37209458668`): `1aa52f6d226f7726a7209bb1bde1348d73198609b996c325ef5898cc47d1a008`** · **verificado pelo job `verify-artifact` (run `37210054051`): `a3206af64f993751bba21ffc07c2e86adba7d428d105a17b1fd7c6c0f10456af`** |
+| Tamanho | M2 ~15.573.600 B · M3 15.640.840 B · M3 + VER LOGS 15.675.176 B / 15.675.060 B · **M3.2: 15.678.140 B (~14,9 MiB)** · **verificado: 15.678.120 B (~14,9 MiB)** |
 | Data | 2026-10-04 |
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
@@ -112,9 +112,17 @@ seção **Artifacts** → **`wzm-offline-launcher-debug`**. Dentro do artifact:
 > e o `<provider>`/guardas do CI impedem que qualquer APK que não seja o nosso entre nos artifacts.
 > Nenhum APK do Warzone Mobile original é publicado.
 
-O CI **verifica o artifact depois de publicar** (baixa de volta, confere a raiz do artifact e o SHA-256) e
-escreve no resumo do run: artifact, caminho no artifact, tamanho e sha256 (também disponível como annotation
-`artifact-verificado` via API).
+O CI **verifica o artifact depois de publicar** (job `verify-artifact`: baixa de volta, exige exatamente os 2
+arquivos na raiz e confere sha256/tamanho contra o build) e publica o resultado no resumo do run e na annotation
+`artifact-verificado`. Última verificação (run `37210054051`, commit `b761b07`):
+
+```
+artifact=wzm-offline-launcher-debug caminho-no-artifact=app-debug.apk (+app-debug.apk.sha256)
+arquivos=2 size=15.678.120 sha256=a3206af64f993751bba21ffc07c2e86adba7d428d105a17b1fd7c6c0f10456af
+```
+
+O workflow `android-build` roda em **todo push** (não tem filtro de `paths`) exatamente para o artifact nunca
+faltar, inclusive em commits só de documentação.
 
 Workflow `.github/workflows/android-build.yml`:
 
