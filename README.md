@@ -1,7 +1,7 @@
 # Warzone Mobile Offline Server — Projeto Experimental de Preservação / Interoperabilidade
 
-> **STATUS:** `M2 — Bootstrap Offline (WZM 3.10.0)` | Branch: `research/m2-bootstrap-offline` → PR #11 `research: WZM 3.10.0 bootstrap WebView + local CDN stub (sem Activision)`  
-> **Anterior:** `M1 — Client communication` em `research/m1-unlock-preparation` → PR #10
+> **STATUS:** `Launcher Android MVP` | Branch: `feature/launcher-apk` → APK `wzm-offline-launcher-debug` (127.0.0.1:18081, Compose)  
+> **Anteriores:** `M2.2.1 → research/m2.2.1-shard-inventory` (PR #14), `M2.2 → PR #13`, `M2.1 → PR #12`, `M2 Bootstrap → PR #11`, `M1 → PR #10`  
 > **Objetivo de longo prazo:** fazer o cliente de **Call of Duty: Warzone Mobile** entrar em uma partida local contra bots, sem depender da infraestrutura online oficial, via servidor local/privado.
 
 ```
@@ -62,6 +62,7 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [Runbook APK](docs/reverse-engineering/apk-analysis-runbook.md) | Runbook para APK em /tmp/wzm |
 | [CDN Build-Selector](docs/protocol/cdni-build-selector.md) | **NOVO M2:** `prod.cdni.callofduty.com/manifest/build-selector-103.js` VERIFIED |
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
+| [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
 | [Template de Protocolo](docs/protocol/template.md) | Como documentar cada mensagem |
 
@@ -90,12 +91,18 @@ warzone-offline/
 │   ├── auth/ profile/ matchmaking/ lobby/ session/ gameplay/
 │   ├── player/ bots/ weapons/ vehicles/ map/ streaming/
 │   └── inventory/ telemetry/ database/ protocol/
-├── launcher/        # inicia cliente, redireciona para localhost
+├── launcher/        # Node — hosts-patch / webview-patch (metodologia DbD)
 ├── tools/           # apk-analysis, log-parser, packet-tools, asset-tools
 ├── docs/            # arquitetura, protocolo, pesquisa, versões, mapas
 ├── tests/           # testes de regressão
 ├── scripts/         # automação
 └── .github/workflows
+
+android/             # NOVO — Launcher Android (Kotlin + Compose, 127.0.0.1:18081)
+├── app/src/main/kotlin/com/wzm/launcher/
+│   ├── LauncherConfig, server/EmbeddedLocalServer+ServerController, wzm/WzmLauncher, ui/MainActivity+LauncherViewModel
+│   └── ui/theme, server/OfflineContentServer (stub CDNI)
+└── app/build/outputs/apk/debug/app-debug.apk  # artifact wzm-offline-launcher-debug
 ```
 
 Detalhe completo em [docs/architecture/overview.md](docs/architecture/overview.md).
@@ -142,25 +149,33 @@ LOG_LEVEL=debug
 
 ---
 
-## 🧪 Como testar localmente (skeleton)
+## 🧪 Como testar localmente
 
 ```bash
 # Server — bootstrap local CDN (M2, VERIFIED chain)
-cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 26 testes
+cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 30 testes
 npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
-# ou bootstrap stub:
-node -e "import('./src/bootstrap/index.js').then(m=>new m.BootstrapServer({host:'127.0.0.1',port:18081}).listen().then(()=>console.log('bootstrap listening')))"
 
-# Launcher hosts-patch + webview-patch (metodologia DbD REFERENCE)
+# Launcher Node — hosts-patch + webview-patch (metodologia DbD REFERENCE)
 cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
-# hosts para bootstrap: 127.0.0.1 prod.cdni.callofduty.com
 
-# Scanner (quando APK disponível)
-node warzone-offline/tools/apk-analysis/endpoint-scanner.js /tmp/wzm/jadx-output /tmp/wzm/apktool-output/lib
-node warzone-offline/tools/apk-analysis/categorize-endpoints.js /tmp/wzm/endpoints.json
+# Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
+cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM (ServerTest, WzmLauncher)
+./gradlew :app:assembleDebug  # APK em android/app/build/outputs/apk/debug/app-debug.apk
+# instalar no S23 Ultra:
+adb install android/app/build/outputs/apk/debug/app-debug.apk
+# testar health:
+adb shell 'curl -v http://127.0.0.1:18081/health'  # deve dar 200 OK
+
+# Scanner (quando APK disponível, fora do repo)
+bash warzone-offline/tools/asset-tools/run-external-apk.sh --apk /storage/emulated/0/Download/warzone.xapk --out-dir /storage/emulated/0/Download/wzm-out
 ```
 
-Workflow CI roda em todo PR: checkout → deps → build → testes → artifacts.
+Workflow CI roda em todo PR: checkout → deps → build → testes → artifacts (incl. `wzm-offline-launcher-debug`).
+
+### Android Launcher
+
+Ver [docs/launcher.md](docs/launcher.md) — arquitetura Compose, como compilar, endpoints `/health`/`/__hits`, o que funciona e o que ainda não (CDNI stub).
 
 ---
 
