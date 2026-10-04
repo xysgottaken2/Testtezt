@@ -60,9 +60,7 @@ class TunnelPacketsTest {
     @Test
     fun resetForSynSwapsEndpointsAndAcksSequence() {
         val syn = tcpPacket(seq = 5000)
-        val reset = TunnelPackets.buildTcpReset(syn, syn.size)
-        assertNotNull(reset)
-        reset!!
+        val reset = checkNotNull(TunnelPackets.buildTcpReset(syn, syn.size)) { "SYN deveria gerar RST" }
         assertEquals(40, reset.size)
         assertEquals("10.111.222.1", TunnelPackets.srcAddress(reset))
         assertEquals("10.111.222.1", TunnelPackets.dstAddress(reset))
@@ -77,9 +75,8 @@ class TunnelPacketsTest {
     @Test
     fun resetForAckUsesIncomingAckAsSequence() {
         val ack = tcpPacket(flags = TunnelPackets.FLAG_ACK, seq = 700, ack = 4321)
-        val reset = TunnelPackets.buildTcpReset(ack, ack.size)
-        assertNotNull(reset)
-        assertEquals(TunnelPackets.FLAG_RST, TunnelPackets.tcpFlags(reset!!, 20))
+        val reset = checkNotNull(TunnelPackets.buildTcpReset(ack, ack.size)) { "ACK deveria gerar RST" }
+        assertEquals(TunnelPackets.FLAG_RST, TunnelPackets.tcpFlags(reset, 20))
         assertEquals(4321L, TunnelPackets.u32(reset, 24))
         assertEquals(0L, TunnelPackets.u32(reset, 28))
     }
@@ -93,8 +90,8 @@ class TunnelPacketsTest {
     @Test
     fun countsSynPayloadIntoAck() {
         val synWithData = tcpPacket(seq = 10, flags = TunnelPackets.FLAG_SYN, payload = ByteArray(7))
-        val reset = TunnelPackets.buildTcpReset(synWithData, synWithData.size)
-        assertEquals(10L + 7 + 1, TunnelPackets.u32(reset!!, 28))
+        val reset = checkNotNull(TunnelPackets.buildTcpReset(synWithData, synWithData.size))
+        assertEquals(10L + 7 + 1, TunnelPackets.u32(reset, 28))
     }
 
     @Test

@@ -11,6 +11,7 @@ import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.net.ssl.SNIHostName
+import javax.net.ssl.SNIServerName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
@@ -83,17 +84,18 @@ class LocalHttpsServerTest {
 
     private fun connect(sni: String = "prod.cdni.callofduty.com"): SSLSocket {
         val socket = trustedContext().socketFactory.createSocket("127.0.0.1", port) as SSLSocket
-        socket.sslParameters = socket.sslParameters.apply { serverNames = listOf(SNIHostName(sni)) }
+        val parameters = socket.sslParameters
+        parameters.serverNames = mutableListOf<SNIServerName>(SNIHostName(sni))
+        socket.sslParameters = parameters
         socket.startHandshake()
         return socket
     }
 
     private fun request(path: String, host: String = "prod.cdni.callofduty.com"): String =
         connect(host).use { socket ->
-            socket.outputStream.write(
-                "GET $path HTTP/1.1\r\nHost: $host\r\nUser-Agent: wzm-offline-test\r\n" +
-                    "Accept: */*\r\n\r\n".toByteArray()
-            )
+            val head = "GET $path HTTP/1.1\r\nHost: $host\r\nUser-Agent: wzm-offline-test\r\n" +
+                "Accept: */*\r\n\r\n"
+            socket.outputStream.write(head.toByteArray(Charsets.US_ASCII))
             socket.outputStream.flush()
             String(socket.inputStream.readBytes(), Charsets.ISO_8859_1)
         }

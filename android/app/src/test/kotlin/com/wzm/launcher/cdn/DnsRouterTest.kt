@@ -31,9 +31,8 @@ class DnsRouterTest {
     @Test
     fun parsesQuestion() {
         val raw = query("prod.cdni.callofduty.com", DnsMessage.TYPE_A)
-        val question = DnsMessage.parseQuery(raw, raw.size)
-        assertNotNull(question)
-        assertEquals("prod.cdni.callofduty.com", question!!.name)
+        val question = checkNotNull(DnsMessage.parseQuery(raw, raw.size)) { "pergunta DNS não parseada" }
+        assertEquals("prod.cdni.callofduty.com", question.name)
         assertEquals(DnsMessage.TYPE_A, question.qType)
         assertEquals(DnsMessage.CLASS_IN, question.qClass)
     }
@@ -52,9 +51,8 @@ class DnsRouterTest {
     @Test
     fun answersInterceptedHostWithTunnelAddress() {
         val request = query("prod.cdni.callofduty.com", DnsMessage.TYPE_A)
-        val answer = responder.answer(request, request.size)
-        assertNotNull(answer)
-        assertEquals(0x1234, ((answer!![0].toInt() and 0xFF) shl 8) or (answer[1].toInt() and 0xFF))
+        val answer = checkNotNull(responder.answer(request, request.size)) { "sem resposta DNS" }
+        assertEquals(0x1234, ((answer[0].toInt() and 0xFF) shl 8) or (answer[1].toInt() and 0xFF))
         assertTrue("QR deve estar setado", (answer[2].toInt() and 0x80) != 0)
         assertTrue("RCODE deve ser 0 (NOERROR)", (answer[3].toInt() and 0x0F) == 0)
         assertEquals("ANCOUNT", 1, DnsMessage.u16(answer, 6))
@@ -66,9 +64,8 @@ class DnsRouterTest {
     @Test
     fun returnsNoAnswersForIpv6ToForceIpv4() {
         val request = query("prod.cdni.callofduty.com", DnsMessage.TYPE_AAAA)
-        val answer = responder.answer(request, request.size)
-        assertNotNull(answer)
-        assertEquals(0, DnsMessage.u16(answer!!, 6))
+        val answer = checkNotNull(responder.answer(request, request.size)) { "sem resposta DNS" }
+        assertEquals(0, DnsMessage.u16(answer, 6))
         assertTrue((answer[3].toInt() and 0x0F) == 0)
     }
 
