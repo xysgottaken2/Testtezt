@@ -360,7 +360,7 @@ class LocalHttpsServerDiagnosticsTest {
         RequestLog.clear()
         RequestLog.resetCounters()
         val port = ServerSocket(0).use { it.localPort }
-        var roles = mutableListOf<LocalHttpsServer.EndpointRole>()
+        val roles = mutableListOf<LocalHttpsServer.EndpointRole>()
         val server = LocalHttpsServer(
             tlsContextOverride = contextWithoutKeys(),
             endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),

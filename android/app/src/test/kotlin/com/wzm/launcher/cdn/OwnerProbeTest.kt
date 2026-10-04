@@ -78,8 +78,8 @@ class OwnerProbeTest {
             assertEquals(InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1), first)
             assertEquals(InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1), second)
 
-            assertTrue(report.summaryLine().contains("resolvidos=2"))
-            assertTrue(report.summaryLine().contains("INVALID_UID=1"))
+            assertTrue(OwnerProbe.summaryLine(report).contains("resolvidos=2"))
+            assertTrue(OwnerProbe.summaryLine(report).contains("INVALID_UID=1"))
             assertTrue(report.expectation().contains("RESOLVEU"))
             assertEquals(4, report.lines().size)
         } finally {

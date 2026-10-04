@@ -99,11 +99,11 @@ class LauncherScreenScrollTest {
     fun ownerProbeCardIsRenderedAndKeepsLaunchWzmReachable() {
         // M4.1: o card do teste de controle aparece quando o probe rodou — e ele é outro bloco de
         // altura variável entre o relatório sintético e o botão do WZM.
-        rule.setContent(
+        rule.setContent {
             LauncherContent(
                 state = state(report = longSyntheticReport(), ownerProbe = ownerProbeSummary())
             )
-        )
+        }
 
         rule.onNodeWithTag(LauncherTestTags.CONTENT)
             .performScrollToNode(hasTestTag(LauncherTestTags.OWNER_PROBE))
