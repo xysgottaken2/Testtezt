@@ -150,6 +150,32 @@ class TunDiagnosticsTest {
     }
 
     @Test
+    fun bindFailuresAreClassifiedByErrno() {
+        assertEquals(
+            ListenerFailure.ENDERECO_INDISPONIVEL,
+            ListenerFailures.classify("BindException", "Cannot assign requested address")
+        )
+        assertEquals(
+            ListenerFailure.ENDERECO_INDISPONIVEL,
+            ListenerFailures.classify("BindException", "bind failed: EADDRNOTAVAIL")
+        )
+        assertEquals(
+            ListenerFailure.PORTA_EM_USO,
+            ListenerFailures.classify("BindException", "Address already in use")
+        )
+        assertEquals(
+            ListenerFailure.PORTA_NEGADA,
+            ListenerFailures.classify("BindException", "Permission denied")
+        )
+        assertEquals(
+            ListenerFailure.DESCONHECIDO,
+            ListenerFailures.classify("IOException", "algo inesperado")
+        )
+        assertEquals(ListenerFailures.VIA_LOOPBACK, ListenerFailures.via(CdnRouterConfig.LOOPBACK_ADDRESS))
+        assertEquals(ListenerFailures.VIA_TUNEL, ListenerFailures.via(CdnRouterConfig.VPN_ADDRESS))
+    }
+
+    @Test
     fun discardLineNeverUsesGenericInvalidMotivoForPolicyDiscards() {
         val line = TunDiscardReason.IPV6_SEM_ATENDIMENTO.line("IPv6 UDP [fe80::1]:5353 -> [::ffff:10.111.222.1]:53")
         assertTrue(line.contains("motivo=IPV6_SEM_ATENDIMENTO"))

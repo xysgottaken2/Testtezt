@@ -348,6 +348,51 @@ data class TunPacketView(
     }
 }
 
+/**
+ * Classificação estável de falhas de bind do listener HTTPS.
+ * Puro: recebe o nome da exceção e a mensagem (testável em JVM).
+ */
+enum class ListenerFailure(val code: String, val hint: String) {
+    ENDERECO_INDISPONIVEL(
+        "ENDERECO_INDISPONIVEL",
+        "o endereço não está atribuído à interface do túnel no momento do bind (EADDRNOTAVAIL); " +
+            "nesse caso pacotes devolvidos pelo TUN para esse endereço ficam sem listener"
+    ),
+    PORTA_EM_USO(
+        "PORTA_EM_USO",
+        "já existe um socket escutando nessa porta/endereço (EADDRINUSE)"
+    ),
+    PORTA_NEGADA(
+        "PORTA_NEGADA",
+        "o sistema negou a porta privilegiada (EACCES/EPERM)"
+    ),
+    DESCONHECIDO(
+        "DESCONHECIDO",
+        "falha de bind não classificada — ver a exceção completa no log"
+    )
+}
+
+object ListenerFailures {
+
+    const val VIA_LOOPBACK = "loopback"
+    const val VIA_TUNEL = "túnel"
+
+    fun classify(exceptionName: String, message: String?): ListenerFailure {
+        val text = "${exceptionName.orEmpty()} ${message.orEmpty()}".lowercase()
+        return when {
+            text.contains("eaddrnotavail") ||
+                text.contains("cannot assign requested address") -> ListenerFailure.ENDERECO_INDISPONIVEL
+            text.contains("eaddrinuse") || text.contains("address already in use") -> ListenerFailure.PORTA_EM_USO
+            text.contains("eacces") || text.contains("eperm") ||
+                text.contains("permission denied") -> ListenerFailure.PORTA_NEGADA
+            else -> ListenerFailure.DESCONHECIDO
+        }
+    }
+
+    fun via(address: String): String =
+        if (address == CdnRouterConfig.LOOPBACK_ADDRESS) VIA_LOOPBACK else VIA_TUNEL
+}
+
 object TunDiagnostics {
 
     /**
