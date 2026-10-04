@@ -9,11 +9,6 @@ data class HttpOutcome(
     val logMessage: String
 ) {
     val isKnown: Boolean get() = status == 200
-
-    override fun equals(other: Any?): Boolean =
-        other is HttpOutcome && status == other.status && logMessage == other.logMessage
-
-    override fun hashCode(): Int = status * 31 + logMessage.hashCode()
 }
 
 /**
@@ -28,6 +23,9 @@ object CdnRouteTable {
 
     const val HEALTH_PATH = "/__wzm_offline/health"
     const val REQUESTS_PATH = "/__wzm_offline/requests"
+
+    /** JSON já renderizado (usado para aninhar objetos/listas sem ambiguidade de aspas). */
+    private class RawJson(val json: String)
 
     fun respond(head: HttpRequestHead): HttpOutcome {
         val path = head.path
@@ -68,18 +66,17 @@ object CdnRouteTable {
     }
 
     private fun unknown(head: HttpRequestHead): HttpOutcome {
-        val path = head.path
-        val raw = head.target
-        val query = head.query
-        val body = (
-            """{"error":"unknown_cdni_endpoint","marker":"$PLACEHOLDER_MARKER",""" +
-                """"method":"${HttpResponses.jsonEscape(head.method)}",""" +
-                """"path":"${HttpResponses.jsonEscape(path)}",""" +
-                """"target":"${HttpResponses.jsonEscape(raw)}",""" +
-                (if (query != null) """"query":"${HttpResponses.jsonEscape(query)}",""" else "") +
-                """"host":"${HttpResponses.jsonEscape(head.host ?: "?")}",""" +
-                """"hint":"endpoint não implementado — path registrado no launcher; nenhuma resposta foi inventada"}"""
-            ).toByteArray(Charsets.UTF_8)
+        val fields = mutableListOf<Pair<String, Any>>(
+            "error" to "unknown_cdni_endpoint",
+            "marker" to PLACEHOLDER_MARKER,
+            "method" to head.method,
+            "path" to head.path,
+            "target" to head.target,
+            "host" to (head.host ?: "?"),
+            "hint" to "endpoint não implementado — path registrado no launcher; nenhuma resposta foi inventada"
+        )
+        head.query?.let { query -> fields.add(6, "query" to query) }
+        val body = jsonObject(fields).toByteArray(Charsets.UTF_8)
         return HttpOutcome(
             status = 404,
             confidence = Confidence.HYPOTHESIS,
@@ -94,27 +91,46 @@ object CdnRouteTable {
         )
     }
 
-    private fun internal(path: String, body: ByteArray): HttpOutcome = HttpOutcome(
-        status = 200,
-        confidence = Confidence.INTERNAL,
-        bytes = HttpResponses.build(200, "application/json; charset=utf-8", body),
-        logTag = "CDNI",
-        logMessage = "GET $path -> 200 (interno)"
-    )
+    private fun internal(path: String, body: ByteArray, contentType: String = "application/json; charset=utf-8"): HttpOutcome =
+        HttpOutcome(
+            status = 200,
+            confidence = Confidence.INTERNAL,
+            bytes = HttpResponses.build(200, contentType, body),
+            logTag = "CDNI",
+            logMessage = "GET $path -> 200 (interno)"
+        )
 
     private fun healthBody(): ByteArray {
         val counters = RequestLog.counters.value
-        val endpoints = BootstrapEndpoints.all().joinToString(",") { endpoint ->
-            """{"path":"${endpoint.path}","confidence":"${endpoint.confidence.name}",""" +
-                """"note":"${HttpResponses.jsonEscape(endpoint.note)}"}"""
+        val endpointList = BootstrapEndpoints.all().joinToString(",") { endpoint ->
+            jsonObject(
+                listOf(
+                    "path" to endpoint.path,
+                    "confidence" to endpoint.confidence.name,
+                    "note" to endpoint.note
+                )
+            )
         }
-        return (
-            """{"marker":"$PLACEHOLDER_MARKER","service":"local-cdn-router",""" +
-                """"counters":{"dnsQueries":${counters.dnsQueries},"dnsIntercepted":${counters.dnsIntercepted},""" +
-                """"httpRequests":${counters.httpRequests},"unknownRequests":${counters.unknownRequests},""" +
-                """"tlsOk":${counters.tlsOk},"tlsFailed":${counters.tlsFailed}},""" +
-                """"endpoints":[$endpoints]}"""
-            ).toByteArray(Charsets.UTF_8)
+        val body = jsonObject(
+            listOf(
+                "marker" to PLACEHOLDER_MARKER,
+                "service" to "local-cdn-router",
+                "counters" to RawJson(
+                    jsonObject(
+                        listOf(
+                            "dnsQueries" to counters.dnsQueries,
+                            "dnsIntercepted" to counters.dnsIntercepted,
+                            "httpRequests" to counters.httpRequests,
+                            "unknownRequests" to counters.unknownRequests,
+                            "tlsOk" to counters.tlsOk,
+                            "tlsFailed" to counters.tlsFailed
+                        )
+                    )
+                ),
+                "endpoints" to RawJson("[$endpointList]")
+            )
+        )
+        return body.toByteArray(Charsets.UTF_8)
     }
 
     private fun requestsBody(): ByteArray {
@@ -123,5 +139,18 @@ object CdnRouteTable {
             "httpRequests=${counters.httpRequests} unknownRequests=${counters.unknownRequests} " +
             "tlsOk=${counters.tlsOk} tlsFailed=${counters.tlsFailed}\n"
         return (header + RequestLog.snapshot() + "\n").toByteArray(Charsets.UTF_8)
+    }
+
+    /** JSON sem ambiguidade: chaves/strings escapados por [HttpResponses.jsonEscape]. */
+    private fun jsonObject(fields: List<Pair<String, Any>>): String =
+        fields.joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) ->
+            "\"" + HttpResponses.jsonEscape(key) + "\":" + render(value)
+        }
+
+    private fun render(value: Any): String = when (value) {
+        is Int -> value.toString()
+        is Long -> value.toString()
+        is RawJson -> value.json
+        else -> "\"" + HttpResponses.jsonEscape(value.toString()) + "\""
     }
 }

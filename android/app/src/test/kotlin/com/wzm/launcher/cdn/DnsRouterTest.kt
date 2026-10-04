@@ -51,8 +51,8 @@ class DnsRouterTest {
 
     @Test
     fun answersInterceptedHostWithTunnelAddress() {
-        val query = query("prod.cdni.callofduty.com", DnsMessage.TYPE_A)
-        val answer = responder.answer(query, query.size)
+        val request = query("prod.cdni.callofduty.com", DnsMessage.TYPE_A)
+        val answer = responder.answer(request, request.size)
         assertNotNull(answer)
         assertEquals(0x1234, ((answer!![0].toInt() and 0xFF) shl 8) or (answer[1].toInt() and 0xFF))
         assertTrue("QR deve estar setado", (answer[2].toInt() and 0x80) != 0)
@@ -65,8 +65,8 @@ class DnsRouterTest {
 
     @Test
     fun returnsNoAnswersForIpv6ToForceIpv4() {
-        val query = query("prod.cdni.callofduty.com", DnsMessage.TYPE_AAAA)
-        val answer = responder.answer(query, query.size)
+        val request = query("prod.cdni.callofduty.com", DnsMessage.TYPE_AAAA)
+        val answer = responder.answer(request, request.size)
         assertNotNull(answer)
         assertEquals(0, DnsMessage.u16(answer!!, 6))
         assertTrue((answer[3].toInt() and 0x0F) == 0)

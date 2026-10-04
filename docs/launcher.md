@@ -29,6 +29,7 @@
 | `The 'android.useAndroidX' property is not enabled` | deps AndroidX (Compose/Lifecycle) exigem a flag | `android/gradle.properties` com `android.useAndroidX=true` |
 | `Platform declaration clash: getStatus()` | propriedade `status` + `fun getStatus()` geram a mesma assinatura JVM | campo privado `currentStatus` + `fun getStatus()` |
 | Logs do CI inacessíveis deste ambiente (blob bloqueado) | — | pipeline emite `::error::`/`::notice::` (annotations) e artifact `android-test-logs` |
+| `e: …:116:33 Identifier expected` + `e: …:128:1 Unclosed comment` | string raw do Kotlin com aspas **coladas** ao delimitador (`""""campo":…`), que o lexer rejeita | montar JSON com concatenação/`jsonEscape` (nunca `"""` + `"`); o CI roda `scripts/check-kotlin-raw-strings.py` como preflight |
 
 Compatibilidade VERIFIED: Kotlin `1.9.22` ↔ Compose Compiler `1.5.8` ↔ AGP `8.5.2` ↔ Gradle `8.7` ↔ JDK `17` ↔ compileSdk `34`.
 
