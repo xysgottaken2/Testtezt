@@ -41,7 +41,7 @@ class LoopbackOriginTest {
         val target = LoopbackOrigin.conclude(facts(peerUid = 10692))
         assertEquals(LoopbackOrigin.Verdict.UID_APP_ALVO, target.verdict)
         assertEquals(Evidence.VERIFIED, target.evidence)
-        assertTrue(target.detail.contains("não prova tráfego externo do WZM"))
+        assertTrue(target.detail.contains("nem prova tráfego externo do WZM"))
 
         val other = LoopbackOrigin.conclude(facts(peerUid = 2000))
         assertEquals(LoopbackOrigin.Verdict.OUTRO_UID, other.verdict)

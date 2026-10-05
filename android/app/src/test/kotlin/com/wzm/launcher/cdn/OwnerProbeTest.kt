@@ -62,7 +62,7 @@ class OwnerProbeTest {
             val expectation = report.expectation()
             assertTrue(expectation, expectation.contains("VERIFIED"))
             assertTrue(expectation, expectation.contains("apenas para aquelas tuplas"))
-            assertTrue(expectation, expectation.contains("não demonstra o resultado para o UID-alvo/WZM"))
+            assertTrue(expectation, expectation.contains("nem demonstra o resultado para o UID-alvo/WZM"))
             assertEquals(3, report.lines().size)
             assertTrue(report.lines().last().contains("CONTEXTO"))
             assertTrue(report.lines().last().contains("não consulta o UID do alvo"))

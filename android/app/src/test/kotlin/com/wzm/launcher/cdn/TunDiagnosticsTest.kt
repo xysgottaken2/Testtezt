@@ -160,7 +160,7 @@ class TunDiagnosticsTest {
         )
         assertTrue(line.contains("3 pacote(s)"))
         assertTrue(line.contains("compatível com descoberta local"))
-        assertTrue(line.contains("origem UID/processo desconhecida"))
+        assertTrue(line.contains("UID/processo desconhecida"))
         assertTrue(line.contains("não sabemos se veio do sistema ou do WZM"))
         assertTrue(line.contains("não inferimos relação causal"))
         assertNull(

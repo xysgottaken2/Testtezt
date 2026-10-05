@@ -139,7 +139,7 @@ class HypothesisBoardTest {
         )
         assertEquals(Evidence.VERIFIED, claim(targetOwned, "conexoes_no_listener_do_tunel").level)
         assertEquals(Evidence.VERIFIED, claim(targetOwned, "tls_no_listener_do_tunel").level)
-        assertTrue(claim(targetOwned, "tls_no_listener_do_tunel").detail.contains("UID não identifica PID/processo"))
+        assertTrue(claim(targetOwned, "tls_no_listener_do_tunel").detail.contains("não identifica PID/processo"))
 
         val synthetic = RequestCounters(tcpConnectionsTunel = 1, tcpConnectionsTunelSintetico = 1, tlsOkTunel = 1)
         assertEquals(Evidence.UNKNOWN, claim(synthetic, "conexoes_no_listener_do_tunel").level)
@@ -322,7 +322,7 @@ class HypothesisBoardTest {
         val resolved = claim(RequestCounters(ownerProbeResolvido = 1), "atribuicao_de_dono_pela_api")
         assertEquals(Evidence.VERIFIED, resolved.level)
         assertTrue(resolved.detail.contains("não o resultado para o UID-alvo/WZM"))
-        assertTrue(resolved.detail.contains("não PID/processo"))
+        assertTrue(resolved.detail.contains("nem PID/processo"))
 
         val invalid = claim(RequestCounters(ownerProbeInvalid = 3), "atribuicao_de_dono_pela_api")
         assertEquals(Evidence.UNKNOWN, invalid.level)

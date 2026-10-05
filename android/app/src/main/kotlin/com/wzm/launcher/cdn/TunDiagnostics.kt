@@ -322,7 +322,7 @@ object HypothesisBoard {
             if (counters.tcpConnectionsLoopback > 0) {
                 "${counters.tcpConnectionsLoopback} conexão(ões) em " +
                     "${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
-                    "(antes do marcador de lançamento=${counters.loopbackAntesDoWzm}, depois=${counters.loopbackDepoisDoWzm}) — "
+                    "(antes do marcador de lançamento=${counters.loopbackAntesDoWzm}, depois=${counters.loopbackDepoisDoWzm}) — " +
                     "DIAGNÓSTICO SECUNDÁRIO: NÃO são evidência de tráfego do WZM, nem a favor nem contra"
             } else {
                 "nenhuma conexão em ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} nesta sessão"
@@ -420,7 +420,8 @@ object HypothesisBoard {
                         "compatível com descoberta local (NDP/MLD multicast), PROBABLE como tipo de tráfego; " +
                         "isso não identifica origem sistema/WZM nem explica ausência de TCP (unicast=" +
                         "${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}; " +
-                        "antes/depois é só correlação temporal)"
+                        "antes-do-marcador=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm} " +
+                        "é só correlação temporal)"
                 counters.tunIpv6Packets > 0 ->
                     "há IPv6 no TUN mas sem classificação registrada ainda"
                 else -> "nenhum pacote IPv6 observado no TUN"
