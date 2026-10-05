@@ -43,6 +43,7 @@ required=(
   "docs/research/m4.2-configuracao-endpoint-local.md"
   "docs/research/m4.3-libgame-static-analysis.md"
   "docs/research/m4.5-cadeia-estatica-ate-connect.md"
+  "docs/research/m4.6-manifest-processos-e-cruzamento.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
@@ -61,4 +62,5 @@ grep -q "INVALID_UID_NAO_PROVA" docs/research/m4.1-dono-das-conexoes-loopback.md
 grep -q "SEM_CONFIG_DIRETA_WZM" docs/research/m4.2-configuracao-endpoint-local.md || { echo "M4.2 historical direct-config marker missing"; exit 1; }
 grep -q "CANDIDATO_OVERRIDE_CDNI_NATIVO" docs/research/m4.3-libgame-static-analysis.md || { echo "M4.3 candidate marker missing"; exit 1; }
 grep -q "CADEIA_ESTATICA_M4_5" docs/research/m4.5-cadeia-estatica-ate-connect.md || { echo "M4.5 static chain marker missing"; exit 1; }
+grep -q "PROCESSO_UNICO_PORTES_ANTES_DO_PEDIDO" docs/research/m4.6-manifest-processos-e-cruzamento.md || { echo "M4.6 process marker missing"; exit 1; }
 echo "markers ok"
