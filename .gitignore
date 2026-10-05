@@ -85,3 +85,6 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# M5.0 — logs do servidor local (contêm IPs/hosts da sua rede)
+warzone-offline/local-server/logs/

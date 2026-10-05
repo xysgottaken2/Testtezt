@@ -35,5 +35,13 @@ jobs:
       - name: Update-check scanner self-test (M4.0)
         run: python3 warzone-offline/tools/apk-analysis/update-check-scan.py --self-test
 
+      - name: DEX scanner self-test (M5.0)
+        run: python3 warzone-offline/tools/apk-analysis/dex-scan.py --self-test
+
+      - name: Local server + DNS self-test (M5.0)
+        run: |
+          python3 warzone-offline/local-server/wzm_local_server.py --self-test
+          python3 warzone-offline/local-server/wzm_dns.py --self-test
+
       - name: Docs check
         run: bash scripts/check-docs.sh
