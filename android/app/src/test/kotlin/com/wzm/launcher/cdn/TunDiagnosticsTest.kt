@@ -169,6 +169,16 @@ class TunDiagnosticsTest {
                 RequestCounters(tunIpv6Packets = 1, tunIpv6MulticastOutro = 1)
             )
         )
+        assertNull(
+            "o perfil de descoberta só se reporta quando unicast é zero (gate original)",
+            TunDiagnostics.ipv6DiscoveryInterpretation(
+                RequestCounters(
+                    tunIpv6Packets = 4,
+                    tunIpv6DescobertaLocal = 3,
+                    tunIpv6Unicast = 1
+                )
+            )
+        )
     }
 
     @Test

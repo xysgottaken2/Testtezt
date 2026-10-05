@@ -670,7 +670,7 @@ object TunDiagnostics {
      * O perfil não atribui UID/processo e não permite concluir se o tráfego veio do sistema ou do WZM.
      */
     fun ipv6DiscoveryInterpretation(counters: RequestCounters): String? =
-        if (counters.tunIpv6DescobertaLocal > 0) {
+        if (counters.tunIpv6Unicast == 0 && counters.tunIpv6DescobertaLocal > 0) {
             "leitura do IPv6: ${counters.tunIpv6DescobertaLocal} pacote(s) têm perfil de cabeçalho " +
                 "compatível com descoberta local (NDP/MLD em multicast); outras categorias: " +
                 "multicast-outro=${counters.tunIpv6MulticastOutro}, unicast=${counters.tunIpv6Unicast}. " +
