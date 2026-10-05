@@ -112,7 +112,16 @@ data class RequestCounters(
      * Resultado (multi-linha) do **teste de controle de autoria** do M4.1, quando ele já rodou.
      * String vazia = ainda não rodou. Mostrar na UI, junto do que foi para o log.
      */
-    val ownerProbeResumo: String = ""
+    val ownerProbeResumo: String = "",
+    // ---- M4.4: experimento do cdni.meta REAL servido localmente ----
+    /** Requisições atendidas no path do `cdni.meta` nesta sessão. */
+    val cdniMetaServidos: Int = 0,
+    /** Desses, as que caíram dentro da janela do teste sintético do launcher. */
+    val cdniMetaSintetico: Int = 0,
+    /** Desses, as atendidas fora da janela sintética — NÃO significa que sejam do WZM. */
+    val cdniMetaForaDaJanela: Int = 0,
+    /** Requisições recebidas depois de um `cdni.meta` servido (o 1º ganha linha própria). */
+    val pedidosAposCdniMeta: Int = 0
 ) {
     /** Linha única com todos os contadores (UI e cabeçalho de exportação). */
     fun summary(): String =
@@ -133,7 +142,9 @@ data class RequestCounters(
             "sem-permissao $ownerProbeSemPermissao • loopback peer: processo-exato $loopbackMesmoProcesso / " +
             "uid-launcher $loopbackUidLauncher / uid-alvo $loopbackUidAlvo / possivel-launcher $loopbackPossivelLauncher / " +
             "outro-uid $loopbackOutroUid / indeterminado $loopbackIndeterminado • " +
-            "DNS-para-loopback $dnsRespostasParaLoopback (deve ser 0)"
+            "DNS-para-loopback $dnsRespostasParaLoopback (deve ser 0) • " +
+            "cdni.meta: $cdniMetaServidos servidos (sintético $cdniMetaSintetico / fora-da-janela " +
+            "$cdniMetaForaDaJanela) • pedidos-apos-cdni.meta $pedidosAposCdniMeta"
 
     /** Versão curta para os cards. */
     fun compact(): String =
@@ -145,7 +156,9 @@ data class RequestCounters(
             "bounce $tunBounces desc $tunDiscards • v6-descoberta $tunIpv6DescobertaLocal/v6-unicast $tunIpv6Unicast • " +
             "destino-resolvido $tunFluxosDestinoResolvido • loopback processo-exato $loopbackMesmoProcesso / " +
             "uid-alvo $loopbackUidAlvo / uid-launcher $loopbackUidLauncher / indet $loopbackIndeterminado • " +
-            "api INVALID_UID $ownerProbeInvalid"
+            "api INVALID_UID $ownerProbeInvalid • " +
+            "cdni.meta $cdniMetaServidos (sint $cdniMetaSintetico / fora $cdniMetaForaDaJanela) " +
+            "apos-meta $pedidosAposCdniMeta"
 
     /** Linha `chave=valor` com os nomes exatos usados no log e no relatório (export .txt). */
     fun exportLine(): String =
@@ -176,7 +189,9 @@ data class RequestCounters(
             "loopbackUidLauncher=$loopbackUidLauncher loopbackUidAlvo=$loopbackUidAlvo " +
             "loopbackPossivelLauncher=$loopbackPossivelLauncher loopbackOutroUid=$loopbackOutroUid " +
             "loopbackIndeterminado=$loopbackIndeterminado " +
-            "dnsRespostasParaLoopback=$dnsRespostasParaLoopback"
+            "dnsRespostasParaLoopback=$dnsRespostasParaLoopback " +
+            "cdniMetaServidos=$cdniMetaServidos cdniMetaSintetico=$cdniMetaSintetico " +
+            "cdniMetaForaDaJanela=$cdniMetaForaDaJanela pedidosAposCdniMeta=$pedidosAposCdniMeta"
 }
 
 /**
@@ -279,6 +294,10 @@ object RequestLog {
     private val loopbackOutroUid = AtomicInteger(0)
     private val loopbackIndeterminado = AtomicInteger(0)
     private val dnsRespostasParaLoopback = AtomicInteger(0)
+    private val cdniMetaServidos = AtomicInteger(0)
+    private val cdniMetaSintetico = AtomicInteger(0)
+    private val cdniMetaForaDaJanela = AtomicInteger(0)
+    private val pedidosAposCdniMeta = AtomicInteger(0)
 
     @Volatile
     private var sink: LogSink? = null
@@ -307,6 +326,19 @@ object RequestLog {
     fun incTcpConnection() { tcpConnections.incrementAndGet(); publishCounters() }
     fun incHttpRequest() { httpRequests.incrementAndGet(); publishCounters() }
     fun incUnknownRequest() { unknownRequests.incrementAndGet(); publishCounters() }
+
+    /**
+     * M4.4: um `cdni.meta` foi servido. [synthetic] = dentro da janela do teste do launcher;
+     * `false` só diz "fora do nosso teste", nunca que o pedido seja do WZM.
+     */
+    fun incCdniMeta(synthetic: Boolean) {
+        cdniMetaServidos.incrementAndGet()
+        if (synthetic) cdniMetaSintetico.incrementAndGet() else cdniMetaForaDaJanela.incrementAndGet()
+        publishCounters()
+    }
+
+    /** M4.4: requisição recebida depois de um `cdni.meta` servido nesta sessão. */
+    fun incPedidoAposCdniMeta() { pedidosAposCdniMeta.incrementAndGet(); publishCounters() }
     fun incTlsOk() { tlsOk.incrementAndGet(); publishCounters() }
     fun incTlsFailed() { tlsFailed.incrementAndGet(); publishCounters() }
 
@@ -522,7 +554,11 @@ object RequestLog {
             dnsRespostasParaLoopback = dnsRespostasParaLoopback.get(),
             tunIcmpv4Flows = tunIcmpv4Flows.get(),
             loopbackDepoisDoWzm = loopbackDepoisDoWzm.get(),
-            ownerProbeResumo = ownerProbeResumo
+            ownerProbeResumo = ownerProbeResumo,
+            cdniMetaServidos = cdniMetaServidos.get(),
+            cdniMetaSintetico = cdniMetaSintetico.get(),
+            cdniMetaForaDaJanela = cdniMetaForaDaJanela.get(),
+            pedidosAposCdniMeta = pedidosAposCdniMeta.get()
         )
     }
 
@@ -555,6 +591,8 @@ object RequestLog {
         loopbackMesmoProcesso.set(0); loopbackUidLauncher.set(0); loopbackUidAlvo.set(0)
         loopbackPossivelLauncher.set(0); loopbackOutroUid.set(0); loopbackIndeterminado.set(0)
         dnsRespostasParaLoopback.set(0)
+        cdniMetaServidos.set(0); cdniMetaSintetico.set(0)
+        cdniMetaForaDaJanela.set(0); pedidosAposCdniMeta.set(0)
         ownerProbeResumo = ""
         publishCounters()
     }
@@ -566,6 +604,8 @@ object RequestLog {
         _entries.value = emptyList()
         resetCounters()
         clearSyntheticWindow()
+        // M4.4: o rastreio do cdni.meta acompanha o buffer (senão o "próximo pedido" ficaria órfão).
+        CdniMetaFlow.reset()
     }
 
     // ---- Marcador de sessão: retorno bem-sucedido do lançamento do WZM pelo launcher (M3.5) ----

@@ -7,7 +7,7 @@
 ## Identificação
 
 - **Name:** `CDNIShardMeta`
-- **Direction:** `C→S` (GET cliente ao iniciar, antes ou junto ao streaming)
+- **Direction:** WZM caller `UNKNOWN`; recurso CDN foi consultado manualmente via `fetch_page` (GET anônimo). Não há captura/owner UID que prove que o WZM pediu este path.
 - **Transport:** `HTTPS`
 - **Endpoint:** `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` (Android) e `…/ios/_manifest/cdni.meta` (iOS)
 - **Encoding:** `JSON` (application/json, sem BOM, `\r\n` + 4-space indent)
@@ -60,19 +60,64 @@ iOS adiciona `"#x3febec63a7c2351ab": false` + `future_*`.
 - CDN retorna 200 sem auth — arquivo público, não assinado, sem `Authorization`.
 - Cliente deve comparar `buildnum` local com `min_buildnum` para decidir update obrigatório — `HYPOTHESIS` (não observado em pcap).
 - **2026-10-04:** o build instalado `3.10.0.19854920` é **igual** a `min_buildnum` (`19854920`) — a condição “build >= mínimo” já é satisfeita com o valor real do CDN (`VERIFIED` quanto aos valores; o uso pelo cliente segue `HYPOTHESIS`).
-- **Não contém** URL/hash de manifesto: quem fornece o caminho do manifesto de conteúdo é o cliente (a determinar no APK 3.10.0) — ver `docs/research/m4.0-verificando-atualizacoes.md` §6.
+- **Não contém** URL/base URL/hash de manifesto. O mecanismo pelo qual o cliente obteria manifesto de conteúdo continua `UNKNOWN`; não inferir que outro endpoint seja fornecido pelo cliente até análise do APK/call-site — ver `docs/research/m4.0-verificando-atualizacoes.md` §6.
 - A ferramenta `warzone-offline/tools/apk-analysis/update-check-scan.py` (M4.0) procura `cdni.meta`, `min_buildnum`, `min_tu` e `app_store_url` no APK para dizer onde essa comparação acontece.
 - `Not a file` para diretório indica Akamai não permite listing — não brute-forceável.
 - Não contém lista de shards — não é catálogo; é config de versão/flags. Catálogo real ainda `UNKNOWN`.
 
-## Servido localmente (M3.5)
+## Servido localmente pelo launcher (M3.5) — não é prova de pedido do WZM
 
-- O launcher passou a devolver este **corpo real observado** (não um placeholder) em
-  `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta`, em `CdniMetaBody` — sem acrescentar/remover campos
-  (a marcação de servidor local fica no cabeçalho HTTP `X-WZM-Offline`).
-- Motivo: é o primeiro recurso a servir quando o WZM chegar ao roteador e o único cujo conteúdo **existe**;
-  o manifesto de conteúdo segue `UNKNOWN` (não implementado). Ver
-  `docs/research/m3.5-loopback-e-teste-sintetico.md` §6 e `docs/research/m4.0-verificando-atualizacoes.md`.
+- O launcher devolve o corpo documentado em `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta`, em
+  `CdniMetaBody`; o cabeçalho HTTP local identifica a resposta (`X-WZM-Offline`). Isso descreve uma rota
+  do **servidor do launcher**, não uma alteração/configuração do cliente WZM.
+- O corpo real foi usado no teste sintético iniciado pelo launcher. Não há prova de que o WZM tenha pedido
+  esse path, que seja o primeiro recurso de sua sessão ou que o certificado local seja aceito pelo WZM.
+- A análise estática posterior M4.3 encontrou templates/call-sites de manifesto e `.shard` no `.so`; isso confirma presença no binário, não uma requisição do WZM nem o efeito local. Ver
+  `docs/research/m3.5-loopback-e-teste-sintetico.md`, `docs/research/m4.0-verificando-atualizacoes.md`,
+  [M4.3](../research/m4.3-libgame-static-analysis.md) e [M4.2 histórico](../research/m4.2-configuracao-endpoint-local.md).
+
+## Experimento M4.4 (2026-10-05) — servir o `cdni.meta` localmente
+
+Pergunta do experimento: **se o WZM receber este `cdni.meta` do servidor local, ele avança da tela
+“Conectando a servidor de atualizações” ou faz outra requisição?** (`UNKNOWN` até observação.)
+
+### O que já existia (não foi alterado)
+
+| Item | Estado |
+|---|---|
+| `GET /wzm/shard_cdn/android/_manifest/cdni.meta` | `200`, `Content-Type: application/json; charset=utf-8`, corpo **real** (`CdniMetaBody.android()`), cabeçalhos `X-WZM-Offline: VERIFIED` + `X-WZM-Offline-Path` |
+| Corpo | idêntico ao observado ao vivo (`min_tu=0`, `min_buildnum=19854920` = build instalado `3.10.0.19854920`, `app_store_url` da Play Store e as 7 chaves `#x…`) |
+| Onde | `BootstrapEndpoints` → `CdnRouteTable.respond()` → `TcpRelay.serve()` → `LocalHttpsServer` |
+
+Nenhum valor foi trocado por placeholder e nenhuma chave `#x…` foi decodificada: elas continuam
+sendo registradas como **opacas** (`CdniMetaBody.flagKeys()`), com significado `UNKNOWN`.
+
+### O que foi acrescentado (só observação)
+
+1. **Origem por requisição** — toda linha `[CDNI]`/`[HTTP]` passa a sair com `origem=`:
+   * `SINTETICO-LAUNCHER` = caiu dentro da janela do teste sintético aberto pelo launcher;
+   * `FORA-DA-JANELA-SINTETICA` = **não** foi o nosso teste. Isso **não** é atribuição ao WZM:
+     sem owner UID/tupla a autoria continua `UNKNOWN` (M4.1).
+2. **Linha própria do próximo pedido** — tag nova `[CDNI-META]`:
+   * `cdni.meta servido: status=… resposta=… B · cliente=… · origem=…`;
+   * `PROXIMO-PEDIDO-APOS-CDNI.META: GET <path> · status=… · host=… · Δ=… ms depois do meta ·
+     cliente=… · origem=…`. O **primeiro** pedido depois do meta ganha essa linha; os seguintes
+     levam só `apos-cdni.meta=Δ…ms`. Um path desconhecido (404 controlado) entra igual — é assim
+     que a próxima URL tentada pelo cliente aparece no log, sem inventar resposta.
+3. **Contadores** (`cdniMetaServidos`, `cdniMetaSintetico`, `cdniMetaForaDaJanela`,
+   `pedidosAposCdniMeta`) no cabeçalho exportado e nos cards.
+4. Rastreio (`CdniMetaFlow`) — nada de TLS/pinning, TUN, DNS virtual ou roteamento foi alterado.
+
+### Como ler o resultado
+
+- `cdni.meta` servido **fora da janela sintética** = um cliente que não é o nosso teste chegou ao
+  listener e pediu o meta (TLS com o certificado local aceito). Ainda assim, **quem** é esse
+  cliente só vira `VERIFIED` com owner UID do pacote-alvo.
+- Nenhum pedido fora da janela = o experimento não observou o WZM nesse caminho; isso **não** prova
+  que o jogo não tentou (pode não ter resolvido o host pelo nosso DNS, pode ter recusado o
+  certificado local — o log `[TLS] FALHA … motivo=…` é o lugar onde isso apareceria).
+- Próximo pedido registrado `404` = o path é real (veio do cliente) e desconhecido para nós:
+  registrar, não inventar corpo.
 
 ## Notas
 

@@ -30,17 +30,23 @@ class TcpRelay(
                 return@use
             }
             val head = readResult.head
+            val now = System.currentTimeMillis()
+            // M4.4: a janela do teste sintético é CORRELAÇÃO — "fora dela" nunca significa "é o WZM"
+            // (a atribuição continua exigindo owner UID/tupla, M4.1).
+            val synthetic = RequestLog.isDuringSyntheticTest(now)
+            val origin = CdniMetaFlow.originOf(synthetic)
             val outcome = CdnRouteTable.respond(head)
             RequestLog.incHttpRequest()
             if (!outcome.isKnown) RequestLog.incUnknownRequest()
-            val suffix = if (context.isEmpty()) "" else " · $context"
-            log(outcome.logTag, "${outcome.logMessage} [cliente=$peer]$suffix")
+            val metaSuffix = CdniMetaFlow.observe(head, outcome, peer, synthetic, now)
+            val suffix = (if (context.isEmpty()) "" else " · $context") + metaSuffix
+            log(outcome.logTag, "${outcome.logMessage} [cliente=$peer] origem=${origin.label}$suffix")
             // Linha dedicada ao status HTTP (filtro "[HTTP]" na tela de logs).
             log(
                 "HTTP",
                 "${head.method} ${head.path} -> ${outcome.status} " +
                     "${HttpResponses.reason(outcome.status)} (resposta ${outcome.bytes.size} B, " +
-                    "cliente=$peer)$suffix"
+                    "cliente=$peer) origem=${origin.label}$suffix"
             )
             try {
                 val output = BufferedOutputStream(connection.getOutputStream())

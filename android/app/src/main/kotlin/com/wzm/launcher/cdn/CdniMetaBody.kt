@@ -22,6 +22,24 @@ package com.wzm.launcher.cdn
  */
 object CdniMetaBody {
 
+    /**
+     * Build mínimo exigido pelo CDN (`VERIFIED` no recurso público, 2026-10-04/M4.0).
+     * É **igual** ao build instalado `3.10.0.19854920`, portanto a condição "build >= mínimo" já
+     * é satisfeita com o corpo real — sem alterar um único byte da resposta.
+     */
+    const val MIN_BUILDNUM = 19854920
+
+    /** Build instalado observado no device (M4.0); só para leitura/documentação, nunca servido. */
+    const val INSTALLED_BUILD_LABEL = "3.10.0.19854920"
+
+    /**
+     * Chaves `#x…` do corpo: **opacas por decisão**. São registradas exatamente como vieram do CDN
+     * (chave + booleano), nunca decodificadas, renomeadas ou interpretadas — o significado de cada
+     * flag é `UNKNOWN` e inferi-lo seria inventar comportamento (regra do projeto).
+     */
+    fun flagKeys(body: String = ANDROID): List<String> =
+        Regex("\"(#x[0-9a-fA-F]+)\"\\s*:").findAll(body).map { it.groupValues[1] }.toList()
+
     /** Idêntico ao corpo observado para Android. */
     val ANDROID: String = """
 {

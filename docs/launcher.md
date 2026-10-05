@@ -294,6 +294,18 @@ bytes + TCP + TLS com a CA local + `GET cdni.meta`), e o `cdni.meta` passou a se
 (~320 B, `min_buildnum=19854920`) em vez de placeholder. Detalhes e o procedimento no device:
 [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
 
+**Experimento M4.4 — `cdni.meta` real servido localmente (observação, sem mexer em TLS/TUN):** o objetivo é
+só responder se, ao receber este `cdni.meta`, o cliente avança ou faz outro pedido. Para isso cada requisição
+passou a sair com `origem=SINTETICO-LAUNCHER` (dentro da janela do TESTE SINTÉTICO) ou
+`origem=FORA-DA-JANELA-SINTETICA` (não foi o nosso teste — **não** é atribuição ao WZM, que continua exigindo
+owner UID/tupla, M4.1). A tag nova **[CDNI-META]** registra `cdni.meta servido: …` e
+`PROXIMO-PEDIDO-APOS-CDNI.META: GET <path> · status=… · host=… · Δ=… ms` — o **primeiro** pedido depois do
+meta, inclusive quando ele é um 404 controlado (é assim que a próxima URL aparece, sem inventar corpo).
+Contadores: `cdniMetaServidos`, `cdniMetaSintetico`, `cdniMetaForaDaJanela`, `pedidosAposCdniMeta`.
+Como rodar: **INICIAR ROTEADOR CDNI** → **INICIAR WARZONE MOBILE** → abrir **VER LOGS**, filtro
+`[CDNI-META]` (e `[TLS]` para ver se houve handshake/recusa). Nada de TLS/pinning, TUN ou DNS foi alterado.
+Detalhes: [docs/protocol/cdni-meta.md](../protocol/cdni-meta.md#experimento-m44-2026-10-05--servir-o-cdni-meta-localmente).
+
 **Onde está o tráfego do app? (M3.6):** o launcher mede, **por UID**, se o alvo movimentou bytes
 (`TrafficAccounting`, `TrafficStats`), lista os processos observáveis/declarados (`ProcessDiscovery`),
 classifica cada pacote IPv6 descartado (`TrafficClassifier`: `descoberta-local` × `multicast-outro` ×
