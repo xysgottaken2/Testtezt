@@ -1,8 +1,8 @@
 # Warzone Mobile — índice da pesquisa M0 (reclassificado para Stable)
 
-> **Atualizado:** 2026-10-04 · **Base:** pesquisa histórica e documentos M2–M4 já versionados.
-> **Este arquivo não comprova backend, protocolo, shards ou caminho de rede do WZM.** As afirmações antigas abaixo foram substituídas por um quadro de evidências conservador.
-> **Estado de trabalho:** caminho real WZM `UNKNOWN`; `libgame.so` não está disponível no workspace; nenhuma observação nova em device nesta revisão.
+> **Atualizado:** 2026-10-05 · **Base:** pesquisa histórica e documentos M2–M4, incluindo a análise estática M4.3.
+> **Este arquivo não comprova backend, protocolo, downloads de shards ou caminho runtime de rede do WZM.** As afirmações antigas abaixo foram substituídas por um quadro de evidências conservador.
+> **Estado de trabalho:** caminho real WZM `UNKNOWN`; `libgame.so` do commit `67d8a52` foi analisada read-only, mas identidade WZM 3.10.0 não confirmada pelo ELF e nenhuma observação nova em device ocorreu.
 
 ---
 
@@ -10,14 +10,15 @@
 
 | Tema | Estado atual | Evidência / limite |
 |---|---|---|
-| Engine e versão interna do jogo | `UNKNOWN` nesta investigação | Fontes comunitárias sobre IW/MGL não substituem APK identificado nem análise estática de `libgame.so`. |
+| Engine e versão interna do jogo | `UNKNOWN` nesta investigação | `libgame.so` é ELF64/AArch64; Build ID/changelist não confirmam independentemente engine ou WZM 3.10.0. Ver [M4.3](m4.3-libgame-static-analysis.md). |
 | Backend, auth e matchmaking | `UNKNOWN` | Referências de outros títulos não identificam backend da build WZM. Auth e bypass permanecem fora de escopo. |
 | Portas e protocolo gameplay | `UNKNOWN` | TCP 3074, UDP e outros exemplos de COD Online/PC são `OTHER_TITLE_REFERENCE`, não endpoints do WZM. |
 | Bootstrap WebView/CDNI | Há paths específicos confirmados em docs M2 para builds identificadas | Ver [WZM 3.10 bootstrap](wzm-310-bootstrap.md) e [M2.2](m2.2-assets-cdni-investigation.md). Isso não é prova do caminho TCP/TUN do jogo. |
 | `cdni.meta` | Endpoint público e arquivo consultado manualmente confirmados | `min_buildnum=19854920`; não contém lista de shards nem demonstra requisição feita pelo WZM. Ver [M4.0](m4.0-verificando-atualizacoes.md). |
-| Shards/manifesto de conteúdo | Shards reais e manifesto local continuam `UNKNOWN` | M2.2.1 encontrou zero APKs e zero shards físicos; testes de parser/CDN foram fixtures sintéticas. Não inventar nomes nem baixar arquivos completos. |
+| Shards/manifesto de conteúdo | Templates de endpoint confirmados no binário; inventário de assets/shards e uso runtime `UNKNOWN` | M4.3 encontrou paths `environment.config`, manifest, `.shard` e agregados; M2.2.1 continua registrando zero shards físicos/fixtures. Não inventar nomes nem baixar arquivos completos. |
 | Dead by Daylight offline | `DBD_REFERENCE` | Serve apenas como corpus separado; nenhum host, patch, endpoint ou implementação é evidência WZM. |
 | Caminho real da VPN/TUN/UID | `UNKNOWN` | Ver [M3.6](m3.6-caminho-real-de-rede.md) e [M4.1](m4.1-dono-das-conexoes-loopback.md). A allow-list e rotas configuradas não provam captura de socket WZM. |
+| Configuração direta para endpoint local | `CANDIDATO_OVERRIDE_CDNI_NATIVO`; uso local/user-writable `UNKNOWN` | M4.3 encontrou registro/leitura de entrada hashed candidata fluindo ao setter nomeado no diagnóstico, com fallback Prod e URL até dispatch. A associação nome↔hash é provável; setter suportado pelo usuário, execução e envio não comprovados. TUN não está provado como necessário em toda configuração. |
 | TLS/pinning | Sem mudança autorizada | Não tocar até haver fluxo TCP/SYN real atribuído ao UID do WZM; nenhuma hipótese de pinning é conclusão. |
 
 ---
@@ -58,10 +59,10 @@ As páginas históricas de M0 não autorizam Frida, root, MITM/CA, hook, bypass 
 
 1. **Controle positivo:** preparar um app com UID distinto em sessão `CONTROL_ONLY`, testar apenas a instrumentação e manter o resultado separado do WZM. O plano ainda não foi executado; ver [M3.6 §8.1](m3.6-caminho-real-de-rede.md#81-controle-positivo-real-com-outro-app-planejado-nao-executado).
 2. **Observação WZM:** repetir no dispositivo sem alterar rotas/Private DNS e atribuir cada fluxo pela mesma tupla + owner UID. UID não identifica PID/helper; ausência de evento não é causa.
-3. **Análise de `libgame.so`:** somente quando o binário exato estiver disponível, com versão/hash, leitura estática e arquivos fora do Git. `strings` sozinho é hipótese, não uso em runtime.
+3. **`libgame.so`:** a leitura estática do arquivo de `origin/main` está documentada em [M4.3](m4.3-libgame-static-analysis.md). Próximo passo é obter o APK/build exato para confirmar a correspondência de versão e rastrear estaticamente a associação nome↔hash e a ligação de `dvar_overrides`/`android_dvars`/`.cfg` ao handle, sempre sem execução e com arquivos fora do Git.
 4. **TLS/pinning:** manter read-only e sem alterações até uma conexão TCP/SYN WZM demonstrada e atribuível; nenhuma modificação é feita nesta etapa.
 
-**Próximo bloqueio:** acesso ao artefato exato para análise estática e uma execução no dispositivo para evidência de rede. A documentação e o CI do launcher não substituem esses dados.
+**Próximo bloqueio:** confirmar a versão do `.so` por metadados do APK/build exato, identificar se há um meio suportado de definir o valor candidato `cdni_httpServer` e obter uma futura observação de rede atribuível. Registro/leitura e dispatch estão documentados, mas não substituem prova de controle pelo usuário ou runtime.
 
 ---
 

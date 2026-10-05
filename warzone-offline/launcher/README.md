@@ -1,30 +1,23 @@
-# Launcher — M0 skeleton
+# Launcher — estado Stable
 
-> Launcher orquestra: `hosts` override → Frida bypass → `adb am start` → logcat
+> Esta página substitui o rascunho M0. A antiga lista `hosts override → Frida → adb` e os domínios `.example` eram placeholders/propostas, não uma implementação nem evidência de Warzone Mobile. Não usar root, Frida, hook, MITM/CA, bypass de pinning ou `VerifyPeer=false`.
 
-## Estrutura futura
+## O que existe
 
-```
-launcher/
-├── cli.ts           # Configure paths / Sync shards / Import local .shard / Launch
-├── config.json      # { gamePath, sandboxPath, serverHost }
-├── hosts-patch/     # 127.0.0.1 para domínios WZM (a descobrir)
-├── frida/           # bypass cert pinning
-└── adb/             # launch via adb
-```
+- O app Android Stable detecta e inicia o pacote WZM via `PackageManager`.
+- O roteador CDNI local usa `VpnService` com allow-list per-app e rotas explícitas; o `DnsResponder` só redireciona consultas que chegam ao DNS virtual do túnel.
+- O servidor local responde paths documentados/sintéticos de diagnóstico. Resposta local não prova que o WZM fez aquela requisição.
+- `src/hosts-patch/patch.ts` contém transformações puras de linhas de hosts e testes; não altera `/etc/hosts`, configura DNS do aparelho ou aponta o WZM a um servidor.
+- A pasta `src/webview-patch/` está retirada/deprecated e não contém integração ativa com o WebView do WZM.
 
-## Estado atual (M0)
+## Configuração direta do cliente
 
-Skeleton — sem implementação. Ver `docs/research/dead-by-daylight-mobile.md` para referência DbD
+A busca somente leitura M4.2 não encontrou campo/base URL/override de endpoint WZM no material disponível. O binário WZM e `libgame.so` não estão no workspace; por isso não se pode declarar que essa opção inexiste no jogo. Ver [`docs/research/m4.2-configuracao-endpoint-local.md`](../../docs/research/m4.2-configuracao-endpoint-local.md).
 
-e `docs/reverse-engineering/methodology.md` para técnica de hosts override:
+## Limites vigentes
 
-```
-127.0.0.1   cdn.warzone-mobile.example   # [UNKNOWN] domínio real a descobrir
-127.0.0.1   auth.warzone-mobile.example
-0.0.0.0     analytic.warzone-mobile.example
-```
-
-Requer `adb root` ou `hosts` via `adb shell` + Frida para TLS.
-
-**Próximo passo (M1):** PoC que redireciona um domínio de teste para `localhost:8080` e prova que o cliente aceita `VerifyPeer=false`.
+- Não inventar host, manifest ou endpoint.
+- Não modificar o APK WZM nem alterar TLS/trust/pinning.
+- Não tratar DbD como evidência WZM.
+- O controle sintético e o controle loopback do launcher não são tráfego WZM.
+- Próxima etapa, se a busca de configuração direta não mudar com novo artefato: `CONTROL_ONLY` com UID distinto e depois observação TUN/WZM separadas, sem inferir causa por ausência.

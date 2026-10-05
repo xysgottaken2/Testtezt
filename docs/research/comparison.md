@@ -1,6 +1,7 @@
 # Comparação — Dead by Daylight Mobile vs Warzone Mobile
 
-> **Aviso:** `DBD_REFERENCE` ≠ `WARZONE_VERIFIED`. Esta tabela compara para decidir **o que reaproveitar** e **o que não assumir**.
+> **Aviso:** `DBD_REFERENCE` ≠ `WARZONE_VERIFIED`. Este é um comparativo M0 histórico; os itens “reaproveitar”/“estratégia” abaixo são hipóteses, não um plano vigente.
+> **Correção Stable/M4.3:** análise estática do `libgame.so` encontrou o candidato `cdni_httpServer` e referências a `server_url`, mas não comprovou escrita pelo usuário nem efeito de endpoint local. Nenhuma transferência de hosts override, `VerifyPeer=false`, Frida ou endpoint DbD está autorizada. TLS/pinning não deve ser alterado; ver [`m4.3-libgame-static-analysis.md`](m4.3-libgame-static-analysis.md) e o snapshot histórico [`m4.2-configuracao-endpoint-local.md`](m4.2-configuracao-endpoint-local.md).
 
 ---
 
@@ -31,7 +32,7 @@
 
 1. **Sandbox-first workflow** (CarlosMonarrez): nunca escrever no install oficial; criar cópia `WzSandbox/` e validar paths. Reduz risco de ban/contaminação.
 2. **Launcher como orquestrador** (ModByDaylight): menu `Configure paths / Sync / Import shards / Launch` — mesmo UX para WZM.
-3. **Hosts override + `VerifyPeer=false` pattern** (ettfemnio): mínimo viável para redirecionar CDN/latest para localhost. Testar no WZM antes de tentar proxy complexo.
+3. **Hosts override + `VerifyPeer=false`**: observado somente em DBD/reference. Para WZM isso foi hipótese histórica, nunca testada; não executar nem alterar trust/pinning. M4.3 encontrou um candidato nativo ainda não verificado; isso não autoriza host override.
 4. **Amarrar release a versão** + `copy.sig`-like (hash por shard) para invalidar cache quando atualizar.
 5. **Documentação separada** (`ModByDaylight/Documentation`) → nosso `docs/` com templates de protocolo.
 
@@ -50,19 +51,11 @@
 ## 4. Estratégia recomendada para WZM (derivada, mas a validar)
 
 ```
-Fase 1 (M1-M2): Reaproveitar pattern hosts → HTTP mock (DbD) para CDN
-  └─ validar que cliente aceita localhost para manifest/shard
+Roadmap M0 acima: RETIRADO / hipótese histórica.
 
-Fase 2 (M3-M4): Divergir — emular Demonware AUTH/LSG TCP 3074
-  └─ usar demonware-companion (buffer_deserializer) como referência
-
-Fase 3 (M6-M10): Construir State Engine mínimo (posição, rotação, saúde)
-  └─ sem equivalente no DbD — pesquisa nova
-
-Fase 4 (M12): CDN streaming (shard) — reaproveitar ideia de “import local shard” do DbD
-
-Fase 5 (M15-M16): LAN (PC host → Android, depois Android host via Termux)
-  └─ DbD não precisou de LAN dedicada (PC já host); WZM precisará testar hotspot/Wi-Fi + DemonwarePortMapping UPnP
+Stable vigente: M4.3 encontrou candidato `cdni_httpServer`, mas não comprovou que seja user-writable ou aceite endpoint local; não implementar host/mock/TLS.
+Próximo teste permitido: CONTROL_ONLY separado, com UID distinto e correlação TUN/owner lookup (M3.6 §8.1).
+Qualquer trabalho posterior depende de evidência WZM atribuível e nova revisão de escopo.
 ```
 
 ---

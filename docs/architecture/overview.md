@@ -1,7 +1,7 @@
 # Arquitetura — Warzone Mobile Offline Server
 
-> **Status:** M0 Research — proposta modular, sujeita a mudanças após pesquisa de protocolo
-
+> **Status:** M0 Research — proposta modular, sujeita a mudanças após pesquisa de protocolo.
+> **Correção Stable/M4.3:** todo o diagrama abaixo é hipótese histórica, não arquitetura comprovada do WZM. Engine, backend, portas e rota `hosts → localhost` não são prova/implementação de rede do cliente; não executar Frida/root/MITM nem criar endpoints. A análise estática encontrou o candidato `cdni_httpServer`, mas não comprovou acesso do usuário nem uso local; ver [`M4.3`](../research/m4.3-libgame-static-analysis.md) e o snapshot histórico [`M4.2`](../research/m4.2-configuracao-endpoint-local.md).
 ---
 
 ## 1. Visão de alto nível

@@ -40,6 +40,9 @@ required=(
   "docs/research/m3.5-loopback-e-teste-sintetico.md"
   "warzone-offline/tools/apk-analysis/update-check-scan.py"
   "docs/research/m4.1-dono-das-conexoes-loopback.md"
+  "docs/research/m4.2-configuracao-endpoint-local.md"
+  "docs/research/m4.3-libgame-static-analysis.md"
+  "docs/research/m4.5-cadeia-estatica-ate-connect.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
@@ -55,4 +58,7 @@ grep -q "WARZONE" docs/research/warzone-mobile-networking.md || { echo "WARZONE 
 grep -q "CANNOT_SKIP_DIRECTLY" docs/research/m4.0-verificando-atualizacoes.md || { echo "M4.0 verdict marker missing"; exit 1; }
 grep -q "SINTETICO" docs/research/m3.5-loopback-e-teste-sintetico.md || { echo "M3.5 synthetic marker missing"; exit 1; }
 grep -q "INVALID_UID_NAO_PROVA" docs/research/m4.1-dono-das-conexoes-loopback.md || { echo "M4.1 ownership marker missing"; exit 1; }
+grep -q "SEM_CONFIG_DIRETA_WZM" docs/research/m4.2-configuracao-endpoint-local.md || { echo "M4.2 historical direct-config marker missing"; exit 1; }
+grep -q "CANDIDATO_OVERRIDE_CDNI_NATIVO" docs/research/m4.3-libgame-static-analysis.md || { echo "M4.3 candidate marker missing"; exit 1; }
+grep -q "CADEIA_ESTATICA_M4_5" docs/research/m4.5-cadeia-estatica-ate-connect.md || { echo "M4.5 static chain marker missing"; exit 1; }
 echo "markers ok"

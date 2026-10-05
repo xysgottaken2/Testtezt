@@ -1,8 +1,8 @@
 # Warzone Mobile — networking (M0 reclassificado para Stable)
 
-> **Atualizado:** 2026-10-04 · **Escopo:** correção documental, somente leitura.
+> **Atualizado:** 2026-10-05 · **Escopo:** correção documental e análise estática read-only.
 > **Estado:** o caminho de rede real do WZM continua `UNKNOWN`. Este documento não autoriza mudanças de rede, TLS, autenticação ou APK.
-> **Limite do workspace:** não há APK/XAPK/APKM, `.shard` ou `.so` disponível; portanto `libgame.so` ainda não foi analisada. Nenhuma nova observação em dispositivo ocorreu nesta revisão.
+> **Artefato:** `libgame.so` de `origin/main` commit `67d8a52` foi analisada estaticamente em `/tmp`, sem execução. O usuário a identifica como WZM 3.10.0, mas o ELF não confirma a versão independentemente; ver [M4.3](m4.3-libgame-static-analysis.md). Nenhuma nova observação em dispositivo ocorreu nesta revisão; APK/XAPK/APKM e `.shard` não foram obtidos.
 
 Esta revisão substitui as hipóteses antigas deste documento que apresentavam backend, portas, anti-cheat, telemetria ou analogias de outros títulos como fatos do WZM. As menções históricas abaixo permanecem apenas como referências explicitamente limitadas.
 
@@ -30,13 +30,13 @@ Esta revisão substitui as hipóteses antigas deste documento que apresentavam b
 |---|---|---|
 | Qual é o caminho de rede efetivo do WZM durante “Verificando atualizações”? | `UNKNOWN` | A janela histórica não registrou SYN TCP do UID-alvo no TUN nem owner UID atribuível. Isso não prova ausência de tentativa, outro transporte ou uma causa específica. Ver [M3.6](m3.6-caminho-real-de-rede.md). |
 | A allow-list per-app garante que cada socket do WZM entre no TUN? | Não. | O código adiciona o pacote-alvo à allow-list; as rotas são um controle distinto. A configuração não prova o caminho de um socket real. |
-| O WZM usa `Network.bindSocket()`, `bindProcessToNetwork()` ou `VpnService.protect()`? | `UNKNOWN` | Não foi observado nem analisado `libgame.so`; `protect()` usado pelo serviço para seus próprios sockets não é prova sobre sockets do jogo. |
+| O WZM usa `Network.bindSocket()`, `bindProcessToNetwork()` ou `VpnService.protect()`? | `UNKNOWN` | `libgame.so` importa APIs libc de socket/resolução, mas o uso de APIs Android de bind/protect e o caminho runtime não foram estabelecidos; `protect()` do serviço não é prova sobre sockets do jogo. Ver [M4.3](m4.3-libgame-static-analysis.md). |
 | O WZM usa Demonware, AUTH/LSG, State Engine ou Matchmaking+? | `UNKNOWN` | Créditos/wikis comunitárias são `SECONDARY_SOURCE_CLAIM`; referências a outros títulos não são análise do binário nem observação atribuída do WZM. |
 | O WZM usa TCP/UDP 3074, UDP 25656 ou outro endpoint citado em pesquisas de COD Online/PC? | `UNKNOWN` | Esses valores são `OTHER_TITLE_REFERENCE`; não usar como endpoint/configuração do WZM. |
 | Existe um endpoint CDNI real conhecido? | Há um arquivo público específico confirmado; o uso dele pelo WZM não foi observado. | `prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` foi consultado manualmente; ver §5. Não extrapolar para outros caminhos/manifestos. |
 | `bhvronline.com` ou a regra de telemetria do DbD serve para WZM? | Não. | É `DBD_REFERENCE` e não pode ser transferida para Warzone Mobile. |
 | Ricochet está presente no WZM Mobile? | `UNKNOWN` | Referência sobre Ricochet em PC não prova biblioteca ou comportamento mobile. |
-| `libgame.so` foi varrida? | Não. | Nenhum binário `.so` está no workspace. Não houve varredura nesta revisão. |
+| `libgame.so` foi varrida? | Sim, leitura estática. | Arquivo identificado pelo commit/hash em [M4.3](m4.3-libgame-static-analysis.md); WZM 3.10.0 não confirmado pelo ELF e nada foi observado em runtime. |
 
 ---
 
@@ -71,13 +71,13 @@ CI verde confirma compilação/testes do launcher e do artefato próprio do proj
 
 | Afirmação antiga | Reclassificação Stable | Por que não é evidência WZM |
 |---|---|---|
-| “IW 9.0 MGL” como engine confirmada | `UNKNOWN` no workspace; `SECONDARY_SOURCE_CLAIM` de wikis que falam do WZM | Não há APK/build identificado nem confirmação no binário disponível. |
+| “IW 9.0 MGL” como engine confirmada | `UNKNOWN`; wikis são `SECONDARY_SOURCE_CLAIM` | O ELF AArch64 não traz, nos metadados inspecionados, confirmação independente de engine ou de versão WZM. |
 | “Demonware State Engine + Matchmaking+” como backend provável/confirmado | `UNKNOWN`; crédito comunitário alegado não foi validado em artefato/runtime | Referências de outros títulos não confirmam o backend efetivamente usado por esta build WZM. |
 | AUTH/LSG em TCP 3074, gameplay UDP ou `DemonwarePortMapping` | `OTHER_TITLE_REFERENCE` | Derivado de outros títulos/relatos; não tratar como endpoint, porta ou formato de WZM. |
 | Handshake, chave, serialização ou protocolo de COD Online | `OTHER_TITLE_REFERENCE` | Não transferir protocolo/código de um título para outro. Não implementar emulação a partir dessa analogia. |
 | Ricochet mobile | `UNKNOWN` | Informação sobre PC não demonstra presença no app mobile. Anti-cheat está fora de escopo. |
 | `bhvronline.com`, bloqueio de analytics e fluxo offline do DbD | `DBD_REFERENCE` | Não copiar domínio, regra de bloqueio, código ou conclusão para WZM. |
-| `manifest.json`, `.shard`, tamanho ou estrutura de streaming relatados em fóruns sobre WZM | `SECONDARY_SOURCE_CLAIM` até confirmação na build exata | Não há artefato local verificado. Não baixar shards completos; inventário permitido continua sendo ZIP/apktool e HEAD/Range, conforme o escopo M2.2/M2.2.1. |
+| Manifesto/shard CDN nativo | `VERIFIED — binário` para templates de `environment.config`, manifesto, `.shard` e agregados; conteúdo real/runtime `UNKNOWN` | `libgame.so` contém referências estáticas aos paths documentados em [M4.3](m4.3-libgame-static-analysis.md). Isso não confirma a identidade WZM 3.10.0, inventário de assets nem downloads em execução. Não baixar shards completos; inventário continua restrito a ZIP/apktool e HEAD/Range. |
 | `cdn.*`, `analytic.*`, `stun.*` e padrões de hostname como endpoints WZM | `UNKNOWN` | Padrões de busca não são endpoints descobertos. Não criar manifestos, allowlists ou respostas com base neles. |
 
 As fontes comunitárias antigas podem orientar perguntas de pesquisa, mas não promovem uma hipótese a `WARZONE_VERIFIED`. Os procedimentos históricos de Frida/MITM/hosts override não são parte do roadmap Stable e não devem ser executados.
@@ -96,21 +96,17 @@ O arquivo público retornou HTTP 200 e aproximadamente 320 bytes; contém `min_b
 
 **Leitura permitida:** a existência/resposta desse recurso foi verificada. **Não** foi demonstrado que o WZM fez essa requisição durante a janela “Verificando atualizações”, que esse arquivo seja suficiente para concluir a etapa ou que outros endpoints/pathnames existam. Nenhum hostname, manifesto ou formato adicional deve ser inventado.
 
+A busca histórica de M4.2 não tinha o binário. A análise estática posterior de M4.3 encontrou um candidato (`cdni_httpServer`) e um campo de configuração `server_url`, mas não estabeleceu registro, escrita pelo usuário, disponibilidade em WZM 3.10.0 ou eficácia local. Ver [M4.3](m4.3-libgame-static-analysis.md); a necessidade absoluta de TUN continua `UNKNOWN`.
+
 ---
 
-## 6. `libgame.so`: análise estática somente quando houver artefato
+## 6. `libgame.so`: análise estática concluída em M4.3
 
-A busca local documentada em 2026-10-04 não encontrou `.apk`, `.apkm`, `.xapk`, `.shard` nem `.so` no workspace. Sem o binário exato, nenhuma análise ou resultado de strings pode ser declarado.
+O artefato disponível em `origin/main` commit `67d8a52` foi analisado read-only fora do checkout. O ELF importa APIs libc de DNS/sockets e contém templates CDNI para metadata, `environment.config`, manifests, `.shard` e shards agregados. A mensagem de URL malformada referencia o candidato `cdni_httpServer`; há também `server_url`, campos de configuração e operações Dev/Prod.
 
-Quando o artefato estiver disponível por meio permitido, o próximo passo é **read-only** e deve registrar:
+**Limites:** o usuário identifica o `.so` como WZM 3.10.0, mas o ELF não confirma essa versão; não havia APK/recursos para inspecionar, o binário não foi executado e não houve observação runtime. M4.3 identificou uma entrada hashed registrada/lida cujo fluxo chega ao setter nomeado no diagnóstico `cdni_httpServer`; a associação exata chave↔dvar é provável, enquanto escrita pelo usuário, origem/gravabilidade dos arquivos/configs, uso de DoH e endpoint local funcional permanecem `UNKNOWN`. O detalhe de offsets, métodos, confiança e hash está em [M4.3](m4.3-libgame-static-analysis.md).
 
-1. Origem autorizada, versão/build, ABI, caminho do membro no APK e SHA-256 do APK e da biblioteca. Manter binários fora do Git.
-2. Inventário do APK/XAPK e extração apenas do `.so` necessário. Para `.shard`, manter o limite de inventário ZIP/apktool e HEAD/Range; não baixar os arquivos completos.
-3. Cabeçalho/dependências/símbolos ELF (`readelf`, `nm`) e strings com arquivo/offset/contexto mínimo (`strings`). Se necessário, disassembly estático em ferramenta local, sem execução ou instrumentação do jogo.
-4. Classificação de cada achado: literal isolado = no máximo `PROBABLE`; referência/call-site contextualizado ainda não prova execução; somente fluxo de runtime atribuível pode estabelecer uso real.
-5. Revisão/redação de qualquer saída antes de compartilhá-la. Não commitar APK, `.so`, dumps proprietários, tokens, credenciais ou payloads.
-
-Não usar Frida, root, hook, MITM, CA de interceptação, patch/repack, nem alterar trust/pinning. Esta lista é um plano para quando o binário existir, não relato de análise concluída.
+O próximo passo de análise é somente localizar, se disponível por fonte autorizada, o APK/build exato e examinar estaticamente os recursos/configs e o fluxo de registro/leitura do dvar. Manter arquivos grandes fora do Git; para `.shard`, continuar limitado a inventário ZIP/apktool e HEAD/Range, sem baixar arquivos completos. Não usar Frida, root, hook, MITM, CA, patch/repack nem alterar trust/pinning.
 
 ---
 
@@ -138,10 +134,10 @@ Um controle positivo validaria a instrumentação para aquele app/fluxo; não pr
 
 1. Preparar uma execução controlada com app de teste de UID distinto; primeiro implementar/validar o modo `CONTROL_ONLY`, sem misturar resultados com a sessão WZM.
 2. No aparelho, repetir a sessão WZM sem mudar rede/Private DNS e exigir tuple + owner UID antes de atribuir SYN/TUN ao UID-alvo. PID/processo auxiliar continuará separado do UID.
-3. Fazer análise estática de `libgame.so` somente quando o binário exato estiver disponível; registrar versionamento, hash, método e confiança.
+3. A análise estática do `.so` disponível foi registrada em M4.3; o próximo passo é obter o APK/build exato (se autorizado) para confirmar versão e examinar recursos/configs, sem executar o binário.
 4. Reavaliar qualquer questão TLS apenas depois de fluxo TCP/SYN do WZM demonstrado e atribuível. Nenhuma mudança de pinning está autorizada nesta etapa.
 
-**Conclusão atual:** backend, seleção de rede pelo WZM, uso de `Network.bindSocket()`, endpoints de runtime e conteúdo de `libgame.so` permanecem `UNKNOWN`. A evidência histórica é limitada; nenhuma causa foi inferida.
+**Conclusão atual:** backend, seleção de rede pelo WZM, uso de `Network.bindSocket()`, endpoints efetivamente requisitados e tráfego runtime continuam `UNKNOWN`. O conteúdo estático do `.so` foi parcialmente analisado em M4.3, mas sua identidade de versão e efeito no jogo em execução não foram confirmados. Nenhuma causa foi inferida.
 
 ---
 

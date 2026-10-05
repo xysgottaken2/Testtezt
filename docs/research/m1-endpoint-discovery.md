@@ -1,8 +1,10 @@
 # M1 — Descoberta de Endpoints e Mecanismo de Redirecionamento para localhost
 
-> **Aviso vigente:** plano histórico supersedido por M3.2/M4.1. Menções a proxy TLS, Frida, `VerifyPeer`,
-> CA, root ou patch/repack abaixo são apenas contexto histórico; não executar nem alterar TLS/trust/pinning.
-> O caminho real do WZM deve ser atribuído primeiro.
+> **Aviso vigente:** plano histórico supersedido por M3.2/M4.1/M4.2/M4.3. Menções a proxy TLS, Frida, `VerifyPeer`,
+> CA, root, hosts override ou patch/repack abaixo são apenas contexto histórico; não executar nem alterar
+> TLS/trust/pinning. M4.3 encontrou no binário um candidato `cdni_httpServer`, mas não comprovou acesso do usuário
+> nem efeito local; ver [`m4.3-libgame-static-analysis.md`](m4.3-libgame-static-analysis.md). O caminho real do WZM
+> deve ser atribuído primeiro.
 >
 > **Milestone:** M1 — Client communication<br>
 > **Branch:** `research/m1-endpoint-discovery`<br>

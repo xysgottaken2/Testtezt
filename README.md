@@ -1,8 +1,10 @@
 # Warzone Mobile Offline Server — Projeto Experimental de Preservação / Interoperabilidade
 
-> **STATUS:** `Launcher Android MVP` | Branch: `feature/launcher-apk` → APK `wzm-offline-launcher-debug` (127.0.0.1:18081, Compose)  
-> **Anteriores:** `M2.2.1 → research/m2.2.1-shard-inventory` (PR #14), `M2.2 → PR #13`, `M2.1 → PR #12`, `M2 Bootstrap → PR #11`, `M1 → PR #10`  
-> **Objetivo de longo prazo:** fazer o cliente de **Call of Duty: Warzone Mobile** entrar em uma partida local contra bots, sem depender da infraestrutura online oficial, via servidor local/privado.
+> **STATUS:** Stable — launcher Android MVP e pesquisa incremental; artifact próprio `wzm-offline-launcher-debug` (127.0.0.1:18081, Compose).
+> **M4.3 (2026-10-05):** análise estática read-only de `libgame.so` encontrou registro/leitura de uma entrada string candidata que flui ao setter cujo diagnóstico cita `cdni_httpServer`, com fallback Prod e montagem de URL até dispatch; um host bare loopback forma hipoteticamente `http://127.0.0.1:443/...`. A associação nome↔hash é provável, e definição suportada pelo usuário, execução runtime e envio de rede continuam `UNKNOWN`; a identidade WZM 3.10.0 não foi confirmada pelo ELF. Sem execução ou mudança TLS/pinning. Ver [M4.3](docs/research/m4.3-libgame-static-analysis.md) e o contexto histórico [M4.2](docs/research/m4.2-configuracao-endpoint-local.md). O TUN segue como a rota de redirecionamento implementada, não como necessidade absoluta demonstrada.
+> **M4.5 (2026-10-05):** investigação **estática e sem mudança de código** de `libgame.so` (SHA-256 `28ba7995…`): `libcurl/8.4.0` + `OpenSSL 1.1.1n` estão **linkados estaticamente** no binário (HTTP/TLS no próprio processo que carrega a lib), a camada é `bdHTTP` → `bdHTTPWorker(CURL)`/`(Android)` → `getaddrinfo`; a URL do `cdni.meta` **cruza para Java** por `NewStringUTF` num nativo registrado no `JNI_OnLoad`, e também existe no caminho nativo; o `pre-login.json` é escrito uma vez e nunca lido; há um fence de pre-login que compara uma string de ambiente com `"disabled"`, uma máquina de estados do CDNI com 31 estados e portões de Wi-Fi/celular com estado vindo de Java. Nada de TLS/pinning, TUN, DNS, endpoints, dvars ou binário do jogo foi alterado. Ver [M4.5](docs/research/m4.5-cadeia-estatica-ate-connect.md).
+> **Limite de evidência:** loopback, teste sintético e listener do launcher não provam tráfego WZM; atribuição exige tupla/owner UID e correlação. TLS/pinning permanecem intocados. Próxima etapa: `CONTROL_ONLY` separado e investigação TUN.
+> **Objetivo de longo prazo (não é milestone atualmente autorizado):** pesquisar interoperabilidade/offline somente dentro dos limites de segurança e evidência documentados.
 
 ```
 Warzone Mobile Client
@@ -22,11 +24,9 @@ PESQUISAR → OBSERVAR → DOCUMENTAR → HIPÓTESE → TESTAR → IMPLEMENTAR �
 
 ---
 
-## ⚠️ Prioridade absoluta
+## ⚠️ Escopo Stable vigente
 
-**FAZER O CLIENTE ENTRAR EM UMA PARTIDA LOCAL.**
-
-Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, contas Activision reais, matchmaking global, serviços sociais, eventos online, telemetria real, servidores oficiais.
+O objetivo de partida local é uma **meta histórica de longo prazo**, não autorização para contornar autenticação/anti-cheat, modificar o APK ou inventar endpoints. O foco imediato é pesquisa read-only do caminho real de rede, atribuição de tráfego e `CONTROL_ONLY`; nenhuma implementação de backend/offline deve partir de analogias ou hipóteses.
 
 ---
 
@@ -55,16 +55,19 @@ Não é necessário recriar inicialmente: loja, microtransações, Battle Pass, 
 | [Networking & Backend](docs/research/warzone-mobile-networking.md) | Demonware, endpoints, protocolos, TLS |
 | [Asset Streaming](docs/research/warzone-mobile-streaming.md) | CDN, manifests, .shard, cache |
 | [Metodologia de Reversão](docs/reverse-engineering/methodology.md) | Ferramentas, fluxos, evidências |
-| [M1 — Endpoint Discovery](docs/research/m1-endpoint-discovery.md) | M1: como o cliente resolve endpoints e mecanismo para localhost |
-| [M2 — Bootstrap 3.10.0](docs/research/wzm-310-bootstrap.md) | **NOVO M2:** WebView `bootstrap/index.html → build-selector-103.js → offline pt-BR` VERIFIED |
+| [M1 — Endpoint Discovery](docs/research/m1-endpoint-discovery.md) | Relatório histórico; propostas de redirect supersedidas por M4.2/M4.3 |
+| [M2 — Bootstrap 3.10.0](docs/research/wzm-310-bootstrap.md) | WebView histórica `bootstrap/index.html → build-selector-103.js → shutdown`; não prova endpoint nativo nem configuração local |
 | [Permissões & GVS](docs/research/wzm-permissions-gvs.md) | **NOVO M2:** `WBootstrap / pre_login_GVS / Meta Fetch` VERIFIED vs UNKNOWN |
-| [Frida / Cert Pinning](docs/reverse-engineering/frida-bypass.md) | Procedimento quando APK disponível |
+| [Frida / Cert Pinning](docs/reverse-engineering/frida-bypass.md) | Procedimento retirado/deprecated; não executar nem alterar TLS/pinning |
 | [Runbook APK](docs/reverse-engineering/apk-analysis-runbook.md) | Runbook para APK em /tmp/wzm |
 | [CDN Build-Selector](docs/protocol/cdni-build-selector.md) | **NOVO M2:** `prod.cdni.callofduty.com/manifest/build-selector-103.js` VERIFIED |
 | [CDN Offline Page](docs/protocol/cdni-offline-page.md) | **NOVO M2:** `static/web/index.html` `fora de serviço` VERIFIED |
 | [Android Launcher](docs/launcher.md) | **NOVO MVP:** Launcher Android `127.0.0.1:18081` + UI Compose + `com.activision.callofduty.warzone` |
 | [M4.0 — “Verificando atualizações”](docs/research/m4.0-verificando-atualizacoes.md) | **NOVO M4.0:** dá para pular a verificação de atualização? `CANNOT_SKIP_DIRECTLY` + cadeia concreta + scanner do APK |
-| [M4.1 — Dono das conexões (loopback)](docs/research/m4.1-dono-das-conexoes-loopback.md) | **NOVO M4.1:** `INVALID_UID` é ambíguo por desenho (AOSP `appliesToUid`) — autoria só com uid resolvido; teste de controle com sockets reais, janela de portas do processo e veredito de origem por conexão |
+| [M4.2 — Configuração direta de endpoint local](docs/research/m4.2-configuracao-endpoint-local.md) | **Histórico M4.2:** sem o binário no snapshot `eb16937`; resultado posteriormente limitado pelo M4.3 |
+| [M4.3 — Análise estática de `libgame.so`](docs/research/m4.3-libgame-static-analysis.md) | **NOVO M4.3:** registro/leitura candidatos de `cdni_httpServer` ligados por dataflow a setter, host Prod/local e dispatch HTTP; definição user-writable e envio real ainda `UNKNOWN`; binário fora do Git |
+| [M4.5 — Cadeia estática até o primeiro `connect()`/DNS](docs/research/m4.5-cadeia-estatica-ate-connect.md) | **NOVO M4.5 (somente leitura):** curl/OpenSSL estáticos no processo; `bdHTTP` → worker CURL/Android → `getaddrinfo`; `cdni.meta` entregue a Java por JNI **e** usado nativamente; `pre-login.json` latente; fence de pre-login com `"disabled"`; 31 estados do CDNI e portões Wi-Fi/celular; **sem nenhuma mudança de código** |
+| [M4.1 — Dono das conexões (loopback)](docs/research/m4.1-dono-das-conexoes-loopback.md) | **NOVO M4.1:** `INVALID_UID` é ambíguo por desenho (AOSP `appliesToUid`) — autoria só com uid resolvido; controle atual é loopback do launcher, não `CONTROL_ONLY` |
 | [M3.6 — Por que o tráfego do WZM não aparece no TUN](docs/research/m3.6-caminho-real-de-rede.md) | **NOVO M3.6:** contabilidade por UID, processos do alvo, IPv6 classificado (descoberta local × unicast), casamento de destino DNS — para separar "o app não fez rede" de "a rede não passou pelo túnel" |
 | [M3.5 — Loopback separado + teste sintético](docs/research/m3.5-loopback-e-teste-sintetico.md) | **NOVO M3.5:** `127.0.0.1:443` só diagnóstico (antes/depois do WZM), listener do túnel com peer/UID, botão TESTE SINTÉTICO e `cdni.meta` real |
 | [Síntese da Pesquisa](docs/research/warzone-mobile-research.md) | Estado atual VERIFIED / HYPOTHESIS / UNKNOWN |
@@ -87,7 +90,9 @@ E marcação obrigatória:
 
 ---
 
-## 🏗️ Arquitetura modular (proposta)
+## 🏗️ Arquitetura modular — proposta M0 histórica
+
+> A árvore abaixo não descreve endpoints, backend ou rota testados no WZM. No código Stable, `hosts-patch` é transformação de texto e `webview-patch` está retirada; não seguir o antigo roadmap sem evidência e autorização.
 
 ```
 warzone-offline/
@@ -113,43 +118,33 @@ Detalhe completo em [docs/architecture/overview.md](docs/architecture/overview.m
 
 ---
 
-## 🔬 Primeiro protótipo — meta incremental
+## 🔬 Protótipo M0 — hipótese histórica, não validada
 
-```
+```text
 Cliente → localhost → Servidor → Resposta válida
 ```
 
-Depois, nesta ordem:
-
-1. cliente conecta
-2. passa pela inicialização
-3. perfil local
-4. matchmaking local
-5. lobby
-6. sessão
-7. spawn
-8. movimento
-9. arma
-10. bot
-
-Cada etapa com teste automatizado.
+Esse diagrama não representa um fluxo WZM observado e não deve orientar implementação. A etapa Stable atual é
+pesquisa read-only: M4.3 encontrou um candidato de override CDNI no binário, mas sua disponibilidade e uso local
+não foram comprovados. O próximo teste permitido continua sendo `CONTROL_ONLY` de TUN com UID distinto, não
+login, backend, matchmaking ou partida.
 
 ---
 
 ## ⚙️ Servidor local — configuração futura
 
 ```env
-HOST=0.0.0.0
-PORT=XXXXX          # [UNKNOWN] descobrir porta real
-GAME_VERSION=XXXXX  # [UNKNOWN] descobrir build alvo
-MAP=VERDANSK        # Verdansk | Rebirth Island
-GAME_MODE=BR_SOLO   # [HYPOTHESIS] BR_SOLO, RESURGENCE, etc.
-BOT_COUNT=20
-DATABASE=sqlite
+HOST=127.0.0.1      # servers locais devem ficar em loopback; não usar 0.0.0.0
+PORT=XXXXX          # [UNKNOWN] porta do eventual serviço local
+GAME_VERSION=XXXXX  # [UNKNOWN] build alvo
+MAP=VERDANSK        # hipótese histórica; não há backend/partida implementados
+GAME_MODE=BR_SOLO   # hipótese, não protocolo observado
+BOT_COUNT=20        # placeholder
+DATABASE=sqlite     # proposta M0
 LOG_LEVEL=debug
 ```
 
-> Valores não assumidos — descobrir via análise de APK/logs/tráfego.
+> Esta configuração é um rascunho histórico, não configuração atual do WZM. Não inventar endpoints nem usar `0.0.0.0`.
 
 ---
 
@@ -158,10 +153,10 @@ LOG_LEVEL=debug
 ```bash
 # Server — bootstrap local CDN (M2, VERIFIED chain)
 cd warzone-offline/server && npm ci && npx tsc --noEmit && npx vitest run  # 30 testes
-npm run dev   # captura em 0.0.0.0:8080 — /health, /__capture
+npm run dev   # server enforces loopback (127.0.0.1); /health and /__capture test only the local process
 
-# Launcher Node — hosts-patch + webview-patch (metodologia DbD REFERENCE)
-cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # 12 testes
+# Launcher Node — funções de texto hosts; testes não aplicam mapping ao Android nem integram WZM
+cd ../launcher && npm ci && npx tsc --noEmit && npx vitest run  # unit tests das funções locais
 
 # Android Launcher MVP — servidor 127.0.0.1:18081 + UI Compose
 cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM: servidor, launcher, roteador CDNI, RequestLog, TLS/trust, parser IPv4/IPv6 e diagnóstico do caminho WZM->TUN
@@ -170,8 +165,9 @@ cd ../../android && ./gradlew :app:testDebugUnitTest  # testes JVM: servidor, la
 adb install android/app/build/outputs/apk/debug/app-debug.apk
 # testar health do stub:
 adb shell 'curl -v http://127.0.0.1:18081/health'  # deve dar 200 OK
-# M3: subir o roteador no app (INICIAR ROTEADOR CDNI) e conferir o log de requests do WZM,
-# ou no device: adb shell 'curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/health'
+# diagnóstico loopback apenas: esta chamada é gerada pelo curl, não pelo WZM.
+# Não tratar logs do router como tráfego WZM sem tupla/owner UID e correlação temporal.
+adb shell 'curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/health'
 
 # Scanner (quando APK disponível, fora do repo)
 bash warzone-offline/tools/asset-tools/run-external-apk.sh --apk /storage/emulated/0/Download/warzone.xapk --out-dir /storage/emulated/0/Download/wzm-out
@@ -190,12 +186,10 @@ botões **LIMPAR LOGS**, **COPIAR LOGS** e **SALVAR/EXPORTAR .TXT**. O log tamb�
 `filesDir/request-log.txt` (sobrevive a reabrir o app) e nada sensível é registrado (sem corpos/cabeçalhos).
 Detalhes em [docs/launcher.md](docs/launcher.md) §5.2.
 
-**M3 comprovado no device (S23 Ultra, 2026-10-04):** 5 conexões do WZM chegaram ao servidor local
-(`127.0.0.1:443`) e foram registradas em VER LOGS; todas recusadas pelo cliente no TLS
-(`SSLV3_ALERT_CERTIFICATE_UNKNOWN`, `httpRequests=0`) → **o bloqueio restante é exclusivamente confiança de
-certificado**. A investigação de TLS/trust/pinning do APK 3.10.0 (read-only, sem modificar/distribuir o APK e
-sem bypass) está em [docs/research/m3.2-apk-tls-trust-investigation.md](docs/research/m3.2-apk-tls-trust-investigation.md),
-com scanner pronto: `python3 warzone-offline/tools/apk-analysis/tls-trust-scan.py --apk <externo>` (self-test no CI).
+**Registro histórico de loopback (S23 Ultra, 2026-10-04; não atribuível ao WZM):** cinco peers foram contados em
+`127.0.0.1:443`; um ocorreu antes do launch e os outros quatro retornaram `INVALID_UID`. Os erros TLS desses
+peers não provam handshake do WZM nem rejeição de certificado pelo jogo. Confiança/pinning permanecem `UNKNOWN`
+e intocados. A interpretação atual está em [M3.5](docs/research/m3.5-loopback-e-teste-sintetico.md) e [M4.1](docs/research/m4.1-dono-das-conexoes-loopback.md).
 
 **M4.1 — de quem é a conexão que aparece no listener? (`INVALID_UID` não prova nada):** a API pública
 `ConnectivityManager.getConnectionOwnerUid` devolve `-1` em **dois** casos distintos — conexão fora da tabela
@@ -208,12 +202,13 @@ com o resultado no log e no card da tela principal. Regra mantida: conexão de l
 tráfego do WZM — só uid resolvido pela API conta. Detalhes e leitura em
 [docs/research/m4.1-dono-das-conexoes-loopback.md](docs/research/m4.1-dono-das-conexoes-loopback.md).
 
-**M4.0 — dá para pular “Verificando atualizações”? (`CANNOT_SKIP_DIRECTLY`):** a etapa consome **bytes de um
-manifesto** (estados `MANIFEST_DOWNLOAD_ERROR`, `manifest_ver`, `num_files_manifest`, `CDNI_MANDATORY_NOT_INSTALLED`),
-não existe booleano “já atualizado”; `min_buildnum` do `cdni.meta` (público, 320 B) **já é satisfeito** pelo build
-instalado (`19854920`), e `build-selector-102/103.js` só escolhem UI de pré-login por faixa semver. Cadeia
-concreta e veredito em [docs/research/m4.0-verificando-atualizacoes.md](docs/research/m4.0-verificando-atualizacoes.md);
-scanner: `python3 warzone-offline/tools/apk-analysis/update-check-scan.py --apk <externo> --out /tmp/wzm/update-check.json`.
+**M4.0 — dá para pular “Verificando atualizações”? (`CANNOT_SKIP_DIRECTLY`):** a evidência estática registra
+estados de manifesto (`MANIFEST_DOWNLOAD_ERROR`, `manifest_ver`, `num_files_manifest`, `CDNI_MANDATORY_NOT_INSTALLED`),
+mas não demonstra um bypass direto. O valor público `min_buildnum=19854920` coincide com o build anotado; a
+comparação/efeito no cliente não foi observada. `build-selector-102.js` é selector legado da UI WebView; `103`
+redireciona para a página atual de shutdown. Nada disso prova endpoint nativo ou configuração local. Cadeia e
+limites em [docs/research/m4.0-verificando-atualizacoes.md](docs/research/m4.0-verificando-atualizacoes.md);
+scanner read-only (quando APK exato disponível): `python3 warzone-offline/tools/apk-analysis/update-check-scan.py --apk <externo> --out /tmp/wzm/update-check.json`.
 
 **M3.5 — loopback não é evidência + teste sintético antes do WZM:** `127.0.0.1:443` passou a ser **diagnóstico
 secundário** (contadores próprios, papel no log, e a relação `antes/depois do WZM iniciado` em cada conexão —
@@ -223,13 +218,13 @@ caminho sem o WZM. O `cdni.meta` deixou de ser placeholder e é servido com o **
 `min_buildnum=19854920`). Procedimento e critério em
 [docs/research/m3.5-loopback-e-teste-sintetico.md](docs/research/m3.5-loopback-e-teste-sintetico.md).
 
-**M3 — roteamento CDNI local (sem root, sem tocar no APK do jogo):** o launcher agora intercepta o DNS de
-`prod.cdni.callofduty.com` (VpnService *per-app*, rota só de `10.111.222.0/24`) e entrega o HTTPS `:443` a um
-servidor embarcado com **certificado nosso** (SAN `prod.cdni.callofduty.com`). Endpoints já comprovados em M2/M2.2
-respondem `200` com placeholder marcado; **endpoint desconhecido → `404` controlado com a URL/path exatos no log**
-(nada de manifest inventado). Tudo aparece no log do launcher: `[DNS]`, `[CDNI] TCP SYN`, `[TLS]`, `[CDNI] GET …`.
-Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk ≥ 24`):
-[docs/research/m3-cdni-integration.md](docs/research/m3-cdni-integration.md).
+**M3 — roteador CDNI local implementado no launcher (não comprova uso pelo WZM):** o serviço pode responder
+consultas CDNI que cheguem ao DNS do `VpnService` per-app (rota `10.111.222.0/24`) e direcionar o endereço
+virtual ao listener HTTPS local com certificado próprio. Isso é mecanismo do launcher; não prova que o WZM fez
+uma consulta, usou esse hostname ou aceitou TLS. Endpoints documentados têm respostas locais; path desconhecido
+recebe `404` controlado com URL/path exatos. Não inventar manifestos. Confiança TLS do WZM continua `UNKNOWN`.
+Detalhes do código e limites de evidência em [docs/research/m3-cdni-integration.md](docs/research/m3-cdni-integration.md),
+[M4.2](docs/research/m4.2-configuracao-endpoint-local.md) e [M4.3](docs/research/m4.3-libgame-static-analysis.md).
 
 **APK instalável (CI VERIFIED, 2026-10-04):**
 
@@ -245,38 +240,23 @@ Detalhes, decisão técnica e o bloqueio conhecido (confiança TLS de `targetSdk
 | ⚠️ Não confundir | o artifact técnico `warzone-offline-M1` (workflow `build`) tem **só código/docs — sem APK**; o APK é sempre o `wzm-offline-launcher-debug` |
 
 Servidor stub escuta **somente** `127.0.0.1:18081` (`GET /health` → `200 OK`, `GET /` → página, `GET /__hits`, `POST /__reset`).
-O caminho real do CDNI é o roteador M3: listeners HTTPS **somente** em endereços específicos (`10.111.222.1:443`, `127.0.0.1:443`), nunca `0.0.0.0`.
+O roteador local M3 usa listeners HTTPS em endereços específicos (`10.111.222.1:443`, `127.0.0.1:443`), nunca `0.0.0.0`; isso descreve o launcher e não comprova uso pelo WZM.
 Botão **INICIAR WARZONE MOBILE** usa `PackageManager` para `com.activision.callofduty.warzone` (sem Activity hardcoded, sem modificar o APK do jogo).
 
 ---
 
-## 🧭 Roadmap
+## 🧭 Estado Stable
 
-| Milestone | Nome |
+| Área | Estado atual |
 |---|---|
-| M0 | Research — concluído (PR #1) |
-| M1 | Client communication — concluído (PR #9 + #10) |
-| M2 | Bootstrap Offline (WebView 3.10.0, GVS/permissões) — **concluído no launcher MVP** |
-| M3 | Integração real do CDNI local (DNS + HTTPS embarcado + log de requests do WZM) — **implementado; bloqueio conhecido = confiança TLS do cliente** |
-| M3.1 | Tela VER LOGS no APK (RequestLog em tempo real, filtros, contadores, LIMPAR/COPIAR/SALVAR .TXT) — **implementado** |
-| M3.2 | Investigação TLS/trust/pinning do APK 3.10.0 (read-only) — **roteamento provado no device; scanner + matriz de decisão prontos; análise do APK pendente do artefato externo** |
-| M2 | Local configuration |
-| M3 | Local auth/profile |
-| M4 | Local matchmaking |
-| M5 | Lobby |
-| M6 | Game session |
-| M7 | Player spawn |
-| M8 | Player movement |
-| M9 | Weapons |
-| M10 | Bots |
-| M11 | Map |
-| M12 | Asset streaming |
-| M13 | Vehicles |
-| M14 | Battle Royale systems (zona, loot, gulag) |
-| M15 | LAN multiplayer |
-| M16 | Android server (Termux) |
+| WebView/bootstrap | Requests históricos de uma build e respostas públicas documentados; não provam endpoint nativo nem caminho local. |
+| Roteador CDNI | Implementado no launcher por DNS via `VpnService`/TUN; uso pelo WZM não está atribuído nesta evidência. |
+| TLS/trust/pinning | `UNKNOWN`; nenhuma alteração autorizada ou executada. |
+| Caminho de rede/owner UID do WZM | `UNKNOWN`; allow-list não prova captura integral. Ver [M3.6](docs/research/m3.6-caminho-real-de-rede.md) e [M4.1](docs/research/m4.1-dono-das-conexoes-loopback.md). |
+| Endpoint local direto | Binário contém cadeia estática de registro/leitura candidata de `cdni_httpServer` até montagem e dispatch HTTP, com fallback Prod; associação nome↔hash e entrada bare loopback são `PROBABLE`, enquanto configuração Android suportada e tráfego real são `UNKNOWN`. TUN segue implementado, não provado como única alternativa. Ver [M4.3](docs/research/m4.3-libgame-static-analysis.md). |
+| Próxima etapa | `CONTROL_ONLY` em sessão separada com UID distinto; só depois observação do WZM atribuída por tupla/owner UID. |
 
-Ver [docs/architecture/overview.md#roadmap](docs/architecture/overview.md) e Issues.
+Os milestones de auth, matchmaking, sessão e gameplay abaixo do antigo roadmap M0 não são trabalho Stable autorizado nem inferências sobre arquitetura WZM.
 
 ---
 

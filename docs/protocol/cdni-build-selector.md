@@ -45,8 +45,8 @@ Resposta **observada** (atual offline): JS que imediatamente seta `window.locati
 
 ## Comportamento observado
 
-- Sem `hosts` override, request vai para CDN real e retorna JS que redireciona para página de shutdown `Esta servidores estão permanentemente fora de serviço.`
-- Com `hosts 127.0.0.1 prod.cdni.callofduty.com` + servidor local, cliente deve receber JS local e **não** redirecionar (testar em `research/m2-bootstrap-offline`).
+- A evidência WebView arquivada registra o request ao CDN e o redirect atual para a página de shutdown.
+- A ideia de `hosts 127.0.0.1 prod.cdni.callofduty.com` + servidor local era uma **HYPOTHESIS**, não uma execução com WZM. O M4.3 encontrou um candidato nativo `cdni_httpServer`, mas não provou acesso do usuário ou eficácia local. A transformação `hosts-patch` não instala mapping no Android; resolução local não altera URL/SNI nem demonstra aceitação do certificado. Não implementar/testar esta rota no escopo atual; ver [M4.3](../research/m4.3-libgame-static-analysis.md) e [M4.2 histórico](../research/m4.2-configuracao-endpoint-local.md).
 
 ## Notas
 

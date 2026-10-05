@@ -3,6 +3,7 @@
 > **Data:** 2026-10-04 (runtime 3.10.0) + estático 3.3.4  
 > **Branch:** `research/m2-bootstrap-offline` (base `research/m1-unlock-preparation` PR #10)  
 > **Regra:** sem acesso a servidores Activision; sem inventar; DbD apenas metodologia.
+> **Atualização M4.3 (2026-10-05):** o `libgame.so` de `origin/main` commit `67d8a52` foi analisado estaticamente; o arquivo é identificado pelo usuário como WZM 3.10.0, mas a versão não foi confirmada pelo ELF. Foi encontrada uma entrada hashed de tipo string candidata com fluxo de leitura ao setter cujo diagnóstico cita `cdni_httpServer`, fallback Prod e montagem até dispatch; a associação nome↔hash é provável, enquanto acesso do usuário e uso local permanecem `UNKNOWN`. Isso não altera nem revalida a cadeia WebView histórica deste documento. Não executar nem alterar WZM/TLS/pinning; ver [M4.3](m4.3-libgame-static-analysis.md) e o snapshot [M4.2](m4.2-configuracao-endpoint-local.md).
 
 ---
 
@@ -114,31 +115,35 @@ Ambas builds útil: 3.3.4 para auditar código sem runtime, 3.10.0 para observar
 
 ---
 
-## 6. Por que isso bloqueia offline (e como investigar sem Activision)
+## 6. Limites das propostas de redirecionamento local (não validadas)
 
-**Antes do fix offline:** WebView depende de CDN remoto (`prod.cdni...`). Sem resposta válida, usuário vê `Estes servidores estão permanentemente fora de serviço.` O jogo não sai do WebView.
+**Observação runtime:** a WebView histórica 3.10.0 carregou o selector remoto e chegou à página de shutdown. Isso comprova aquela cadeia WebView, não o endpoint do CDNI nativo nem a autoria de todo socket do jogo.
 
-**Para local/offline (sem acessar Activision):**
+As seguintes ideias foram registradas em M0/M2, mas **não** são configuração direta comprovada do WZM:
 
-1. **Interceptar WebView** — `WebViewClient.shouldOverrideUrlLoading()` ou hosts `127.0.0.1 prod.cdni.callofduty.com` + servidor local que responde aos dois paths.
-2. **Servir `build-selector-103.js` local** que não redireciona para offline, mas injeta config local (ex.: `window.GVS = {pre_login_GVS: true, region: "local"}`).
-3. **Servir `static/web/index.html` local** alternativo (ou bypassar redirect).
-4. **Mock de Meta** — se `Meta Fetch` também depende de CDN, servir meta local com `pre_login_GVS` presente para satisfazer bootstrap.
+| Ideia antiga | Estado M4.2 |
+|---|---|
+| `WebViewClient.shouldInterceptRequest()` no launcher | Não foi encontrada API para o launcher substituir o `WebViewClient` de outro processo. Fazer isso dentro do WZM exigiria modificação/injeção do cliente, fora de escopo. |
+| Mapear `prod.cdni.callofduty.com` para localhost | Não é uma opção de configuração do WZM. O helper `hosts-patch` só transforma linhas em memória; não aplica mapping ao Android. Mesmo com resolução local, URL/SNI permaneceriam no hostname original e aceitação do certificado pelo WZM é `UNKNOWN`. |
+| Servir localmente um selector que injeta `pre_login_GVS`/região | O JS no `server/src/bootstrap` é um stub próprio do launcher; não há evidência de que o WZM aceite esses campos ou que eles representem configuração de endpoint. Não servir/injetar isso no WZM. |
+| Mockar `Meta Fetch` com host/path presumido | Host e path do `Meta Fetch` continuam `UNKNOWN`; não criar mock até existir endpoint/call-site observado. |
 
-Tudo isso é **metodologia** (hosts-patch + CaptureServer já VERIFIED em M1), aplicada ao hostname VERIFIED `prod.cdni.callofduty.com`. Não inventa novo host.
+A conclusão e o inventário das superfícies estão em [M4.2 — busca de configuração direta](m4.2-configuracao-endpoint-local.md). Não alterar DNS/TLS/trust/pinning, não usar MITM/CA, root, hook ou patch do WZM.
 
 ---
 
-## 7. Experimentos para próximo passo (sem Activision)
+## 7. Estado das ferramentas locais (não equivale a teste WZM)
 
-| # | Experimento | Método | Saída esperada | Status |
-|---|---|---|---|---|
-| 1 | Dump de `bootstrap/index.html` de 3.3.4 | `apktool d` → `assets/bootstrap/index.html` | HTML real (hash, não conteúdo proprietário commitado) | NEEDS_RESEARCH (aguarda APK em /tmp) |
-| 2 | Scan de `classes.dex` para `prod.cdni` | `endpoint-scanner.js` em `jadx-output` | já temos 1 VERIFIED, confirmar se há mais paths | DONE parcial |
-| 3 | Servidor local CDN | `warzone-offline/server/src/bootstrap` serve `build-selector-103.js` + `static/web/index.html` stub | `curl http://127.0.0.1:8080/manifest/build-selector-103.js` 200 | **Implementado nesta branch** |
-| 4 | Hosts → localhost PoC | `hosts-patch` add `127.0.0.1 prod.cdni.callofduty.com` + `CaptureServer` | `GET /manifest/build-selector-103.js` capturado com host `prod.cdni...` | **Teste implementado** |
-| 5 | WebView override sem root | `launcher/webview-patch` com `shouldInterceptRequest` | WebView carrega `file:///android_asset/...` sem rede | NEEDS_RESEARCH (device) |
-| 6 | Permissões `WBootstrap` | `adb logcat | grep WBootstrap` + `dumpsys package` | log de `nativeBootstrapPermissionsResult` | NEEDS_RESEARCH |
+Os testes do servidor validam respostas HTTP locais e fixtures sintéticas. Não simulam DNS do aparelho, não alteram a resolução no WZM e não provam que o WZM aceitaria a resposta/certificado.
+
+| # | Ferramenta/ideia | O que existe | Limite atual |
+|---|---|---|---|
+| 1 | Inspeção de `bootstrap/index.html` 3.3.4 | Evidência histórica via apktool está descrita neste documento. | O APK não está no workspace; não há nova inspeção nesta revisão. |
+| 2 | Busca de `prod.cdni` em `classes.dex` | Há evidência histórica parcial de WZM 3.3.4/3.10.0, separada por build. | Não identifica endpoint de `Meta Fetch` nem CDNI nativo; sem binário local não há nova varredura. |
+| 3 | Servidor bootstrap local | `warzone-offline/server/src/bootstrap` serve stubs e escuta em loopback; testes checam esses paths localmente. | Não há integração do servidor com o WZM nem mecanismo direto para mudar a URL cliente. |
+| 4 | `hosts-patch` | Funções de transformação de texto e testes unitários sintéticos. | Não escreve no sistema/Android, não aplica mapping e não foi testado com WZM. A hipótese de resolução local permanece fora do escopo atual. |
+| 5 | `webview-patch` | Diretório contém apenas nota `DEPRECATED / NÃO EXECUTAR`. | Não há override ativo do WebView WZM. |
+| 6 | `WBootstrap` / `Meta Fetch` | Logs/strings históricos descritos acima. | Host/path Meta `UNKNOWN`; não mockar nem alterar sem endpoint/call-site real. |
 
 ---
 
@@ -154,4 +159,4 @@ Tudo isso é **metodologia** (hosts-patch + CaptureServer já VERIFIED em M1), a
 
 ## 9. Próximo bloqueio
 
-Ainda `UNKNOWN`: Demonware/UNO runtime endpoints, portas de jogo, telemetry. Bootstrap CDN agora é VERIFIED e pode ser mockado localmente (próximo PR testa hosts → CaptureServer com host real).
+O host/path de `Meta Fetch`, resolver efetivamente usado, endpoint requisitado em runtime e aceitação de endpoint local permanecem `UNKNOWN`. M4.3 encontrou no `.so` uma entrada hashed candidata cujo valor lido flui ao setter nomeado no diagnóstico `cdni_httpServer`, mais parser com `server_url` e seleção Dev/Prod; a associação nome↔hash é provável, mas escrita suportada pelo usuário, efeito local e envio real não foram demonstrados. A necessidade absoluta de TUN segue `UNKNOWN`. Próximos passos: confirmar versão via APK/build e rastrear estaticamente a origem gravável do valor; o controle positivo `CONTROL_ONLY` permanece um trabalho separado. Nenhum mock de endpoint Meta/asset ou host override deve ser tratado como caminho verificado.

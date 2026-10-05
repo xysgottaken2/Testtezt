@@ -1,7 +1,7 @@
 # Warzone Mobile — streaming/assets (estado conservador Stable)
 
-> **Atualizado:** 2026-10-04 · **Escopo:** inventário e pesquisa read-only.
-> **Estado:** não há APK/XAPK real nem `.shard` no workspace; nenhum shard real foi identificado, pedido ou baixado. Instalação completa/streaming de assets permanece `UNKNOWN`.
+> **Atualizado:** 2026-10-05 · **Escopo:** inventário e pesquisa read-only.
+> **Estado:** não há APK/XAPK nem `.shard` físico no workspace; uma `libgame.so` em `origin/main` foi analisada estaticamente em M4.3. Templates de download foram identificados, mas nenhum shard real foi identificado, pedido ou baixado; instalação completa/streaming de assets permanece `UNKNOWN`.
 > Esta página reclassifica hipóteses M0 antigas. Não usar nomes de fixture, relatos de fóruns ou padrões de URL como dados da build WZM.
 
 ---
@@ -14,7 +14,7 @@
 | O endpoint `https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` retornou um arquivo pequeno com `min_buildnum=19854920` | `VERIFIED` como recurso consultado manualmente, conforme M2.2/M4.0. O arquivo não lista nomes de shards e não prova que o WZM o pediu durante a sessão observada. |
 | O nome `manifest.json` ocorre na cadeia WebView de seleção de UI | `VERIFIED` para essa cadeia. Não confundir esse manifesto de `builds/root` com manifesto de conteúdo/shards. |
 | `split_asset_pack/assets/shard/`, `.shard`, `IWffn100` e `KAPIs` foram relatados em fórum/comunidade sobre WZM | `SECONDARY_SOURCE_CLAIM` não reproduzido no APK local; não é inventário confirmado de uma versão WZM. |
-| O workspace contém zero APK/XAPK e zero shard real | `VERIFIED` por [M2.2.1](m2.2.1-shard-inventory.md); ferramentas e exemplos sintéticos não mudam esse resultado. |
+| O workspace contém zero APK/XAPK e zero shard físico | `VERIFIED` por [M2.2.1](m2.2.1-shard-inventory.md); o `.so` disponível em `origin/main` não contém os assets nem nomes comprovados de shards. Ver [M4.3](m4.3-libgame-static-analysis.md). |
 | A existência, tamanho, assinatura, criptografia, dependências ou disponibilidade CDN de shards reais | `UNKNOWN` até aparecer um artefato exato e uma lista de nomes comprovada. |
 
 ---
@@ -22,7 +22,7 @@
 ## 2. Não misturar dois manifestos diferentes
 
 1. **Manifesto WebView/UI:** `prod.cdni.callofduty.com/manifest/manifest.json` é referenciado pelo seletor legado da WebView e contém seleção de `builds`/`root` para UI de pré-login. Sua existência e conteúdo consultado estão descritos em M2.2. Isso não o torna catálogo de arquivos `.shard`.
-2. **Manifesto local/de conteúdo:** a existência e o caminho de um catálogo de shards dentro do pacote (por exemplo `assets/shard/manifest.json`) não foram confirmados em um APK WZM disponível neste workspace. `m2.2.1-shard-inventory.md` usa nomes semelhantes apenas em fixtures sintéticas.
+2. **Manifesto local/de conteúdo:** a existência de um catálogo dentro do pacote (por exemplo `assets/shard/manifest.json`) não foi confirmada em APK. M4.3 encontrou no `.so` o literal relativo `shard/manifest.json` em construção/consulta de path; isso não prova que o arquivo esteja empacotado. `m2.2.1-shard-inventory.md` usa outros nomes semelhantes apenas em fixtures sintéticas.
 3. **`cdni.meta`:** o arquivo remoto contém metadados de versão/flags; não contém lista de shards. Não inferir dele URL, hash, nome ou conteúdo de manifesto adicional.
 
 Nenhum endpoint nativo de download de conteúdo ou URL de shard deve ser inventado a partir dos itens acima.
@@ -31,8 +31,8 @@ Nenhum endpoint nativo de download de conteúdo ou URL de shard deve ser inventa
 
 ## 3. Resultado do inventário M2.2.1
 
-- Busca no workspace: nenhum APK/XAPK/APKM, `.shard` ou `.so` real encontrado.
-- `physicalShards.count=0` no workspace.
+- Busca do inventário M2.2.1: nenhum APK/XAPK/APKM nem `.shard` físico encontrado; `physicalShards.count=0`.
+- O `.so` de `origin/main` foi analisado posteriormente em M4.3; contém templates CDNI de download, não o inventário de assets/shards.
 - `base.shard`, `textures_00.shard`, o `manifest.json` e `libgame.so` usados pelos testes são **fixtures sintéticas**; não são dados WZM.
 - Os testes HEAD/Range/404 sobre nomes das fixtures validam a ferramenta e sua contenção de volume, não disponibilidade de shard real.
 - Nenhuma consulta CDN com nome de shard WZM comprovado foi realizada; qualquer resultado para esses nomes permanece `UNKNOWN`.
@@ -54,13 +54,13 @@ A metodologia permitida está em [M2.2.1](m2.2.1-shard-inventory.md): só nomes 
 
 ---
 
-## 5. Próxima pesquisa estática (quando o artefato estiver disponível)
+## 5. Próxima pesquisa estática de assets (APK ainda não disponível)
 
 1. Usar APK/XAPK de origem permitida e registrar versão/build e SHA-256; manter o binário fora do Git.
 2. Inspecionar ZIP (`unzip -l`) antes de extrair. Extrair apenas o necessário com apktool para localizar arquivos/listas; não baixar shards grandes.
 3. Procurar nomes reais em arquivos e referências do artefato exato. Preservar caminho e contexto mínimo; nomes de fixtures/docs não contam.
 4. Para cada nome comprovado, consultar CDN somente por `HEAD` ou `Range: bytes=0-1023` e registrar status, tamanho e Content-Type. `404` de fixture não diz nada sobre shards WZM.
-5. Se disponível, analisar `libgame.so` estaticamente, com build/hash/offset; string isolada não demonstra chamada nem uso em runtime. Ver [networking Stable](warzone-mobile-networking.md), §6.
+5. A análise estática de `libgame.so` já está em [M4.3](m4.3-libgame-static-analysis.md); obter o APK/build exato para confirmar versão e inspecionar configs/assets empacotados. Strings/call-sites não demonstram uso em runtime.
 
 Não executar o app sob hook; não usar Frida, root, MITM/CA, bypass de pinning, patch/repack ou alteração de TLS. Não registrar corpo HTTP, cookies, tokens, credenciais ou payloads.
 
@@ -68,12 +68,12 @@ Não executar o app sob hook; não usar Frida, root, MITM/CA, bypass de pinning,
 
 ## 6. Próximos passos e limites
 
-- **Bloqueio atual:** falta o binário exato. Nenhuma descoberta de shards reais é possível sem nomes obtidos do artefato.
+- **Bloqueio atual:** falta APK/XAPK da build exata e nomes de assets/shards. O `.so` disponível permite ver templates de download, não descobrir arquivos físicos nem provar downloads reais.
 - **Sem download de volume:** a regra de M2.2.1 continua sendo inventário local + HEAD/Range por nome comprovado; não fazer GET completo de `.shard`.
 - **Sem inferência de rede:** mesmo que o manifesto/arquivo exista, só uma sessão com fluxo atribuído por tupla/owner UID pode demonstrar que o WZM o requisitou. Ver [M3.6](m3.6-caminho-real-de-rede.md) e [M4.1](m4.1-dono-das-conexoes-loopback.md).
 - **Sem modificação de TLS:** qualquer pergunta de trust/pinning permanece read-only e bloqueada até o caminho TCP/SYN do WZM estar demonstrado e atribuível.
 
-**Conclusão:** bootstrap WebView e `cdni.meta` têm evidências próprias documentadas; catálogo, tamanho, conteúdo, disponibilidade e download de shards do WZM continuam `UNKNOWN`. Não há base para declarar assets completos ou uma arquitetura de streaming.
+**Conclusão:** bootstrap WebView e `cdni.meta` têm evidências próprias documentadas; M4.3 confirma templates e referências nativas a manifest/config/shards. Catálogo de assets, tamanho, conteúdo, disponibilidade e downloads efetivos continuam `UNKNOWN`. Não há base para declarar assets completos nem fluxo runtime de streaming.
 
 ---
 
