@@ -208,6 +208,8 @@ class CdnVpnService : VpnService() {
         AndroidDiagnostics.privateDnsLines(this).forEach { line -> RequestLog.add("DIAG", line) }
         AndroidDiagnostics.tunnelInterfaceLines().forEach { line -> RequestLog.add("DIAG", line) }
         AndroidDiagnostics.vpnNetworkLines(this).forEach { line -> RequestLog.add("DIAG", line) }
+        // M5.0: em qual rede o WZM resolve? Comparável com "DNS Requested by <netId>" do logcat.
+        NetworkPathReport.lines(this).forEach { line -> RequestLog.add("DIAG", line) }
 
         val descriptor = try {
             builder.establish()
