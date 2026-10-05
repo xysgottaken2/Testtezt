@@ -55,7 +55,7 @@ object LoopbackOrigin {
                     Verdict.PROCESSO_LAUNCHER,
                     Evidence.VERIFIED,
                     "a tupla completa do peer casou com um socket registrado pelo processo launcher" +
-                        (facts.registeredProcessPid?.let(" (PID=$it)") ?: " (PID indisponível)")
+                        (facts.registeredProcessPid?.let { " (PID=$it)" } ?: " (PID indisponível)")
                 )
             peerUid != null && peerUid == facts.launcherUid ->
                 Conclusion(

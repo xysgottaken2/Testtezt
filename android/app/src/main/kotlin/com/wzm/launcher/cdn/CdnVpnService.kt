@@ -398,8 +398,7 @@ class CdnVpnService : VpnService() {
             uidTrafficBytesSinceStart = previous.uidTrafficBytesSinceStart,
             uidTrafficGrew = previous.uidTrafficGrew,
             ipv6Profiles = previous.ipv6Profiles,
-            targetDeclaredProcesses = previous.targetDeclaredProcesses,
-            uidTrafficOutsideTunnel = previous.uidTrafficOutsideTunnel
+            targetDeclaredProcesses = previous.targetDeclaredProcesses
         )
     }
 
