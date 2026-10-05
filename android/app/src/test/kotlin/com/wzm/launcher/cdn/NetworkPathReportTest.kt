@@ -107,7 +107,14 @@ class NetworkPathReportTest {
     @Test
     fun renderHandlesUnknownNetIdAndMissingTransports() {
         val lines = NetworkPathReport.render(
-            facts = listOf(NetworkPathReport.NetworkFacts(null, emptyList())),
+            facts = listOf(
+                NetworkPathReport.NetworkFacts(
+                    netId = null,
+                    transports = emptyList(),
+                    isDefault = false,
+                    dnsServers = emptyList()
+                )
+            ),
             alwaysOn = null,
             ownPackage = "com.wzm.launcher"
         )
