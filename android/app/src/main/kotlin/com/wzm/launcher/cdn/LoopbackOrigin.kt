@@ -1,101 +1,124 @@
 package com.wzm.launcher.cdn
 
 /**
- * Quem abriu aquela conexão no listener **de loopback**? (M4.1)
+ * Origem do peer de uma conexão aceita pelo listener de loopback (M4.1).
  *
- * O caminho de loopback (`127.0.0.1:443`) não passa pelo túnel: o kernel entrega o pacote na própria
- * pilha local (`local` table, prioridade 0), então **nenhum** método que olha o `tun` (uid por pacote,
- * contadores do túnel, rotas da VPN) enxerga essa conexão. E o listener é alcançável por **qualquer**
- * app do aparelho — a VPN per-app não restringe loopback.
+ * A atribuição desta camada é apenas sobre **quem abriu esta conexão local**. Ela não prova que o
+ * WZM fez tráfego externo, acessou CDNI, passou pelo TUN ou concluiu uma requisição. O loopback fica
+ * sempre como diagnóstico secundário e precisa ser correlacionado ao evento de lançamento do
+ * launcher (que não é um evento de criação de processo).
  *
- * Este módulo junta as evidências disponíveis e devolve um veredito **com o nível de confiança embutido**,
- * nunca uma afirmação de autoria. Classificação pura: recebe os fatos prontos.
+ * A API de ownership devolve UID, nunca PID. Logo um UID do launcher/app-alvo não identifica qual
+ * processo dentro do pacote abriu o socket; somente a tupla completa registrada pelo próprio launcher
+ * pode identificar com precisão uma conexão que esse processo abriu.
  */
 object LoopbackOrigin {
 
-    /**
-     * Veredito de origem. `evidence` é o **nível típico** do veredito; o nível exato de uma conclusão
-     * viaja em [Conclusion.evidence] — o mesmo "mesmo processo" pode ser `VERIFIED` (uid resolvido /
-     * porta registrada pelo próprio processo) ou `PROBABLE` (porta na janela efêmera compartilhada).
-     */
     enum class Verdict(val label: String, val evidence: Evidence) {
-        MESMO_PROCESSO("mesmo-processo-do-launcher", Evidence.VERIFIED),
-        APP_ALVO("app-alvo", Evidence.VERIFIED),
+        PROCESSO_LAUNCHER("processo-do-launcher", Evidence.VERIFIED),
+        UID_LAUNCHER("uid-do-launcher", Evidence.VERIFIED),
+        UID_APP_ALVO("uid-do-app-alvo", Evidence.VERIFIED),
         OUTRO_UID("outro-uid", Evidence.VERIFIED),
+        POSSIVEL_LAUNCHER("possivel-launcher", Evidence.PROBABLE),
         INDETERMINADO("indeterminado", Evidence.UNKNOWN)
     }
 
-    /**
-     * Fatos de uma conexão aceita no listener.
-     *
-     * @param roleLoopback `true` quando o listener é o de loopback (diagnóstico secundário).
-     * @param ownerUidResolvido uid devolvido pela API (null = `INVALID_UID`/indisponível).
-     * @param duranteTesteSintetico a conexão caiu na janela do teste sintético (o launcher conecta de propósito).
-     * @param portVerdict o que a porta de origem diz em relação à janela efêmera deste processo.
-     */
+    /** Fatos de uma conexão aceita no listener. */
     data class Facts(
+        /** `true` quando o listener é o de loopback (diagnóstico secundário). */
         val roleLoopback: Boolean,
         val peerAddress: String,
         val peerPort: Int,
-        val ownerUidResolvido: Int?,
+        /** Resultado estruturado da consulta peer -> listener; nulo se a consulta não foi executada. */
+        val peerOwnerResult: ConnectionOwnership.Result?,
         val launcherUid: Int,
         val targetUid: Int?,
+        /** Só marca coincidência temporal com teste; não é prova causal da conexão. */
         val duranteTesteSintetico: Boolean,
-        val portVerdict: SelfPorts.PortVerdict
-    )
+        /** Tupla exata registrada ou sinal limitado da porta do peer. */
+        val portVerdict: SelfPorts.PortVerdict,
+        /** PID do processo que registrou a tupla; só existe para sockets abertos pelo launcher. */
+        val registeredProcessPid: Int? = null
+    ) {
+        /** UID só é considerado resolvido se o resultado estruturado o afirma. */
+        val peerUidResolvido: Int?
+            get() = peerOwnerResult?.takeIf { it.provesOwner }?.uid
+    }
 
     data class Conclusion(val verdict: Verdict, val evidence: Evidence, val detail: String)
 
-    fun conclude(facts: Facts): Conclusion = when {
-        facts.ownerUidResolvido != null && facts.ownerUidResolvido == facts.launcherUid ->
-            Conclusion(
-                Verdict.MESMO_PROCESSO,
-                Evidence.VERIFIED,
-                "getConnectionOwnerUid resolveu uid=${facts.launcherUid}: é o próprio launcher"
+    fun conclude(facts: Facts): Conclusion {
+        val peerUid = facts.peerUidResolvido
+        return when {
+            facts.portVerdict == SelfPorts.PortVerdict.TUPLA_REGISTRADA_PELO_PROCESSO ->
+                Conclusion(
+                    Verdict.PROCESSO_LAUNCHER,
+                    Evidence.VERIFIED,
+                    "a tupla completa do peer casou com um socket registrado pelo processo launcher" +
+                        (facts.registeredProcessPid?.let(" (PID=$it)") ?: " (PID indisponível)")
+                )
+            peerUid != null && peerUid == facts.launcherUid ->
+                Conclusion(
+                    Verdict.UID_LAUNCHER,
+                    Evidence.VERIFIED,
+                    "getConnectionOwnerUid resolveu UID=${facts.launcherUid} do launcher; a API não identifica PID/processo"
+                )
+            peerUid != null && facts.targetUid != null && peerUid == facts.targetUid ->
+                Conclusion(
+                    Verdict.UID_APP_ALVO,
+                    Evidence.VERIFIED,
+                    "getConnectionOwnerUid resolveu o UID=${facts.targetUid} do app-alvo para este peer local; " +
+                        "não identifica processo/PID nem prova tráfego externo do WZM"
+                )
+            peerUid != null ->
+                Conclusion(
+                    Verdict.OUTRO_UID,
+                    Evidence.VERIFIED,
+                    "getConnectionOwnerUid resolveu UID=$peerUid para este peer; a API não identifica processo/PID"
+                )
+            facts.duranteTesteSintetico &&
+                facts.portVerdict == SelfPorts.PortVerdict.NA_JANELA_EFIMERA_OBSERVADA ->
+                Conclusion(
+                    Verdict.POSSIVEL_LAUNCHER,
+                    Evidence.PROBABLE,
+                    "coincidiu com a janela temporal do teste sintético e a porta caiu na faixa efêmera " +
+                        "amostrada; ambas são pistas compartilhadas, não provam que este peer seja o launcher"
+                )
+            else -> Conclusion(
+                Verdict.INDETERMINADO,
+                Evidence.UNKNOWN,
+                unknownReason(facts.peerOwnerResult) +
+                    " e sem tupla exata do launcher" +
+                    if (facts.roleLoopback) {
+                        "; loopback pode ser alcançado por outros apps e esta conexão local não prova tráfego externo do WZM"
+                    } else {
+                        ""
+                    }
             )
-        facts.ownerUidResolvido != null && facts.targetUid != null && facts.ownerUidResolvido == facts.targetUid ->
-            Conclusion(
-                Verdict.APP_ALVO,
-                Evidence.VERIFIED,
-                "getConnectionOwnerUid resolveu uid=${facts.targetUid}: é o app alvo " +
-                    "(a API só resolve uid coberto pela VPN — isto é evidência de autoria)"
-            )
-        facts.ownerUidResolvido != null ->
-            Conclusion(
-                Verdict.OUTRO_UID,
-                Evidence.VERIFIED,
-                "getConnectionOwnerUid resolveu uid=${facts.ownerUidResolvido} (nem launcher nem app alvo)"
-            )
-        facts.duranteTesteSintetico && facts.portVerdict == SelfPorts.PortVerdict.NA_JANELA_DO_PROCESSO ->
-            Conclusion(
-                Verdict.MESMO_PROCESSO,
-                Evidence.PROBABLE,
-                "conexão caiu na janela do teste sintético e a porta de origem está na janela efêmera " +
-                    "deste processo — leitura: o próprio launcher (a janela é compartilhada: PROBABLE, não prova)"
-            )
-        facts.portVerdict == SelfPorts.PortVerdict.REGISTRADA_PELO_PROCESSO ->
-            Conclusion(
-                Verdict.MESMO_PROCESSO,
-                Evidence.VERIFIED,
-                "porta de origem foi registrada pelo próprio launcher ao abrir a conexão (VERIFIED)"
-            )
-        else -> Conclusion(
-            Verdict.INDETERMINADO,
-            Evidence.UNKNOWN,
-            "sem uid resolvido (INVALID_UID) e sem marca do próprio processo" +
-                if (facts.roleLoopback) {
-                    "; loopback é alcançável por qualquer app e não passa pelo túnel — atribuição " +
-                        "exige uid da API, que só resolve para uid DENTRO da VPN"
-                } else {
-                    ""
-                }
-        )
+        }
     }
 
-    /**
-     * Veredito + nível de evidência exato + linha pronta. O listener usa o veredito (contador) e o
-     * texto (log); a UI/humano usam o nível — nunca o "nível típico" do enum.
-     */
+    private fun unknownReason(result: ConnectionOwnership.Result?): String = when (result?.outcome) {
+        ConnectionOwnership.Outcome.INVALID_UID ->
+            "sem UID resolvido: INVALID_UID pode significar tupla ausente ou UID fora do escopo da VPN"
+        ConnectionOwnership.Outcome.SECURITY_EXCEPTION ->
+            "sem UID resolvido: a API recusou a consulta (SecurityException); autoria UNKNOWN"
+        ConnectionOwnership.Outcome.API_ANTIGA ->
+            "sem UID resolvido: API 29+ necessária neste device"
+        ConnectionOwnership.Outcome.SERVICO_INDISPONIVEL ->
+            "sem UID resolvido: ConnectivityManager indisponível"
+        ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS ->
+            "sem UID resolvido: socket sem tupla local/remota utilizável"
+        ConnectionOwnership.Outcome.ARGUMENTO_INVALIDO ->
+            "sem UID resolvido: protocolo/parâmetros recusados pela API"
+        ConnectionOwnership.Outcome.CONSULTA_FALHOU ->
+            "sem UID resolvido: consulta falhou por erro da plataforma"
+        ConnectionOwnership.Outcome.RESOLVIDO ->
+            "sem UID utilizável no resultado resolvido"
+        null ->
+            "owner lookup não executado ou indisponível"
+    }
+
     data class Report(val verdict: Verdict, val evidence: Evidence, val text: String)
 
     fun report(facts: Facts): Report {
@@ -103,11 +126,18 @@ object LoopbackOrigin {
         return Report(conclusion.verdict, conclusion.evidence, line(facts, conclusion))
     }
 
-    /** Linha única para o log: veredito + por quê + a ressalva de confiança. */
     fun line(facts: Facts, conclusion: Conclusion = conclude(facts)): String = buildString {
         append("origem-da-conexao=").append(conclusion.verdict.label)
         append(" (").append(conclusion.evidence.name).append("): ").append(conclusion.detail)
-        append(" · porta-de-origem=").append(facts.peerPort).append(" [").append(facts.portVerdict.label).append(']')
+        append(" · porta-do-peer=").append(facts.peerPort).append(" [").append(facts.portVerdict.label).append(']')
         append(" · peer=").append(facts.peerAddress)
+        if (facts.peerOwnerResult != null) {
+            append(" · owner-outcome=").append(facts.peerOwnerResult.outcome.code)
+        }
+        if (facts.portVerdict == SelfPorts.PortVerdict.TUPLA_REGISTRADA_PELO_PROCESSO &&
+            facts.registeredProcessPid != null) {
+            append(" · pid-do-processo-registrado=").append(facts.registeredProcessPid)
+        }
+        if (facts.roleLoopback) append(" · loopback=DIAGNOSTICO_NAO_PROVA_TRAFEGO_WZM")
     }
 }

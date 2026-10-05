@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 /**
- * bootstrap CLI — M2.1
- * Inicia BootstrapServer para teste S23 sem root.
- * Uso: node --loader ts-node/esm src/bootstrap/cli.ts --host 0.0.0.0 --port 18081
+ * Bootstrap CLI — M2.1 legacy local test harness.
+ * The listener is restricted to loopback; remote/hotspot binds are not supported.
+ * Usage: node --loader ts-node/esm src/bootstrap/cli.ts --host 127.0.0.1 --port 18081
  */
+import { requireLoopbackHost } from '../config/index.js';
 import { BootstrapServer } from './index.js';
 
 const args = process.argv.slice(2);
-let host = '0.0.0.0';
+let host = '127.0.0.1';
 let port = 18081;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--host') host = args[++i];
-  if (args[i] === '--port') port = parseInt(args[++i], 10);
+  if (args[i] === '--host') {
+    const candidate = args[++i];
+    if (!candidate) throw new Error('--host requires a loopback IP address');
+    host = requireLoopbackHost(candidate);
+  } else if (args[i] === '--port') {
+    const value = args[++i];
+    if (!value) throw new Error('--port requires a numeric value');
+    port = parseInt(value, 10);
+  }
 }
 
 const server = new BootstrapServer({ host, port });

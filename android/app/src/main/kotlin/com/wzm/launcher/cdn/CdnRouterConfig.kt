@@ -3,10 +3,11 @@ package com.wzm.launcher.cdn
 /**
  * Configuração central do roteamento CDNI local (M3).
  *
- * Estratégia (sem root): VpnService com DNS virtual → intercepta consultas DNS do WZM
- * e responde com [REDIRECT_TO] para os hosts comprovados em M2/M2.2; o cliente então
- * conecta no servidor HTTPS local (127.0.0.1:443) que serve os endpoints de bootstrap
- * implementados e registra tudo que não é conhecido.
+ * Estratégia (sem root): VpnService com DNS virtual → intercepta consultas DNS que chegam ao
+ * respondente e responde com [REDIRECT_TO] para hosts comprovados em M2/M2.2. Esse endereço é
+ * `10.111.222.1` (endereço da VPN), atendido pelo listener primário em HTTPS :443; o listener em
+ * `127.0.0.1:443` é apenas diagnóstico separado e nunca é o A devolvido pelo DNS. O servidor
+ * registra paths desconhecidos sem registrar corpos, cookies, tokens ou credenciais.
  *
  * Nenhum valor aqui é "inventado": hosts e paths vêm de M2/M2.2 (VERIFIED).
  */

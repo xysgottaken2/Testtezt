@@ -1,6 +1,6 @@
 # WZM Permissions & GVS — Análise
 
-> **Builds:** 3.3.4 estático (jadx) + 3.10.0 runtime (logcat)  
+> **Builds:** 3.3.4 estático (jadx) + 3.10.0 runtime (logcat)<br>
 > **Classificação rigorosa por campo.**
 
 ---
@@ -65,7 +65,7 @@ Permissões (`WBootstrap`) são pré-condição para `isUsingPreLoginGVS` ser tr
 | 3 | `adb logcat | grep -i WBootstrap` | device 3.10.0 | NEEDS_RESEARCH |
 | 4 | Mock de meta local com `pre_login_GVS` presente | servidor local que responde a `*meta*` capturado | HYPOTHESIS até endpoint VERIFIED |
 
-Para offline, o mais simples é **burlar permissões**: garantir `nativeBootstrapPermissionsResult == granted` via Frida ou garantindo permissões no device, e então mockar meta com GVS presente.
+**Correção de escopo vigente:** a sugestão histórica de forçar permissões via Frida, hook ou alteração do cliente fica retirada e não deve ser executada. Não burlar permissões nem mockar meta sem endpoint observado; M3.2/M4.1 permitem apenas análise read-only até o caminho real ser atribuído.
 
 ---
 
@@ -74,4 +74,3 @@ Para offline, o mais simples é **burlar permissões**: garantir `nativeBootstra
 - Runtime log 3.10.0: `Meta Fetch Success`, ausência campos — VERIFIED
 - Dex: `WBootstrap ... not granted`, `isUsingPreLoginGVS`, `nativeBootstrapPermissionsResult` — VERIFIED (strings)
 - Permissões listadas — HYPOTHESIS até manifest verificado
-

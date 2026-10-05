@@ -164,7 +164,7 @@ fun LauncherContent(
                         ServerStatus.ONLINE -> Color(0xFF79C370)
                         ServerStatus.ERRO -> Color(0xFFC13D5F)
                         ServerStatus.INICIANDO, ServerStatus.PARANDO -> Color(0xFFFFC107)
-                        else -> Color(0xFF9AA39A)
+                        ServerStatus.PARADO -> Color(0xFF9AA39A)
                     },
                     detail = "127.0.0.1:18081 • /health (protótipo antigo, não é o CDNI)"
                 )

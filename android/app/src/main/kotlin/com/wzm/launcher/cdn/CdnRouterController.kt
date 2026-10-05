@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.Socket
 
 /** Estado do roteador CDNI local (servidor HTTPS + túnel) exposto para a UI. */
@@ -107,18 +109,7 @@ object CdnRouterController {
         val appContext = context.applicationContext
         val targetUid = targetPackage.takeIf { it.isNotEmpty() }
             ?.let { AndroidDiagnostics.targetUid(appContext, it) }
-        val created = LocalHttpsServer(
-            tlsMaterial = material,
-            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) },
-            originReport = { socket, role ->
-                AndroidDiagnostics.loopbackOriginFacts(
-                    appContext,
-                    socket,
-                    roleLoopback = role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO,
-                    targetUid = targetUid
-                )?.let { facts -> LoopbackOrigin.report(facts) }
-            }
-        )
+        val created = createLocalHttpsServer(appContext, material, targetUid)
         val started = created.start()
         if (started) {
             server = created
@@ -143,40 +134,80 @@ object CdnRouterController {
                 (if (!ready) " — ROUTER_READY não declarado (listener do túnel ausente)" else "")
         )
         // M4.1: teste de controle de autoria — só faz sentido com o listener no ar.
-        runOwnerControlProbe(appContext, created)
+        runOwnerControlProbe(appContext)
+    }
+
+    /** Cria ambos os listeners pelo mesmo caminho de atribuição; evita divergência entre startRouter/startHttps. */
+    private fun createLocalHttpsServer(
+        context: Context,
+        material: TlsMaterial,
+        targetUid: Int?
+    ): LocalHttpsServer {
+        val appContext = context.applicationContext
+        return LocalHttpsServer(
+            tlsMaterial = material,
+            ownerLookup = { socket -> AndroidDiagnostics.connectionOwnerResult(appContext, socket) },
+            targetUid = targetUid,
+            originReport = { socket, role, ownerResult ->
+                AndroidDiagnostics.loopbackOriginFacts(
+                    socket = socket,
+                    roleLoopback = role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO,
+                    targetUid = targetUid,
+                    ownerResult = ownerResult
+                )?.let { facts -> LoopbackOrigin.report(facts) }
+            }
+        )
     }
 
     /**
-     * Teste de controle do item 2 do M4.1 (executado uma vez por sessão, com socket de verdade):
-     * mede o que `getConnectionOwnerUid` devolve para conexões do **próprio launcher** em loopback e
-     * no endereço do túnel, e para uma tupla que não existe. Nada sai do aparelho.
+     * Teste de controle M4.1, uma vez por sessão, em um listener TCP efêmero dedicado a loopback.
+     * Não conecta no HTTPS de produção, não dispara handshake TLS/contadores do listener e não toca
+     * endereço TUN ou rede externa. O resultado identifica apenas o socket aberto pelo launcher.
      */
-    private fun runOwnerControlProbe(context: Context, server: LocalHttpsServer) {
+    private fun runOwnerControlProbe(context: Context) {
+        val listener = runCatching {
+            ServerSocket(
+                0,
+                1,
+                InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)
+            ).apply { soTimeout = 2_000 }
+        }.getOrNull()
+
         RequestLog.add(
             "DIAG",
-            "teste de controle de autoria (M4.1): mede o que getConnectionOwnerUid devolve para conexões " +
-                "do PRÓPRIO launcher (loopback e endereço do túnel) e para uma tupla inexistente"
+            "teste de controle de autoria M4.1: socket TCP cru do launcher para listener temporário " +
+                "127.0.0.1:${listener?.localPort ?: "?"}; sem TLS, sem conexão no listener HTTPS de produção, " +
+                "sem teste de TUN e sem destino externo; não é evidência WZM"
         )
-        val loopbackPort = server.boundEndpoints
-            .firstOrNull { it.role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO }?.port
-        val report = OwnerProbe.run(
-            loopbackPort = loopbackPort,
-            tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-            tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-            tunnelAddressAssigned = AndroidDiagnostics.isAddressAssigned(),
-            selfPortRegistrar = { port -> SelfPorts.register(port) },
-            connect = { host, port ->
-                Socket().also { socket ->
-                    socket.connect(InetSocketAddress(host, port), 2_000)
-                    socket.soTimeout = 2_000
+
+        val acceptedPeers = mutableListOf<Socket>()
+        val report = try {
+            OwnerProbe.run(
+                loopbackPort = listener?.localPort,
+                targetPackage = targetPackage,
+                connect = { host, port ->
+                    val serverSocket = listener ?: throw IllegalStateException("listener de controle indisponível")
+                    require(host == CdnRouterConfig.LOOPBACK_ADDRESS && port == serverSocket.localPort) {
+                        "probe só pode conectar ao listener loopback efêmero próprio"
+                    }
+                    Socket().also { socket ->
+                        socket.connect(InetSocketAddress(host, port), 2_000)
+                        // Mantém os dois lados estabelecidos durante getConnectionOwnerUid.
+                        acceptedPeers += serverSocket.accept()
+                        socket.soTimeout = 2_000
+                    }
+                },
+                querySocket = { socket -> ConnectionOwnership.querySocket(context, socket) },
+                queryTuple = { protocol, first, second ->
+                    ConnectionOwnership.query(context, protocol, first, second)
                 }
-            },
-            querySocket = { socket -> ConnectionOwnership.querySocket(context, socket) },
-            queryTuple = { protocol, first, second -> ConnectionOwnership.query(context, protocol, first, second) }
-        )
-        for (step in report.steps) {
-            step.result?.let { RequestLog.incOwnerProbeResult(it) }
+            )
+        } finally {
+            acceptedPeers.forEach { runCatching { it.close() } }
+            runCatching { listener?.close() }
         }
+
+        report.steps.forEach { step -> step.result?.let { result -> RequestLog.incOwnerProbeResult(result) } }
         val linhas = report.lines()
         linhas.forEach { line -> RequestLog.add("DIAG", line) }
         val resumo = OwnerProbe.summaryLine(report)
@@ -208,10 +239,10 @@ object CdnRouterController {
             return false
         }
         val appContext = context.applicationContext
-        val created = LocalHttpsServer(
-            tlsMaterial = material,
-            ownerDescription = { socket -> AndroidDiagnostics.connectionOwner(appContext, socket) }
-        )
+        AndroidDiagnostics.remember(appContext)
+        val targetUid = targetPackage.takeIf { it.isNotEmpty() }
+            ?.let { AndroidDiagnostics.targetUid(appContext, it) }
+        val created = createLocalHttpsServer(appContext, material, targetUid)
         val started = created.start()
         server = if (started) created else null
         val tunnelBound = created.boundEndpoints.any { it.role == LocalHttpsServer.EndpointRole.TUNEL_PRIMARIO }

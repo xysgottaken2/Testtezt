@@ -46,6 +46,15 @@ class CdnRouteTableTest {
     }
 
     @Test
+    fun unknownHttpStatusIsNotLabeledAsSuccess() {
+        assertEquals("Unknown", HttpResponses.reason(599))
+        assertTrue(
+            String(HttpResponses.build(599, "text/plain", byteArrayOf()), Charsets.ISO_8859_1)
+                .startsWith("HTTP/1.1 599 Unknown\r\n")
+        )
+    }
+
+    @Test
     fun servesVerifiedBootstrapEndpointWithMarker() {
         val outcome = CdnRouteTable.respond(headOf(rawRequest("/manifest/build-selector-103.js")))
         assertEquals(200, outcome.status)

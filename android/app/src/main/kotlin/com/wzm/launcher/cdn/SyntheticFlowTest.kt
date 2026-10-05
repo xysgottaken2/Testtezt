@@ -27,8 +27,9 @@ import javax.net.ssl.TrustManagerFactory
  *  5. `http_cdni_meta` — `GET /wzm/shard_cdn/android/_manifest/cdni.meta` no listener local, exigindo
  *     `200` + corpo real (`min_buildnum=19854920`).
  *
- * Os passos 3–5 são o que o WZM faria; se eles passam, o caminho
- * `DNS CDNI → 10.111.222.1 → TCP 443 → listener local → cdni.meta` está **VERIFIED** naquele aparelho.
+ * Os passos 3–5 usam sockets e a CA de teste abertos pelo próprio launcher. Mesmo se passarem,
+ * verificam apenas esse caminho sintético local; não demonstram que a WebView/WZM faria o mesmo,
+ * que o fluxo passou pelo TUN ou que qualquer evento observado veio do processo do jogo.
  *
  * Privacidade: só metadados (endereço, porta, status, tamanho, protocolo). Nenhum payload de jogo,
  * cookie, token ou cabeçalho de terceiro é lido ou registrado — o único corpo lido é o `cdni.meta`,
@@ -215,9 +216,9 @@ object SyntheticFlowTest {
         return try {
             socket.connect(InetSocketAddress(CdnRouterConfig.REDIRECT_TO, port), timeoutMs)
             socket.soTimeout = timeoutMs
-            // M4.1: esta porta foi aberta pelo PRÓPRIO launcher — registrá-la permite ao listener
-            // marcar a conexão como "mesmo processo" (evidência direta, não dedução).
-            SelfPorts.register(socket.localPort)
+            // M4.1: registrar a tupla completa do socket cliente. O listener só atribui esta
+            // conexão ao processo quando o socket aceito casar com essa tupla exata.
+            SelfPorts.register(socket)
             TcpResult(
                 Step(
                     "tcp_alvo_443",

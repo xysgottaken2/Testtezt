@@ -243,7 +243,7 @@ class IpPacketParserTest {
     }
 
     @Test
-    fun ipv6UnicastIsClassifiedAsRealTrafficNotDiscovery() {
+    fun ipv6UnicastIsClassifiedAsUnicastNotDiscovery() {
         val tcp = tcpSegment(51000, 443, TunnelPackets.FLAG_SYN)
         val packet = ipv6(
             TunnelPackets.PROTO_TCP, tcp,

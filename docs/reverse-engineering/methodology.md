@@ -1,5 +1,9 @@
 # Metodologia de Engenharia Reversa — Warzone Mobile
 
+> **Status vigente:** guia histórico. Trechos antigos sobre mitmproxy/CA, Frida, root, hooks de Demonware,
+> pinning, patch ou repack estão supersedidos e não devem ser executados. M3.2/M4.1 autorizam apenas
+> pesquisa read-only até atribuição segura do caminho WZM; o APK do jogo e TLS/trust/pinning ficam intocados.
+>
 > **Princípio:** interoperabilidade e preservação. Apenas em APKs obtidos legalmente (próprio device, APKMirror com consentimento). Não distribuir APK/OBB.
 
 ---

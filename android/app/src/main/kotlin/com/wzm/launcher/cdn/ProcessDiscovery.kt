@@ -10,15 +10,15 @@ import android.content.pm.PackageManager
  *
  * O que é **possível** observar sem root, sem permissão especial e sem tocar no APK do jogo:
  *
- *  * **processos do próprio launcher** — `ActivityManager.getRunningAppProcesses()` devolve os
- *    processos do app que chama (é o que a API garante desde a API 26);
+ *  * **processos do próprio launcher** — `ActivityManager.getRunningAppProcesses()` é usado apenas
+ *    como inventário informativo do chamador; a referência oficial o descreve como API de debugging/
+ *    UI de gestão, não como mecanismo de controle ou atribuição de socket;
  *  * **processos declarados no manifesto do WZM** — `PackageManager` com `GET_ACTIVITIES|GET_SERVICES|
  *    GET_RECEIVERS|GET_PROVIDERS` expõe `processName`; é **fato estático** ("existe esse processo"),
  *    não prova de execução;
- *  * **processos em execução de outro pacote** — a partir da API 26 a consulta devolve vazio para
- *    outro UID (e desde a API 30 a visibilidade de pacotes é filtrada). Quando isso acontece o log diz
- *    `INDISPONIVEL` com o motivo — **nunca** se conclui "o jogo não está rodando" a partir de uma
- *    lista vazia.
+ *  * **processos em execução de outro pacote** — a lista pode ser filtrada ou não incluir processos
+ *    de terceiros, conforme plataforma/visibilidade. Ela não é tratada como inventário completo; lista
+ *    vazia significa `INDISPONIVEL` para este fim e **nunca** "o jogo não está rodando".
  *
  * Nada aqui altera estado: só leitura. Os testes cobrem [describe], que é pura.
  */
@@ -60,7 +60,8 @@ object ProcessDiscovery {
         lines += "processos declarados do ${facts.targetPackage}: $declared"
         val running = when {
             facts.targetRunningProcesses.isNotEmpty() ->
-                facts.targetRunningProcesses.joinToString(", ") + " — em execução agora (VERIFIED)"
+                facts.targetRunningProcesses.joinToString(", ") +
+                    " — retornado(s) nesta amostra informativa; não liga PID a socket/tráfego"
             else ->
                 "INDISPONIVEL (${facts.targetRunningNote}) — lista vazia NÃO prova que o app não roda"
         }
@@ -80,7 +81,7 @@ object ProcessDiscovery {
             val manager = context.getSystemService(ActivityManager::class.java)
             val processes = manager?.runningAppProcesses
             if (processes == null) {
-                ownNote = "getRunningAppProcesses devolveu null (API restrita neste device)"
+                ownNote = "getRunningAppProcesses devolveu null; processo do launcher indisponível nesta amostra"
                 false
             } else {
                 processes.filter { it.uid == android.os.Process.myUid() }.forEach { info ->
@@ -100,13 +101,25 @@ object ProcessDiscovery {
         } else {
             runCatching {
                 val manager = context.getSystemService(ActivityManager::class.java)
-                val processes = manager?.runningAppProcesses ?: emptyList()
-                processes.filter { it.uid == targetUid }.forEach { info ->
-                    targetRunning += "pid=${info.pid} nome=${info.processName} importance=${info.importance}"
+                if (manager == null) {
+                    targetNote = "ActivityManager indisponível"
+                } else {
+                    val processes = manager.runningAppProcesses
+                    if (processes == null) {
+                        targetNote = "getRunningAppProcesses devolveu null"
+                    } else {
+                        processes.filter { it.uid == targetUid }.forEach { info ->
+                            targetRunning += "pid=${info.pid} nome=${info.processName} importance=${info.importance}"
+                        }
+                        if (targetRunning.isEmpty()) {
+                            targetNote = "nenhum processo do UID $targetUid apareceu nesta lista informativa; " +
+                                "a API pode filtrar processos de outros apps e não prova ausência de execução"
+                        } else {
+                            targetNote = "processo(s) do UID $targetUid retornado(s) pela API informativa; " +
+                                "isso não liga PID a socket ou tráfego"
+                        }
+                    }
                 }
-                targetNote = "getRunningAppProcesses não devolveu processos do uid $targetUid " +
-                    "(desde a API 26 a API só devolve processos do PRÓPRIO app; API 30+ ainda filtra " +
-                    "visibilidade de pacotes) — não é possível afirmar execução por aqui"
             }.onFailure { error ->
                 targetNote = "${error.javaClass.simpleName}: ${error.message}"
             }

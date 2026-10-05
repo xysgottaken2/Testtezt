@@ -69,8 +69,8 @@ class TunActivityWatchdogTest {
         watchdog.start(0)
         val counters = RequestCounters(tunPacketsTotal = 9, tunInvalidPackets = 2, dnsQueries = 4, dnsForwarded = 4)
         val silent = watchdog.messageFor(TunWatchdogEvent.NENHUM_PACOTE_NO_TUN, counters, 70_000)
-        assertTrue(silent.contains("nenhum pacote no TUN"))
-        assertTrue("não pode afirmar causa", silent.contains("sem afirmar causa"))
+        assertTrue(silent.contains("nenhum pacote foi observado no TUN"))
+        assertTrue("ausência deve permanecer inconclusiva", silent.contains("ausência nesta janela não prova"))
 
         val noCdn = watchdog.messageFor(TunWatchdogEvent.NENHUMA_CONSULTA_CDNI, counters, 70_000)
         assertTrue(noCdn.contains("nenhuma consulta DNS de host CDNI"))

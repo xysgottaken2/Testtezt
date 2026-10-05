@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * M3.6: a contabilidade por UID é o que separa "o app não fez rede" de "o tráfego do app não passou
- * pelo túnel". Estes testes cobrem a lógica **pura** (diferenças e formatação), sem Android:
- * a leitura real do [android.net.TrafficStats] é um wrapper fino validado no device.
+ * M3.6: testes **puros** de diferenças e formatação da contabilidade UID (sem Android). `false` significa
+ * apenas "nenhum crescimento foi medido entre estas amostras"; não prova que um processo específico não
+ * tentou rede nem determina o caminho. A leitura real de [android.net.TrafficStats] é outro passo.
  */
 class TrafficAccountingTest {
 
@@ -31,7 +31,7 @@ class TrafficAccountingTest {
     }
 
     @Test
-    fun grewDetectsTrafficAndStillNoTraffic() {
+    fun grewReportsMeasuredDeltaWithoutTreatingNoGrowthAsAbsenceOfNetwork() {
         assertEquals(true, TrafficAccounting.grew(stats(bytes = 1_000), stats(bytes = 5_000)))
         assertEquals(false, TrafficAccounting.grew(stats(bytes = 5_000), stats(bytes = 5_000)))
         assertNull(

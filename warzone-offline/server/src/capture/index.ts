@@ -1,12 +1,11 @@
 /**
  * capture — servidor HTTP genérico de captura para M1
- * NÃO assume endpoints WZM. Loga qualquer request (Host, URL, headers)
- * para descobrir o que o cliente realmente tenta resolver.
- *
- * Metodologia: genérico + /__capture para inspeção (sem hipótese).
+ * NÃO assume endpoints WZM. Registra método, URL, Host e endereço loopback de origem para inspeção.
+ * Headers arbitrários, cookies, credenciais e corpos HTTP nunca são armazenados.
  */
 
 import http from 'node:http';
+import { requireLoopbackHost } from '../config/index.js';
 
 export interface CapturedRequest {
   id: number;
@@ -15,7 +14,6 @@ export interface CapturedRequest {
   url: string;
   host: string; // header Host
   remoteAddr: string;
-  headers: Record<string, string>;
 }
 
 export class CaptureServer {
@@ -23,7 +21,11 @@ export class CaptureServer {
   private captured: CapturedRequest[] = [];
   private nextId = 1;
 
-  constructor(private opts: { host: string; port: number }) {}
+  private opts: { host: string; port: number };
+
+  constructor(opts: { host: string; port: number }) {
+    this.opts = { ...opts, host: requireLoopbackHost(opts.host) };
+  }
 
   listen(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -57,9 +59,6 @@ export class CaptureServer {
           url,
           host,
           remoteAddr: req.socket.remoteAddress ?? '',
-          headers: Object.fromEntries(
-            Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v ?? '')])
-          ),
         };
         this.captured.push(entry);
 

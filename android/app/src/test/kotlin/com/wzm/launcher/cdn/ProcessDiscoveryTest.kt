@@ -25,10 +25,10 @@ class ProcessDiscoveryTest {
         ownUid = 10123,
         ownProcesses = own,
         ownProcessesAvailable = ownAvailable,
-        ownProcessesNote = "getRunningAppProcesses devolveu null (API restrita neste device)",
+        ownProcessesNote = "getRunningAppProcesses devolveu null; processo do launcher indisponível nesta amostra",
         targetRunningProcesses = running,
-        targetRunningNote = "getRunningAppProcesses não devolveu processos do uid 10692 " +
-            "(desde a API 26 a API só devolve processos do PRÓPRIO app)",
+        targetRunningNote = "nenhum processo do UID 10692 apareceu nesta lista informativa; " +
+            "a API pode filtrar processos de outros apps e não prova ausência de execução",
         targetDeclaredProcesses = declared,
         declaredAvailable = declaredAvailable
     )
@@ -70,7 +70,8 @@ class ProcessDiscoveryTest {
             .describe(facts(running = listOf("pid=4242 nome=com.activision.callofduty.warzone")))
             .first { it.contains("em execução") }
         assertTrue(line, line.contains("pid=4242"))
-        assertTrue(line, line.contains("VERIFIED"))
+        assertTrue(line, line.contains("retornado(s) nesta amostra informativa"))
+        assertTrue(line, line.contains("não liga PID a socket/tráfego"))
     }
 
     @Test

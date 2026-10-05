@@ -3,7 +3,7 @@
 **Data:** 2026-10-04
 **Etapa:** M3 (implementação)
 **Commit de referência:** launcher M2 em `59d3df0` (branch `feature/launcher-apk`); M3 na branch `arena/01a10449-testtezt`
-**Escopo desta rodada:** fazer as requisições CDNI reais do WZM chegarem ao servidor embarcado e aparecerem no log do launcher.
+**Escopo desta rodada:** implementar o roteador CDNI local e sua observabilidade. A implementação e o tráfego do próprio launcher não provam que o WZM chegou ao servidor; atribuição de fluxo permanece em M4.1.
 **Fora de escopo (proibido):** bypass de autenticação, anti-cheat, credenciais, modificação do APK do WZM, brute force, download de ativos do CDN.
 
 ---
@@ -15,10 +15,10 @@
 | Launcher abre | ✅ |
 | Servidor local (stub `127.0.0.1:18081`) inicia | ✅ |
 | WZM inicia pelo launcher | ✅ |
-| WZM mostra "Estes servidores estão permanentemente fora de serviço" | ❌ (nenhum request chegava ao servidor local) |
+| WZM mostra "Estes servidores estão permanentemente fora de serviço" | ❌ (M2 não observou request no stub; causa e origem desconhecidas) |
 | Launcher exibia "CDNI real não implementado" | ❌ |
 
-**Causa raiz:** o WZM não fala com `127.0.0.1:18081`. Ele resolve `prod.cdni.callofduty.com` pelo DNS do sistema e conecta em **HTTPS :443** no IP público (Akamai, M2.2: `23.46.216.80`). Um servidor em porta alta e loopback nunca é consultado. Logo, M2 estava estruturalmente mudo.
+**Leitura corrigida:** no registro M2 não foi observada requisição atribuída ao WZM chegando ao stub `127.0.0.1:18081`. O hostname CDNI e IPs públicos registrados em M2.2 são evidência do inventário, não observação de uma conexão do jogo nessa sessão. A causa do estado do jogo permanece `UNKNOWN`.
 
 ## 2. Critérios de sucesso M3 (definidos pelo usuário)
 
@@ -27,10 +27,7 @@
 3. Documentar exatamente **qual etapa** bloqueia o boot hoje.
 4. "CDNI real não implementado" deixa de ser aceitável: tem que existir roteamento + logging de fato.
 
-**Status após o teste no S23 Ultra (2026-10-04):** critérios 1, 2 e 4 **cumpridos** (ver §6.1 — 5 conexões do WZM
-chegaram ao listener local e apareceram no log). O critério 3 está isolado: o bloqueio é **validação do
-certificado pelo cliente** (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), investigado em
-[docs/research/m3.2-apk-tls-trust-investigation.md](m3.2-apk-tls-trust-investigation.md).
+**Status da implementação/observação (revisado em 2026-10-04):** o roteador, listener e log estão implementados (critério 4). O Teste A registrou cinco conexões loopback e alertas TLS no peer, mas a origem não foi atribuída ao UID WZM; portanto os critérios 1/2 (“vindos do WZM”) não estão demonstrados. O bloqueio do jogo e a causa dos alertas permanecem `UNKNOWN`; TLS/trust/pinning ficam intocados até entender o caminho real (ver M4.1 e M3.2).
 
 ## 3. Decisão de arquitetura (sem root)
 
@@ -41,16 +38,16 @@ certificado pelo cliente** (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), investigado em
 | A | Portas < 1024 exigem root ou `CAP_NET_BIND_SERVICE`/`ip_unprivileged_port_start<=porta`; um app Android sem root **não** tem esses privilégios por padrão | SO 413807; docs sysctl `net.ipv4.ip_unprivileged_port_start` (default 1024) | VERIFIED (Linux) / PROBABLE (Android) |
 | B | `VpnService` sem root permite: interface `tun`, `addDnsServer`, `addAllowedApplication` (per-app), `protect()` em sockets | developer.android.com/reference/android/net/VpnService.Builder; AOSP VpnService | VERIFIED |
 | C | `addDnsServer` rejeita loopback/any (o DNS virtual tem que ser um endereço do túnel) | docs VpnService.Builder.addDnsServer | VERIFIED |
-| D | Endereços atribuídos a uma interface local são entregues pela tabela de rotas `local` (prioridade 0) — antes das regras marca da VPN | routing Linux/Android (netd instala regras com prioridade > 0) | PROBABLE |
-| E | Mesmo se D não valer no aparelho, devolver o pacote ao `tun` ("bounce") re-entrega o pacote à pilha local, pois o destino é um endereço local da própria interface `tun` | comportamento de dispositivos `tun` (dst = endereço da interface) | PROBABLE |
+| D | AOSP/Linux têm regras locais e política de roteamento VPN; a ordem/efeito exato no One UI e para uma tupla específica exige observar a tabela e o fluxo no device | Android/AOSP netd (detalhes e escopo em M4.1) | VERIFIED como implementação de referência; efeito no S23 `UNKNOWN` |
+| E | O código escreve de volta ao TUN pacotes locais para os quais usa bounce; isso pode levar o socket local ao listener, mas entrega/rota final não foi validada em cada device | código do launcher; comportamento do kernel/device ainda não observado | hipótese de caminho, não prova WZM |
 | F | Mesmo roteando, o TLS só fecha se o cliente confiar no certificado. Apps com `targetSdk >= 24` **não** confiam em CAs instaladas pelo usuário (a menos que o app declare `networkSecurityConfig` com `src="user"`) | comportamento padrão Android 7+ | VERIFIED |
 | G | Instalar CA no *system store* exige root/`/system` (ou `adb root`) | Android 7+ | VERIFIED |
 
-**Arquitetura escolhida (implementada):**
+**Plano de arquitetura implementado (não é observação do fluxo WZM):**
 
 ```
 WZM (com.activision.callofduty.warzone)
-  │  (VPN per-app: addAllowedApplication → só o WZM entra no túnel)
+  │  (addAllowedApplication configura o UID-alvo; não prova captura de todo socket)
   ▼
 tun 10.111.222.1/32, DNS 10.111.222.2   ← rota só de 10.111.222.0/24 (NÃO é VPN de internet)
   │
@@ -58,9 +55,9 @@ tun 10.111.222.1/32, DNS 10.111.222.2   ← rota só de 10.111.222.0/24 (NÃO é
   │        A = 10.111.222.1   (AAAA/SVCB = NOERROR vazio, força IPv4)
   │        qualquer outro domínio → encaminhado a 1.1.1.1/8.8.8.8 via socket protect()ed
   │
-  └── TCP :443 para 10.111.222.1
-           ├── tabela `local` entrega ao kernel do aparelho  → listener :443 (TCP/TLS do kernel)
-           └── fallback: loop do tun devolve o pacote ("bounce") à interface → mesma entrega
+  └── Se um socket do UID-alvo usar a VPN e o destino casar com o prefixo explícito:
+           ├── entrega local pelo Android → listener :443 (a confirmar no device por fluxo atribuído)
+           └── ou pacote observado no TUN → bounce implementado (entrega local final não presumida)
                    ▼
              LocalHttpsServer (SSLServerSocket, certificado NOSSO)
                    ▼
@@ -70,7 +67,7 @@ tun 10.111.222.1/32, DNS 10.111.222.2   ← rota só de 10.111.222.0/24 (NÃO é
                    └── desconhecido → 404 controlado + URL/path EXATOS no log
 ```
 
-Por que não "só 127.0.0.1:18081" (M2): o cliente não foi redirecionado por DNS nenhum. Por que não `bind` em `0.0.0.0`: decisão de escopo do projeto (servidor só local). Por que não iptables/`REDIRECT`: exige root. Por que não implementar TCP em userspace: desnecessário enquanto o kernel entrega pacotes para endereços locais; o "bounce" cobre o caso contrário.
+Por que não "só 127.0.0.1:18081" (M2): o plano antigo não registrou tráfego atribuído ao WZM nesse stub. Por que não `bind` em `0.0.0.0`: decisão de escopo do projeto (servidor só local). Por que não iptables/`REDIRECT`: exige root. A entrega de sockets para endereços locais e o resultado do bounce dependem do roteamento efetivo; não são presumidos para o WZM.
 
 ### 3.1 O que o túnel NÃO faz
 
@@ -127,47 +124,39 @@ bash scripts/generate-local-cdni-cert.sh --force   # regenera (invalida CA já i
 `CertificateAssetTest` valida em CI que o asset carrega com a senha configurada, tem chave privada,
 cobre `prod.cdni.callofduty.com`, **não** tem "activision" no subject/issuer e não é CA.
 
-## 6. Bloqueio confirmado (o que trava o boot hoje)
+## 6. Estado do caminho real e do TLS (causa não confirmada)
 
-O bloqueio previsto nesta seção **foi confirmado no device** (§6.1): o cliente do WZM recusa o certificado
-local na validação da cadeia (`certificate_unknown`). O roteamento funciona; o que falta é uma *trust chain*
-que o app aceite — e isso só pode ser resolvido de forma legítima (CA confiável pelo app) ou não é resolvível
-dentro das nossas regras (sem root, sem patch do APK, sem bypass de pinning).
+O log de cinco conexões loopback com alertas `certificate_unknown` (§6.1) não identifica o peer como WZM.
+Portanto, não há base para declarar que confiança TLS é o bloqueio do jogo nem que o roteamento real do WZM
+funcionou. O caminho/UID real permanece `UNKNOWN` até M4.1.
 
-* `targetSdk >= 24`: o app **não** confia em CA instalada pelo usuário por padrão; confiar exigiria
-  `<certificates src="user"/>` no NSC do próprio WZM (não temos controle) ou CA no *system store* (root — fora de escopo).
-* Se houver **pinning**, nem CA de sistema resolve: ver a matriz de decisão em
-  [docs/research/m3.2-apk-tls-trust-investigation.md](m3.2-apk-tls-trust-investigation.md) §4.
-* **Não contornamos nada disso**: sem patch de trust, sem root, sem fingerprint spoof, sem Frida.
+* Android docs descreve defaults de Network Security Configuration por `targetSdk`; isso é referência para
+  análise read-only, não diagnóstico do peer histórico.
+* Uma inspeção estática de APK pode documentar stack/NSC/pinning, sem alterar o APK ou TLS.
+* **Regra vigente:** não instalar CA, mudar trust/pinning/certificados ou testar bypass até o fluxo real
+  estar entendido e atribuído; sem root, patch do APK, fingerprint spoof ou Frida.
 
-### 6.1. Evidência do device — 2026-10-04 (S23 Ultra, WARZONE_VERIFIED)
+### 6.1. Eventos do device — 2026-10-04 (S23 Ultra, peer não atribuído)
 
 | Medida | Valor | Significado |
 |---|---|---|
-| `tcpConnections` | **5** | houve 5 conexões aceitas no servidor local (**dono não registrado na época**) |
-| listener | **127.0.0.1:443** | chegou pelo loopback (não pelo endereço do túnel `10.111.222.1`) |
-| TLS | **5 × `SSLV3_ALERT_CERTIFICATE_UNKNOWN`** | o cliente alcançou o listener e **recusou a cadeia de certificados** |
-| `httpRequests` | 0 | nenhuma requisição HTTP completou (sem TLS não há HTTP) |
-| `tlsOk` / `tlsFailed` | 0 / 5 | nenhum handshake aceito |
-| `dnsIntercepted` | 0 | nesta tentativa o WZM **não** usou o DNS do túnel (anomalia analisada em §1.1 do doc M3.2) |
+| `tcpConnections` | **5** | cinco conexões foram aceitas no listener local; owner UID não resolvido nos logs antigos |
+| listener | **127.0.0.1:443** | accept em loopback; isso não identifica peer nem prova tráfego do túnel |
+| TLS | **5 × `SSLV3_ALERT_CERTIFICATE_UNKNOWN`** | alerta TLS registrado para os sockets locais; peer/processo sem atribuição |
+| `httpRequests` | 0 | nenhuma requisição HTTP completou nesse listener/intervalo |
+| `tlsOk` / `tlsFailed` | 0 / 5 | nenhum handshake completado no listener naquela sessão |
+| `dnsIntercepted` | 0 | nenhum host CDNI interceptado nessa janela; não prova qual resolver o WZM usou |
 
 Leitura (**revisada em M3.3/M3.4** — ver `docs/research/m3.3-diferenca-entre-os-testes.md` e, para o caminho TCP/IP e o ciclo de vida do listener, `docs/research/m3.4-caminho-wzm-tun.md`):
 
-* **VERIFIED:** houve 5 conexões TCP aceitas no listener de loopback e o cliente foi recusado no TLS
-  (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`);
-* **HYPOTHESIS (não comprovado):** que essas 5 conexões tenham vindo do WZM. Até 2026-10-04 o log não
-  registrava o **dono** (UID) da conexão, e o listener de `127.0.0.1:443` é alcançável por **qualquer**
-  app do aparelho — não só pelo app incluído na VPN per-app;
-* **VERIFIED:** em uma segunda execução no mesmo device, `tcpConnections=0`, `dnsIntercepted=0` e somente
-  consultas para `dns.adguard.com` apareceram — ou seja, o roteamento **não** é determinístico entre
-  execuções e isso precisa ser explicado com evidência, não presumido.
+* **DEVICE_OBSERVED:** cinco accept(s) em loopback e cinco falhas TLS foram contados; peer/UID não atribuído;
+* **UNKNOWN:** se essas conexões vieram do WZM. Loopback não é restrito ao pacote da VPN e o IP não codifica processo;
+* **DEVICE_OBSERVED:** uma execução separada registrou `tcpConnections=0`, `dnsIntercepted=0` e consulta(s) a `dns.adguard.com`; isso mostra logs diferentes, não a causa nem que o roteamento do WZM mudou.
 
 Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteamento):
 
-* cada tentativa de conexão registra `via loopback|túnel` **e** `dono=uid=<n> (<pacote>)`
-  (`ConnectivityManager.getConnectionOwnerUid`, API 29+) — resolve a autoria das conexões;
-* cabeçalho de sessão `[DIAG]` com número da execução, app/versão/UID alvo e se `addAllowedApplication`
-  foi aceito (per-app) — responde "o processo está mesmo na VPN?";
+* cada tentativa registra o endpoint e o resultado estruturado de `getConnectionOwnerUid` na direção peer → listener; UID não é PID e `INVALID_UID` é ambíguo — só UID resolvido igual ao alvo pode atribuir aquele socket;
+* cabeçalho `[DIAG]` registra pacote/versão/UID configurado e se `addAllowedApplication` foi aceito; isso verifica configuração, não se cada processo/socket está na VPN;
 * vigia de túnel: aviso único de `nenhum pacote recebido no TUN` e de `nenhuma consulta DNS dos hosts CDNI`
   (o silêncio do teste B passa a ser uma linha explícita, não uma ausência);
 * cada pacote do TUN é contado e, quando descartado, registrado com `motivo=<CODIGO>`
@@ -175,9 +164,7 @@ Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteam
   realmente inválido, o motivo exato do parser (`CURTO_DEMAIS`, `VERSAO_DESCONHECIDA`,
   `IPV4_CABECALHO_INCONSISTENTE`, `TAMANHO_DECLARADO_MENOR_QUE_CABECALHO`, `TAMANHO_DECLARADO_MAIOR_QUE_LIDO`,
   `TRANSPORTE_CABECALHO_CURTO`, `IPV6_CABECALHO_CURTO`) — ver M3.4;
-* falhas de bind dos listeners ganham `motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA` e, quando o
-  endereço do túnel fica sem listener, o log diz explicitamente que só o caminho `127.0.0.1:443` pode
-  completar;
+* falhas de bind ganham `motivo=ENDERECO_INDISPONIVEL|PORTA_EM_USO|PORTA_NEGADA`; sem listener de túnel, o loopback segue um endpoint diagnóstico separado e não é tratado como substituto nem evidência WZM;
 * falhas de TLS continuam com `motivo=<CÓDIGO>` classificado por `TlsTrust` (com dica acionável);
 * consultas DNS **encaminhadas** (que não são do CDNI) continuam registradas uma vez por nome — agora com
   contador próprio no card/export (`dns-encaminhado`).
@@ -193,21 +180,14 @@ Melhorias de diagnóstico feitas em cima desta evidência (não alteram o roteam
    status HTTP de cada resposta e botões LIMPAR/COPIAR/SALVAR .TXT. As linhas também vão para
    `filesDir/request-log.txt` (o log sobrevive a reabrir o app).
    Linhas esperadas:
-   * `[DNS] prod.cdni.callofduty.com (tipo 1) -> 10.111.222.1 [interceptado]` = o WZM resolveu o CDNI pelo nosso DNS;
-   * `[CDNI] TCP SYN ... -> 10.111.222.1:443 (devolvido à pilha local ...)` = conexão chegando;
-   * `[TLS] handshake OK ...` ou `[TLS] FALHA no handshake ...` = a requisição chegou (com ou sem confiança);
-   * `[CDNI] GET /... -> 200 (VERIFICADO ...)` = servimos o endpoint;
+   * `[DNS] prod.cdni.callofduty.com ...` = consulta observada; só atribuir ao WZM se houver owner UID na tupla;
+   * `[CDNI] TCP SYN ... -> 10.111.222.1:443` = cabeçalho observado; só owner UID-alvo promove evidência do fluxo;
+   * `[TLS] ...` = handshake do socket aceito; sem UID-alvo confirmado, não atribuir ao WZM;
+   * `[CDNI] GET /... -> 200` = o servidor local serviu esse path; associar à sessão/UID só quando a conexão tiver atribuição confiável;
    * `[CDNI?] DESCONHECIDO: GET /... -> 404 controlado` = path novo descoberto (anotar!).
 4. Sem fio (opcional, para copiar o log bruto):
 
-```bash
-adb logcat -s WZMOffline:*            # (se habilitado) ou
-adb shell run-as com.wzm.launcher.debug cat files/...   # log é em memória; use /__wzm_offline/requests
-curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/health
-curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callofduty.com/__wzm_offline/requests
-```
-
-(O `curl --resolve` funciona quando o ouvinte de loopback está ativo — usa o próprio aparelho via `adb shell`.)
+A exportação pela tela VER LOGS é a fonte de sessão. Qualquer chamada manual ao endpoint local (inclusive loopback) é somente health-check do launcher, não tráfego WZM; não usar `curl -k` como evidência de caminho ou de confiança do jogo.
 
 ## 8. Testes automatizados (JVM, rodam no CI)
 
@@ -219,7 +199,7 @@ curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callo
 | `LocalHttpsServerTest` | **fim-a-fim com TLS real** (certificado do app): handshake, GET, 404 controlado, contadores e o log contendo path + SNI |
 | `CertificateAssetTest` | p12 abre com a senha, tem chave privada, SAN correto, não é Activision, CA separada |
 | `TlsTrustTest` | classificação das falhas de TLS, incluindo a **string exata do device** (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`) → `CLIENTE_RECUSOU_CERTIFICADO`, e os casos de cleartext/hostname/expirado/cifra/conexão encerrada |
-| `LocalHttpsServerTest.untrustedClientHandshakeCountsAsTlsFailureAndNeverAsHttpRequest` | reproduz a evidência do device em JVM: cliente sem confiança no certificado → `tlsFailed=1`, `httpRequests=0`, `tlsOk=0`, log com `motivo=` e `via loopback` |
+| `LocalHttpsServerTest.untrustedClientHandshakeCountsAsTlsFailureAndNeverAsHttpRequest` | reproduz comportamento TLS de cliente de teste em JVM; não reproduz nem atribui as conexões antigas do device ao WZM |
 | `ServerTest`, `WzmLauncherTest` | regressão da fase M2 (inalterados, continuam verdes) |
 | `RequestLogTest` | armazenamento/consulta do log mostrado em VER LOGS: ordem/timestamp/tag, filtro por tag (inclusive `CDNI?`), sanitização de linha longa/multilinha, limite do buffer, contadores (DNS/TCP/HTTP/TLS), export, restore e sink sem duplicar linhas restauradas |
 | `FileLogSinkTest` | persistência em arquivo: append/readTail, rotação por tamanho, clear, criação de diretório, export `.txt` e escrita concorrente (4 threads) |
@@ -233,5 +213,4 @@ curl -k --resolve prod.cdni.callofduty.com:443:127.0.0.1 https://prod.cdni.callo
 * `POST`/outros métodos nos endpoints conhecidos são atendidos como `GET` (semântica real UNKNOWN);
   métodos em paths desconhecidos caem no 404 controlado.
 * Se o device negar `:443`, o log mostra a negativa e sobe em 18443 (diagnóstico) — nesse caso o próximo passo é o responder TCP em userspace sobre o tun (M3.1), o que **não** foi implementado nesta rodada.
-* **Bloqueio ativo (M3.2):** confiança TLS do cliente. Nenhuma solução será implementada sem antes responder,
-  com evidência do APK, se existe cadeia suportável (§4 de `m3.2-apk-tls-trust-investigation.md`).
+* **Caminho WZM ainda não atribuído (M4.1):** TLS/trust/pinning permanecem intocados. Inspeção estática pode ser read-only; qualquer alteração ou instalação de CA fica bloqueada até a rota real ser entendida e autorização específica existir.

@@ -18,7 +18,8 @@ import javax.net.ssl.SSLSocket
  * Endereços: SOMENTE endereços específicos do dispositivo (endereço do túnel e loopback).
  * Nunca 0.0.0.0 (ver decisão de escopo: servidor só local).
  *
- * O objetivo é fazer as requisições CDNI do WZM chegarem aqui e aparecerem no log do launcher.
+ * Papel: endpoint CDNI local instrumentado. Uma conexão só é atribuída ao UID-alvo quando a API resolve
+ * essa identidade; endereço do listener, TUN, TLS ou ordem temporal não bastam por si sós.
  */
 class LocalHttpsServer(
     private val tlsMaterial: TlsMaterial? = null,
@@ -28,16 +29,20 @@ class LocalHttpsServer(
     private val tlsContextOverride: SSLContext? = null,
     private val maxConcurrentConnections: Int = 8,
     /**
-     * Dono (UID/pacote) do socket cliente — em Android usa `getConnectionOwnerUid` (M3.3).
-     * Responde "o processo está mesmo na VPN per-app?" com evidência, não com suposição.
+     * Texto legado do owner lookup. A string não é usada para promover autoria; use [ownerLookup]
+     * para obter o UID estruturado. Nenhuma destas APIs identifica PID/processo do peer.
      */
     private val ownerDescription: (Socket) -> String = { "dono=NAO_RESOLVIDO (sem lookup neste ambiente)" },
+    /** Resultado estruturado do owner lookup; necessário para não promover socket sem UID. */
+    private val ownerLookup: ((Socket) -> ConnectionOwnership.Result)? = null,
+    /** UID do pacote-alvo desta sessão; owner result continua sendo UID, nunca PID. */
+    private val targetUid: Int? = null,
     /**
      * Origem da conexão (M4.1): veredito sobre **quem provavelmente abriu** esta conexão, com o
      * nível de confiança. Pura delegação — quem monta os fatos é [CdnRouterController].
      * `null` = não foi possível montar os fatos (nesse caso o log segue sem o veredito).
      */
-    private val originReport: ((Socket, EndpointRole) -> LoopbackOrigin.Report?)? = null,
+    private val originReport: ((Socket, EndpointRole, ConnectionOwnership.Result?) -> LoopbackOrigin.Report?)? = null,
     /**
      * Tentativas LIMITADAS de bind em endereço que ainda não existe (EADDRNOTAVAIL enquanto a
      * interface tun sobe). Nunca é um retry cego: cada tentativa é logada e há um teto.
@@ -228,22 +233,32 @@ class LocalHttpsServer(
                 break
             }
             val peer = client.remoteSocketAddress?.toString() ?: "?"
-            // "via" diz por qual endereço a conexão entrou; "dono" diz qual processo conectou.
-            // O teste de 2026-10-04 registrou 5 conexões em 127.0.0.1:443 sem dono identificado —
-            // por isso o par via+dono passou a ser obrigatório no log (M3.3).
+            // "via" diz por qual endereço a conexão entrou; "dono" é UID do peer (nunca PID/processo).
+            // O registro de device de 2026-10-04 deixou a autoria sem resolução; por isso o par
+            // via+dono continua obrigatório no log, com INVALID_UID tratado como UNKNOWN (M3.3/M4.1).
             val via = ListenerFailures.via(endpoint.address)
-            val owner = runCatching { ownerDescription(client) }
-                .getOrElse { "dono=NAO_RESOLVIDO (${it.javaClass.simpleName})" }
-            // M4.1: veredito de origem (com nível de confiança) — o loopback é alcançável por qualquer
-            // app e não passa pelo túnel; sem isso, uma conexão em 127.0.0.1:443 fica sem qualquer
-            // indicação de autoria no log.
-            val origin = runCatching { originReport?.invoke(client, endpoint.role) }.getOrNull()
-            if (origin != null) RequestLog.incLoopbackOrigin(origin.verdict)
+            val ownerResult = runCatching { ownerLookup?.invoke(client) }.getOrNull()
+            val owner = ownerResult?.let { ConnectionOwnership.describe(it) }
+                ?: runCatching { ownerDescription(client) }
+                    .getOrElse { "dono=NAO_RESOLVIDO (${it.javaClass.simpleName})" }
+            // M4.1: veredito do peer; em loopback é só diagnóstico local, nunca prova de tráfego
+            // externo do WZM. O callback mantém UID/processo separados e INVALID_UID inconclusivo.
+            // Reutiliza a MESMA consulta estruturada acima; uma segunda chamada seria cara e poderia
+            // observar uma tupla já encerrada, produzindo dois resultados diferentes para o mesmo peer.
+            val origin = runCatching { originReport?.invoke(client, endpoint.role, ownerResult) }.getOrNull()
+            if (endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO && origin != null) {
+                RequestLog.incLoopbackOrigin(origin.verdict)
+            }
             val originSuffix = if (origin == null) "" else " · ${origin.text}"
-            // M3.5: papel do listener + relação temporal com o WZM iniciado.
+            // M3.5: papel do listener + ordem temporal do marcador de lançamento (não é atribuição).
             // Loopback é DIAGNÓSTICO SECUNDÁRIO: não conta como evidência de tráfego do WZM.
             val now = System.currentTimeMillis()
             val relation = RequestLog.connectionOrigin(now)
+            val tunnelEndpoint = endpoint.role == EndpointRole.TUNEL_PRIMARIO ||
+                endpoint.role == EndpointRole.TUNEL_FALLBACK
+            val synthetic = tunnelEndpoint && RequestLog.isDuringSyntheticTest(now)
+            val targetUidVerified = tunnelEndpoint && !synthetic && targetUid != null &&
+                ownerResult?.provesOwner == true && ownerResult.uid == targetUid
             if (endpoint.role == EndpointRole.LOOPBACK_DIAGNOSTICO) {
                 RequestLog.incTcpConnectionLoopback(RequestLog.isBeforeWzmStart(now))
                 log(
@@ -253,11 +268,16 @@ class LocalHttpsServer(
                         "este caminho NÃO conta como evidência de tráfego do WZM"
                 )
             } else {
-                RequestLog.incTcpConnectionTunel()
+                RequestLog.incTcpConnectionTunel(targetUidVerified = targetUidVerified, synthetic = synthetic)
+                val attribution = when {
+                    synthetic -> "janela-sintetica=true (caminho launcher; não é evidência WZM)"
+                    targetUidVerified -> "owner-UID-alvo-confirmado=true (UID, não PID/processo)"
+                    else -> "owner-UID-alvo-confirmado=false (autoria WZM UNKNOWN)"
+                }
                 log(
                     "CDNI",
                     "conexão aceita em $endpoint (via $via, papel=${endpoint.role.name}): peer=$peer " +
-                        "$owner$originSuffix · epochMs=$now · $relation · total-no-túnel=" +
+                        "$owner$originSuffix · $attribution · epochMs=$now · $relation · total-no-túnel=" +
                         "${RequestLog.counters.value.tcpConnectionsTunel}"
                 )
             }
@@ -268,7 +288,7 @@ class LocalHttpsServer(
             }
             val thread = Thread({
                 try {
-                    handle(client, endpoint)
+                    handle(client, endpoint, targetUidVerified, synthetic)
                 } finally {
                     connections.release()
                     closeQuietly(client)
@@ -279,7 +299,12 @@ class LocalHttpsServer(
         }
     }
 
-    private fun handle(client: Socket, endpoint: BindEndpoint) {
+    private fun handle(
+        client: Socket,
+        endpoint: BindEndpoint,
+        targetUidVerified: Boolean,
+        synthetic: Boolean
+    ) {
         val sslSocket = client as? SSLSocket
         if (sslSocket == null) {
             log(
@@ -301,12 +326,19 @@ class LocalHttpsServer(
         val roleNote = if (loopback) {
             "papel=${endpoint.role.name} (DIAGNÓSTICO: não é evidência de tráfego do WZM)"
         } else {
-            "papel=${endpoint.role.name} (caminho do túnel: é este que pode promover evidência do WZM)"
+            when {
+                synthetic ->
+                    "papel=${endpoint.role.name} (teste sintético do launcher: caminho apenas, não WZM)"
+                targetUidVerified ->
+                    "papel=${endpoint.role.name} (owner UID do peer igual ao UID-alvo; UID não identifica processo/PID)"
+                else ->
+                    "papel=${endpoint.role.name} (owner UID-alvo não confirmado; não é evidência de tráfego WZM)"
+            }
         }
         try {
             sslSocket.soTimeout = 15_000
             sslSocket.startHandshake()
-            if (loopback) RequestLog.incTlsOkLoopback() else RequestLog.incTlsOkTunel()
+            if (loopback) RequestLog.incTlsOkLoopback() else RequestLog.incTlsOkTunel(targetUidVerified)
             val sni = sniOf(sslSocket)
             log(
                 "TLS",
@@ -319,7 +351,7 @@ class LocalHttpsServer(
                 "papel=${endpoint.role.name} · $relation"
             )
         } catch (e: SSLHandshakeException) {
-            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel()
+            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel(targetUidVerified)
             val message = e.message ?: ""
             val failure = TlsTrust.analyze(message)
             // Linha com código estável (motivo=...) para leitura máquina/humana na tela VER LOGS.
@@ -332,7 +364,7 @@ class LocalHttpsServer(
                 relay.serve(client, peer, "papel=${endpoint.role.name} · $relation")
             }
         } catch (e: Exception) {
-            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel()
+            if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel(targetUidVerified)
             log(
                 "TLS",
                 "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote): " +

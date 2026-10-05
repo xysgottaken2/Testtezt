@@ -15,6 +15,11 @@ describe('BootstrapServer — WZM 3.10.0 offline stubs (VERIFIED chain)', () => 
     await server.close();
   });
 
+  it('rejects non-loopback bind addresses', () => {
+    expect(() => new BootstrapServer({ host: '0.0.0.0', port: 0 })).toThrow(/must be loopback/i);
+    expect(() => new BootstrapServer({ host: '192.168.1.10', port: 0 })).toThrow(/must be loopback/i);
+  });
+
   it('serves build-selector local stub (not redirecting to offline)', async () => {
     const res = await fetch(`http://${host}:${port}${BUILD_SELECTOR_PATH}`, {
       headers: { Host: `${BOOTSTRAP_HOST}:443` },

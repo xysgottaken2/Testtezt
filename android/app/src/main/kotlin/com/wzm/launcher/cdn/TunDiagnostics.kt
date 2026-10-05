@@ -205,8 +205,6 @@ data class DiagFacts(
     val ipv6Profiles: List<String> = emptyList(),
     /** Processos declarados no manifesto do app alvo (fato estático). */
     val targetDeclaredProcesses: List<String> = emptyList(),
-    /** `true` quando a contabilidade do UID do alvo cresceu mas nada apareceu no túnel. */
-    val uidTrafficOutsideTunnel: Boolean = false
 )
 
 /**
@@ -227,35 +225,39 @@ object HypothesisBoard {
         ),
         EvidenceClaim(
             "trafego_do_app_alvo_no_tun",
-            when {
-                counters.tunUidVerifiedFlows > 0 -> Evidence.VERIFIED
-                counters.tunPacketsTotal > 0 -> Evidence.PROBABLE
-                else -> Evidence.UNKNOWN
-            },
+            if (counters.tunUidVerifiedFlows > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
             when {
                 counters.tunUidVerifiedFlows > 0 ->
-                    "UID do app alvo confirmado em ${counters.tunUidVerifiedFlows} fluxo(s) observado(s) no TUN"
+                    "UID ${facts.targetUid ?: "do app alvo"} confirmado em ${counters.tunUidVerifiedFlows} fluxo(s) observado(s) no TUN; " +
+                        "isso identifica o UID, não o processo/PID"
                 counters.tunPacketsTotal > 0 ->
-                    "há ${counters.tunPacketsTotal} pacote(s) no TUN, mas nenhum fluxo com UID confirmado " +
-                        "(o túnel só permite ${facts.targetPackage}, porém isso não é prova de autoria)"
-                else -> "nenhum pacote recebido no TUN até agora"
+                    "há ${counters.tunPacketsTotal} pacote(s) no TUN, mas nenhum fluxo foi atribuído ao UID alvo; " +
+                        "pacotes sem UID não são evidência de tráfego do WZM"
+                else -> "nenhum pacote recebido no TUN até agora; ausência não determina a causa"
+            }
+        ),
+        EvidenceClaim(
+            "consulta_dns_no_dns_virtual",
+            if (counters.tunUdpDnsNoVirtualDns > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.tunUdpDnsNoVirtualDns > 0) {
+                "${counters.tunUdpDnsNoVirtualDns} consulta(s) UDP chegaram em ${CdnRouterConfig.VPN_DNS}:53; " +
+                    "origem UID/processo não foi confirmada"
+            } else {
+                "nenhuma consulta UDP chegou em ${CdnRouterConfig.VPN_DNS}:53 " +
+                    "(consultas UDP:53 vistas: ${counters.tunUdpDns53})"
             }
         ),
         EvidenceClaim(
             "dns_do_app_no_dns_virtual",
-            if (counters.tunUdpDnsNoVirtualDns > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
-            if (counters.tunUdpDnsNoVirtualDns > 0) {
-                "${counters.tunUdpDnsNoVirtualDns} consulta(s) chegaram em ${CdnRouterConfig.VPN_DNS}:53"
-            } else {
-                "nenhuma consulta chegou em ${CdnRouterConfig.VPN_DNS}:53 " +
-                    "(consultas UDP:53 vistas: ${counters.tunUdpDns53})"
-            }
+            Evidence.UNKNOWN,
+            "a presença ou ausência de consulta UDP no TUN não identifica o processo/app sem UID ligado à tupla"
         ),
         EvidenceClaim(
             "consulta_dns_de_host_cdni",
             if (counters.dnsIntercepted > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
             if (counters.dnsIntercepted > 0) {
-                "${counters.dnsIntercepted} consulta(s) de host CDNI interceptada(s) -> ${CdnRouterConfig.REDIRECT_TO}"
+                "${counters.dnsIntercepted} consulta(s) de host CDNI interceptada(s) -> ${CdnRouterConfig.REDIRECT_TO}; " +
+                    "origem UID/processo não confirmada"
             } else {
                 "nenhuma consulta de host CDNI observada até agora " +
                     "(consultas DNS no túnel: ${counters.dnsQueries}, encaminhadas: ${counters.dnsForwarded})"
@@ -266,22 +268,24 @@ object HypothesisBoard {
             if (counters.tunIpv6Packets > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
             if (counters.tunIpv6Packets > 0) {
                 "${counters.tunIpv6Packets} pacote(s) IPv6 válido(s) no TUN " +
-                    "(${counters.tunIpv6ToCdnTarget} para ${CdnRouterConfig.CDN_TARGET_V6}) — não atendidos por política"
+                    "(${counters.tunIpv6ToCdnTarget} para ${CdnRouterConfig.CDN_TARGET_V6}); origem UID/processo " +
+                    "não confirmada, portanto não é evidência de tráfego do WZM — política atual não atende IPv6"
             } else {
                 "nenhum pacote IPv6 observado"
             }
         ),
         EvidenceClaim(
             "tcp_para_o_alvo_cdni_443",
-            if (counters.tunTcpSynToRedirect > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
-            if (counters.tunTcpSynToRedirect > 0) {
-                "${counters.tunTcpSynToRedirect} SYN para ${CdnRouterConfig.VPN_ADDRESS}:" +
-                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} observado(s) no TUN — único caminho que promove " +
-                    "esta afirmação (conexões em ${CdnRouterConfig.LOOPBACK_ADDRESS} NÃO promovem)"
+            if (counters.tunUidVerifiedCdniSyns > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            if (counters.tunUidVerifiedCdniSyns > 0) {
+                "${counters.tunUidVerifiedCdniSyns} SYN para ${CdnRouterConfig.VPN_ADDRESS}:" +
+                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} no TUN tiveram owner UID igual ao UID-alvo; " +
+                    "isso prova UID/destino, não PID/processo. SYN observados sem UID-alvo=" +
+                    "${counters.tunTcpSynToRedirect - counters.tunUidVerifiedCdniSyns}; loopback não promove"
             } else {
-                "nenhum SYN para ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
-                    "(SYN no total: ${counters.tunTcpSyn}, para outros destinos: ${counters.tunTcpSynOther}); " +
-                    "conexões de loopback (${counters.tcpConnectionsLoopback}) são diagnóstico e NÃO promovem"
+                "SYN para ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} observado(s)=" +
+                    "${counters.tunTcpSynToRedirect}, SYN atribuídos ao UID-alvo=0; pacote sem owner UID-alvo " +
+                    "não é evidência WZM; loopback também não promove"
             }
         ),
         EvidenceClaim(
@@ -297,14 +301,19 @@ object HypothesisBoard {
         ),
         EvidenceClaim(
             "conexoes_no_listener_do_tunel",
-            if (counters.tcpConnectionsTunel > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
-            if (counters.tcpConnectionsTunel > 0) {
-                "${counters.tcpConnectionsTunel} conexão(ões) aceita(s) em ${CdnRouterConfig.VPN_ADDRESS}:" +
-                    "${CdnRouterConfig.LOCAL_HTTPS_PORT} — caminho que veio pelo DNS do túnel " +
-                    "(com UID quando resolvido; sem UID a autoria continua não provada); conexão feita " +
-                    "pelo PRÓPRIO launcher no teste sintético prova o CAMINHO, NÃO o WZM"
-            } else {
-                "nenhuma conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} até agora"
+            if (counters.tcpConnectionsTunelUidAlvo > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            when {
+                counters.tcpConnectionsTunelUidAlvo > 0 ->
+                    "${counters.tcpConnectionsTunelUidAlvo} conexão(ões) aceita(s) em " +
+                        "${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} com owner UID igual ao UID-alvo; " +
+                        "UID não identifica PID/processo. Total sem atribuição/sintético=" +
+                        "${counters.tcpConnectionsTunel - counters.tcpConnectionsTunelUidAlvo}"
+                counters.tcpConnectionsTunel > 0 ->
+                    "${counters.tcpConnectionsTunel} conexão(ões) aceita(s) no listener do túnel, mas nenhuma teve " +
+                        "owner UID confirmado como UID-alvo; isso não é evidência de tráfego do WZM. " +
+                        "Conexões sintéticas do launcher=${counters.tcpConnectionsTunelSintetico} (caminho apenas)"
+                else ->
+                    "nenhuma conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} até agora"
             }
         ),
         EvidenceClaim(
@@ -313,7 +322,7 @@ object HypothesisBoard {
             if (counters.tcpConnectionsLoopback > 0) {
                 "${counters.tcpConnectionsLoopback} conexão(ões) em " +
                     "${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} " +
-                    "(antes do WZM iniciado=${counters.loopbackAntesDoWzm}, depois=${counters.loopbackDepoisDoWzm}) — " +
+                    "(antes do marcador de lançamento=${counters.loopbackAntesDoWzm}, depois=${counters.loopbackDepoisDoWzm}) — "
                     "DIAGNÓSTICO SECUNDÁRIO: NÃO são evidência de tráfego do WZM, nem a favor nem contra"
             } else {
                 "nenhuma conexão em ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} nesta sessão"
@@ -321,13 +330,20 @@ object HypothesisBoard {
         ),
         EvidenceClaim(
             "tls_no_listener_do_tunel",
-            if (counters.tlsOkTunel + counters.tlsFailedTunel > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
-            if (counters.tlsOkTunel + counters.tlsFailedTunel > 0) {
-                "handshakes em ${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT}: " +
-                    "${counters.tlsOkTunel} aceito(s) / ${counters.tlsFailedTunel} recusado(s) pelo cliente"
-            } else {
-                "nenhum handshake no listener do túnel (loopback: ${counters.tlsOkLoopback} ok / " +
-                    "${counters.tlsFailedLoopback} falha(s) — diagnóstico, fora do critério)"
+            if (counters.tlsOkTunelUidAlvo + counters.tlsFailedTunelUidAlvo > 0) Evidence.VERIFIED else Evidence.UNKNOWN,
+            when {
+                counters.tlsOkTunelUidAlvo + counters.tlsFailedTunelUidAlvo > 0 ->
+                    "handshakes na conexão cujo owner UID foi confirmado como UID-alvo em " +
+                        "${CdnRouterConfig.VPN_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT}: " +
+                        "${counters.tlsOkTunelUidAlvo} aceito(s) / ${counters.tlsFailedTunelUidAlvo} recusado(s); " +
+                        "isso não identifica PID/processo"
+                counters.tlsOkTunel + counters.tlsFailedTunel > 0 ->
+                    "handshake(s) no listener observados (${counters.tlsOkTunel} aceito(s) / " +
+                        "${counters.tlsFailedTunel} falha(s)), mas nenhum owner UID-alvo foi confirmado; " +
+                        "não são evidência de tráfego do WZM"
+                else ->
+                    "nenhum handshake atribuído ao UID-alvo no listener do túnel (loopback: " +
+                        "${counters.tlsOkLoopback} ok / ${counters.tlsFailedLoopback} falha(s), só diagnóstico)"
             }
         ),
         EvidenceClaim(
@@ -369,24 +385,22 @@ object HypothesisBoard {
             when {
                 facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 &&
                     counters.tunPacketsTotal == 0 -> Evidence.PROBABLE
-                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 -> Evidence.PROBABLE
-                facts.uidTrafficGrew == false && counters.tunPacketsTotal == 0 -> Evidence.VERIFIED
                 else -> Evidence.UNKNOWN
             },
             when {
-                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 ->
-                    "a contabilidade do UID do alvo CRESCEU ${facts.uidTrafficBytesSinceStart?.let { "(+$it B)" } ?: ""} " +
-                        "enquanto nada no TUN foi atribuído a ele — consistente com tráfego do app FORA do túnel " +
-                        "(PROBABLE; a contabilidade é por UID, não por processo, e a VPN per-app não é prova de captura)"
-                facts.uidTrafficGrew == false && counters.tunPacketsTotal == 0 ->
-                    "contabilidade do UID do alvo NÃO cresceu e o TUN está vazio: nesta janela o app não fez rede " +
-                        "(por UID; processos auxiliares do mesmo pacote entram nessa conta)"
-                facts.uidTrafficGrew == true ->
-                    "houve tráfego no UID do alvo e há fluxo verificado no TUN"
+                facts.uidTrafficGrew == true && counters.tunUidVerifiedFlows == 0 && counters.tunPacketsTotal == 0 ->
+                    "a contabilidade do UID do pacote alvo CRESCEU ${facts.uidTrafficBytesSinceStart?.let { "(+$it B)" } ?: ""} " +
+                        "e nenhum pacote chegou ao TUN na mesma sessão — PROBABLE que esse tráfego não passou pelo TUN; " +
+                        "a conta é por UID (inclui helpers), não por processo, e não identifica a rota por si só"
+                facts.uidTrafficGrew == true && counters.tunPacketsTotal > 0 ->
+                    "a contabilidade do UID cresceu, mas há pacote(s) sem atribuição no TUN; a relação entre as amostras " +
+                        "é UNKNOWN, não prova tráfego fora do túnel"
+                facts.uidTrafficGrew == false ->
+                    "não foi medido crescimento na contabilidade do UID nesta amostra; isso não prova ausência de rede"
                 !facts.uidTrafficAvailable ->
                     "sem contabilidade por UID (TrafficStats indisponível) — não é possível separar \"app sem rede\" " +
                         "de \"tráfego fora do túnel\""
-                else -> "contabilidade por UID ainda sem variação legível"
+                else -> "contabilidade por UID ainda sem variação legível; causa UNKNOWN"
             }
         ),
         EvidenceClaim(
@@ -399,12 +413,14 @@ object HypothesisBoard {
             when {
                 counters.tunIpv6Unicast > 0 ->
                     "${counters.tunIpv6Unicast} pacote(s) IPv6 em endereço UNICAST descartado(s) — não é apenas " +
-                        "descoberta local; antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm}"
+                        "descoberta local, mas a origem UID/processo continua desconhecida; antes-do-marcador=" +
+                        "${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm} (correlação temporal)"
                 counters.tunIpv6DescobertaLocal > 0 ->
-                    "todo o IPv6 descartado até agora (${counters.tunIpv6DescobertaLocal} pacote(s)) é descoberta local " +
-                        "(multicast/link-local: vizinhança/MLD) — compatível com o sistema, NÃO com tráfego de jogo " +
-                        "(unicast=${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}; " +
-                        "antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm})"
+                    "${counters.tunIpv6DescobertaLocal} pacote(s) foram classificados pelo cabeçalho em perfil " +
+                        "compatível com descoberta local (NDP/MLD multicast), PROBABLE como tipo de tráfego; " +
+                        "isso não identifica origem sistema/WZM nem explica ausência de TCP (unicast=" +
+                        "${counters.tunIpv6Unicast}, multicast-outro=${counters.tunIpv6MulticastOutro}; " +
+                        "antes/depois é só correlação temporal)"
                 counters.tunIpv6Packets > 0 ->
                     "há IPv6 no TUN mas sem classificação registrada ainda"
                 else -> "nenhum pacote IPv6 observado no TUN"
@@ -412,20 +428,21 @@ object HypothesisBoard {
         ),
         EvidenceClaim(
             "dns_observado_para_os_destinos",
-            when {
-                counters.dnsRespostasRegistradas == 0 -> Evidence.UNKNOWN
-                counters.tunFluxosDestinoResolvido > 0 -> Evidence.PROBABLE
-                else -> Evidence.PROBABLE
+            if (counters.dnsRespostasRegistradas > 0 && counters.tunFluxosDestinoResolvido > 0) {
+                Evidence.VERIFIED
+            } else {
+                Evidence.UNKNOWN
             },
             when {
                 counters.dnsRespostasRegistradas == 0 ->
                     "nenhuma resposta DNS passou pelo túnel — impossível casar destinos com nomes"
                 counters.tunFluxosDestinoResolvido > 0 ->
-                    "${counters.tunFluxosDestinoResolvido} fluxo(s) foram para endereço que consta de resposta DNS " +
-                        "observada (${counters.dnsRespostasRegistradas} resposta(s) guardada(s)) — a resolução passou pelo túnel"
+                    "${counters.tunFluxosDestinoResolvido} fluxo(s) no TUN tiveram destino presente no cache de " +
+                        "${counters.dnsRespostasRegistradas} resposta(s) DNS observada(s); correspondência é VERIFIED, " +
+                        "mas não liga app/processo à consulta e pode incluir tráfego sintético ou do sistema"
                 else ->
-                    "${counters.dnsRespostasRegistradas} resposta(s) DNS guardada(s) e nenhum fluxo casou com elas: " +
-                        "os destinos usados não vieram do DNS do túnel (DoH/DoT/cache do sistema — HYPOTHESIS, não causa)"
+                    "${counters.dnsRespostasRegistradas} resposta(s) DNS guardada(s), sem fluxo correspondente; " +
+                        "não permite concluir qual resolvedor ou caminho o WZM usou"
             }
         ),
         EvidenceClaim(
@@ -442,29 +459,30 @@ object HypothesisBoard {
         EvidenceClaim(
             "capacidade_de_captura_do_tun",
             Evidence.VERIFIED,
-            "o tun anuncia DNS ${CdnRouterConfig.VPN_DNS} e rota ${CdnRouterConfig.VPN_ROUTE}/" +
-                "${CdnRouterConfig.VPN_ROUTE_PREFIX}; 'addAllowedApplication' aceito significa que SÓ o pacote " +
-                "alvo pode usar a VPN — **não** que todo o tráfego dele seja capturado. Destino fora da rota " +
-                "(IP real do CDNI, DoT :853, DoH UDP :443, IP literal) não entra neste tun; sem consulta ao DNS " +
-                "do túnel o pacote nem sabe que ${CdnRouterConfig.REDIRECT_TO} existe"
+            "configuração do launcher: DNS ${CdnRouterConfig.VPN_DNS}, rota explícita " +
+                "${CdnRouterConfig.VPN_ROUTE}/${CdnRouterConfig.VPN_ROUTE_PREFIX}, sem default nem rota IPv6; " +
+                "addAllowedApplication restringe o UID separadamente. Android documenta que as rotas filtram " +
+                "por destino; isso prova o plano configurado, não o caminho final de cada socket nem a captura do WZM. " +
+                "Destino fora do prefixo, seleção de Network e caminho de DNS permanecem UNKNOWN até observação do device"
         ),
         EvidenceClaim(
             "silencio_do_tun_e_escopo_ou_dns",
             when {
                 counters.tunPacketsTotal > 0 -> Evidence.UNKNOWN
                 facts.uidTrafficGrew == true -> Evidence.PROBABLE
-                else -> Evidence.HYPOTHESIS
+                else -> Evidence.UNKNOWN
             },
             when {
                 counters.tunPacketsTotal > 0 ->
-                    "há pacote no TUN: a leitura de escopo não se aplica a esta sessão"
+                    "há pacote(s) no TUN sem UID do alvo: não são prova de tráfego do WZM e não decidem a causa"
                 facts.uidTrafficGrew == true ->
-                    "o UID do alvo movimentou bytes e o TUN está vazio — consistente com tráfego do app fora " +
-                        "da rota declarada (IP real/DoT/DoH) e NÃO com 'o app não fez rede' " +
-                        "(PROBABLE; a causa exige a rodada de observação)"
+                    "o UID do pacote alvo movimentou bytes na sessão e o TUN segue vazio — PROBABLE que parte do " +
+                        "tráfego não passou pelo TUN; é conta por UID (inclui helpers), não identifica processo nem causa"
+                facts.uidTrafficGrew == false ->
+                    "TUN vazio e sem crescimento medido na contabilidade do UID nesta amostra; ausência observada " +
+                        "não prova ausência de rede nem explica a causa (UNKNOWN)"
                 else ->
-                    "TUN vazio e sem crescimento de contabilidade do UID: nesta janela pode não ter havido " +
-                        "tráfego do app — não é possível separar escopo de ausência sem a contabilidade crescer"
+                    "TUN vazio, sem contabilidade utilizável: não separa ausência de tentativa de outro caminho (UNKNOWN)"
             }
         ),
         EvidenceClaim(
@@ -476,15 +494,17 @@ object HypothesisBoard {
             },
             when {
                 counters.ownerProbeSemPermissao > 0 ->
-                    "o teste de controle recebeu SEM_PERMISSAO em ${counters.ownerProbeSemPermissao} passo(s): " +
-                        "getConnectionOwnerUid exige ser o VPN ATIVO (ou NETWORK_STACK) — autoria inconclusiva"
+                    "o teste de controle recebeu SEM_PERMISSAO em ${counters.ownerProbeSemPermissao} passo(s) " +
+                        "(resoluções parciais=${counters.ownerProbeResolvido}): getConnectionOwnerUid exige ser o " +
+                        "VPN ATIVO (ou NETWORK_STACK); a amostra não permite atribuição do UID-alvo"
                 counters.ownerProbeResolvido > 0 ->
-                    "a API resolveu uid em ${counters.ownerProbeResolvido} passo(s) do teste de controle — e ela " +
-                        "só resolve uid COBERTO pela VPN (AOSP: appliesToUid), então isso é autoria comprovada"
+                    "a API resolveu UID em ${counters.ownerProbeResolvido} consulta(s) do controle loopback aberto " +
+                        "pelo launcher; isso prova somente o UID dessas tuplas, não o resultado para o UID-alvo/WZM " +
+                        "nem PID/processo. O owner lookup real de cada conexão continua obrigatório"
                 counters.ownerProbeInvalid > 0 ->
-                    "INVALID_UID em ${counters.ownerProbeInvalid} passo(s) do teste de controle (inclusive a " +
-                        "conexão do PRÓPRIO launcher, que está fora da allowlist): confirma no device que a API " +
-                        "não identifica quem não pertence à VPN — INVALID_UID NÃO autoriza conclusão de autoria"
+                    "INVALID_UID em ${counters.ownerProbeInvalid} consulta(s) do controle (socket próprio conhecido " +
+                        "e/ou tupla intencionalmente ausente): como a API não informa qual causa gerou cada -1, " +
+                        "o resultado é UNKNOWN e não pode ser generalizado ao UID-alvo/WZM"
                 else ->
                     "teste de controle de autoria ainda não rodou nesta sessão"
             }
@@ -492,17 +512,21 @@ object HypothesisBoard {
         EvidenceClaim(
             "origem_das_conexoes_loopback",
             when {
-                counters.loopbackMesmoProcesso > 0 || counters.loopbackOutroUid > 0 -> Evidence.PROBABLE
-                counters.loopbackIndeterminado > 0 -> Evidence.UNKNOWN
+                counters.loopbackMesmoProcesso > 0 || counters.loopbackUidLauncher > 0 ||
+                    counters.loopbackUidAlvo > 0 || counters.loopbackOutroUid > 0 -> Evidence.VERIFIED
+                counters.loopbackPossivelLauncher > 0 -> Evidence.PROBABLE
                 else -> Evidence.UNKNOWN
             },
             buildString {
-                append("loopback nesta sessão: mesmo-processo=").append(counters.loopbackMesmoProcesso)
+                append("peer local: processo-exato-launcher=").append(counters.loopbackMesmoProcesso)
+                append(", uid-launcher=").append(counters.loopbackUidLauncher)
+                append(", uid-app-alvo=").append(counters.loopbackUidAlvo)
+                append(", possivel-launcher=").append(counters.loopbackPossivelLauncher)
                 append(", outro-uid=").append(counters.loopbackOutroUid)
                 append(", indeterminado=").append(counters.loopbackIndeterminado)
-                append(" — o listener em ${CdnRouterConfig.LOOPBACK_ADDRESS}:${CdnRouterConfig.LOCAL_HTTPS_PORT} ")
-                append("é alcançável por QUALQUER app e o loopback não passa pelo túnel, então a única prova de ")
-                append("autoria seria uid resolvido (só acontece para uid dentro da VPN)")
+                append(" — UID resolvido identifica UID, não PID/processo; INVALID_UID é ambíguo. ")
+                append("A atribuição é só para esta conexão localhost; não prova tráfego externo do WZM, ")
+                append("e loopback permanece diagnóstico secundário, fora da evidência de captura do TUN.")
             }
         ),
         EvidenceClaim(
@@ -519,15 +543,12 @@ object HypothesisBoard {
         ),
         EvidenceClaim(
             "wzm_resolve_cdni_por_mecanismo_proprio",
-            when {
-                counters.tunDohCandidates > 0 || counters.tunTcp443Externo > 0 -> Evidence.PROBABLE
-                else -> Evidence.UNKNOWN
-            },
+            Evidence.UNKNOWN,
             when {
                 counters.tunDohCandidates > 0 || counters.tunTcp443Externo > 0 ->
-                    "há tráfego :443 para IP externo sem consulta DNS correspondente no túnel " +
-                        "(compatível com DoH/cache próprio; NÃO confirmado)"
-                else -> "sem evidência no túnel (nem a favor, nem contra)"
+                    "há candidato(s) por porta/destino, mas sem atribuição UID do fluxo ao WZM nem prova do " +
+                        "protocolo DNS; isso não identifica DoH, cache nem resolver próprio"
+                else -> "sem evidência atribuída ao WZM (nem a favor, nem contra)"
             }
         )
     )
@@ -643,6 +664,21 @@ object TunDiagnostics {
             isHttpsPort = header.isHttpsPort
         )
     }
+
+    /**
+     * Leitura limitada de uma amostra IPv6 composta só por perfis de descoberta local.
+     * O perfil não atribui UID/processo e não permite concluir se o tráfego veio do sistema ou do WZM.
+     */
+    fun ipv6DiscoveryInterpretation(counters: RequestCounters): String? =
+        if (counters.tunIpv6DescobertaLocal > 0) {
+            "leitura do IPv6: ${counters.tunIpv6DescobertaLocal} pacote(s) têm perfil de cabeçalho " +
+                "compatível com descoberta local (NDP/MLD em multicast); outras categorias: " +
+                "multicast-outro=${counters.tunIpv6MulticastOutro}, unicast=${counters.tunIpv6Unicast}. " +
+                "Origem UID/processo desconhecida — não sabemos se veio do sistema ou do WZM e não inferimos " +
+                "relação causal com ausência de TCP"
+        } else {
+            null
+        }
 
     /** Linha de descarte de um pacote inválido, com prévia hexadecimal limitada. */
     fun faultLine(fault: PacketParse.Fault): String =
@@ -765,9 +801,9 @@ class TunActivityWatchdog(
 
     fun messageFor(event: TunWatchdogEvent, counters: RequestCounters, nowMs: Long): String = when (event) {
         TunWatchdogEvent.NENHUM_PACOTE_NO_TUN ->
-            "nenhum pacote no TUN nos primeiros ${secondsSinceLastPacket(nowMs)} s — " +
-                "o app alvo não gerou tráfego dentro do túnel nesta sessão; " +
-                "checar (sem afirmar causa): app em execução, per-app aplicado, rotas da VPN, tela de rede do jogo"
+            "nenhum pacote foi observado no TUN nos primeiros ${secondsSinceLastPacket(nowMs)} s — " +
+                "ausência nesta janela não prova que o app não tentou rede, não atribui processo e não explica o caminho; " +
+                "checar sem presumir causa: estado do app, per-app aplicado, rotas da VPN e novas observações"
         TunWatchdogEvent.NENHUMA_CONSULTA_CDNI ->
             "nenhuma consulta DNS de host CDNI em ${secondsSinceLastCdnDns(nowMs)} s " +
                 "(DNS no túnel: ${counters.dnsQueries}, encaminhadas: ${counters.dnsForwarded}, " +

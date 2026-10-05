@@ -9,12 +9,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 
-/**
- * M4.1: o teste de controle de autoria. Ele existe porque o log antigo lia `INVALID_UID` como
- * "não é do jogo" — o que é falso: a API devolve `-1` tanto para conexão ausente quanto para uid
- * **fora da VPN que chamou**. Aqui a execução é 100% injetada (nenhum pacote sai do aparelho):
- * o que se testa é a lógica, o registro de portas próprias e a leitura declarada do resultado.
- */
+/** Controle JVM: o socket é local/sintético e os resultados da API são injetados. */
 class OwnerProbeTest {
 
     private class QueryLog {
@@ -22,32 +17,18 @@ class OwnerProbeTest {
         val socketCalls = mutableListOf<Socket>()
     }
 
-    /**
-     * Socket conectado de verdade a um listener local — para o passo ter endereços utilizáveis.
-     * O backlog é folgado de propósito: o probe abre mais de uma conexão e uma fila cheia faria a
-     * segunda ser recusada (o que criaria um "pulado" que não é do probe).
-     */
-    private fun connectedPair(): Pair<ServerSocket, Socket> {
-        val listener = ServerSocket(0, 16, InetSocketAddress("127.0.0.1", 0).address)
-        val client = Socket("127.0.0.1", listener.localPort)
-        return listener to client
-    }
+    private fun loopbackListener(): ServerSocket =
+        ServerSocket(0, 16, InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 0).address)
 
     @Test
-    fun everyStepRunsAndTheOwnOriginPortsAreRegistered() {
-        val (listener, client) = connectedPair()
+    fun reportsOnlyTheOwnLoopbackControlAndTheMissingTuple() {
+        val listener = loopbackListener()
         val queries = QueryLog()
-        val ownPorts = mutableListOf<Int>()
         try {
             val report = OwnerProbe.run(
-                loopbackPort = 44321,
-                tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-                tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-                tunnelAddressAssigned = true,
-                selfPortRegistrar = { port -> ownPorts += port },
-                // O passo do túnel só precisa de um socket com endereços; a conexão real é para o
-                // listener local (o teste não depende de tun0 existir na JVM).
-                connect = { host, _ -> if (host == "127.0.0.1") client else Socket("127.0.0.1", listener.localPort) },
+                loopbackPort = listener.localPort,
+                targetPackage = "com.activision.callofduty.warzone",
+                connect = { host, port -> Socket(host, port) },
                 querySocket = { socket ->
                     queries.socketCalls += socket
                     ConnectionOwnership.Result(ConnectionOwnership.Outcome.RESOLVIDO, uid = 10101)
@@ -61,121 +42,98 @@ class OwnerProbeTest {
             assertEquals(
                 listOf(
                     OwnerProbe.StepId.LOOPBACK_PROPRIO,
-                    OwnerProbe.StepId.TUNEL_PROPRIO,
                     OwnerProbe.StepId.TUPLA_INEXISTENTE,
                     OwnerProbe.StepId.ESCOPO_DA_VPN
                 ),
                 report.steps.map { it.id }
             )
-            assertTrue("os dois primeiros passos rodam de verdade", report.steps[0].ran && report.steps[1].ran)
-            assertEquals(2, report.resolved)
+            assertTrue("o controle loopback deve abrir e consultar um socket real", report.steps[0].ran)
+            assertEquals(1, report.resolved)
             assertEquals(1, report.invalid)
             assertEquals(0, report.noPermission)
-
-            assertEquals("as duas conexões do launcher tiveram a porta registrada", 2, ownPorts.size)
-            assertTrue(ownPorts.all { it in 1..65535 })
-
-            // A tupla inexistente é TCP 127.0.0.1:1 — é ela que separa "não encontrado" de "fora da VPN".
+            assertEquals(1, queries.socketCalls.size)
             assertEquals(1, queries.tupleCalls.size)
+
             val (protocol, first, second) = queries.tupleCalls.single()
             assertEquals(ConnectionOwnership.PROTOCOL_TCP, protocol)
             assertEquals(InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1), first)
             assertEquals(InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1), second)
 
-            assertTrue(OwnerProbe.summaryLine(report).contains("resolvidos=2"))
-            assertTrue(OwnerProbe.summaryLine(report).contains("INVALID_UID=1"))
-            assertTrue(report.expectation().contains("RESOLVEU"))
-            assertEquals(4, report.lines().size)
+            val expectation = report.expectation()
+            assertTrue(expectation, expectation.contains("VERIFIED"))
+            assertTrue(expectation, expectation.contains("apenas para aquelas tuplas"))
+            assertTrue(expectation, expectation.contains("não demonstra o resultado para o UID-alvo/WZM"))
+            assertEquals(3, report.lines().size)
+            assertTrue(report.lines().last().contains("CONTEXTO"))
+            assertTrue(report.lines().last().contains("não consulta o UID do alvo"))
+            assertTrue(OwnerProbe.summaryLine(report).contains("resolvidos=1"))
         } finally {
-            runCatching { client.close() }
             runCatching { listener.close() }
         }
     }
 
     @Test
-    fun invalidUidOnlyResultIsReadAsAmbiguityNotAsSomeoneElse() {
-        val (listener, client) = connectedPair()
+    fun invalidUidForControlSocketRemainsUnknownAndIsNotGeneralizedToWzm() {
+        val listener = loopbackListener()
         try {
             val report = OwnerProbe.run(
-                loopbackPort = 44321,
-                tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-                tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-                tunnelAddressAssigned = true,
-                selfPortRegistrar = {},
-                connect = { _, _ -> Socket("127.0.0.1", listener.localPort) },
+                loopbackPort = listener.localPort,
+                targetPackage = "com.activision.callofduty.warzone",
+                connect = { host, port -> Socket(host, port) },
                 querySocket = { ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) },
                 queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) }
             )
 
-            assertEquals(3, report.invalid)
+            assertEquals(2, report.invalid)
             assertEquals(0, report.resolved)
+            assertEquals(0, report.noPermission)
             val expectation = report.expectation()
-            assertTrue("precisa declarar a ambiguidade: $expectation", expectation.contains("INVALID_UID"))
-            assertTrue(
-                "não pode afirmar que é de outro app: $expectation",
-                !expectation.contains("de outro app")
-            )
-            assertTrue(
-                "as linhas precisam repetir o motivo (appliesToUid não é opcional)",
-                report.lines().any { it.contains("INVALID_UID") }
-            )
-            assertTrue(
-                "a leitura precisa registrar o nível de confiança do que sobra (PROBABLE): $expectation",
-                expectation.contains("PROBABLE")
-            )
+            assertTrue(expectation, expectation.contains("UNKNOWN"))
+            assertTrue(expectation, expectation.contains("não pode ser generalizado ao WZM"))
+            assertFalse("não transformar pista em provável autoria", expectation.contains("PROBABLE"))
+            assertTrue(report.lines().any { it.contains("INVALID_UID") })
         } finally {
-            runCatching { client.close() }
             runCatching { listener.close() }
         }
     }
 
     @Test
-    fun stepsAreSkippedWithReasonInsteadOfInventingResults() {
+    fun unavailableListenerIsSkippedAndScopeLineIsContextNotAResult() {
         val report = OwnerProbe.run(
             loopbackPort = null,
-            tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-            tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-            tunnelAddressAssigned = false,
-            selfPortRegistrar = {},
-            connect = { _, _ -> error("não deveria conectar sem listener nem endereço") },
+            targetPackage = "com.activision.callofduty.warzone",
+            connect = { _, _ -> error("não deveria conectar sem listener") },
             querySocket = { error("não deveria consultar socket") },
             queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) }
         )
 
         assertFalse(report.steps[0].ran)
         assertNotNull(report.steps[0].skippedReason)
-        assertFalse(report.steps[1].ran)
-        assertNotNull(report.steps[1].skippedReason)
-        assertTrue(report.steps[2].ran)
+        assertTrue(report.steps[1].ran)
+        assertFalse(report.steps[2].ran)
         assertTrue(report.lines().any { it.contains("PULADO") })
-        assertTrue(report.lines().any { it.contains("ESCOPO") || it.contains("escopo_da_vpn") })
+        assertTrue(report.lines().any { it.contains("CONTEXTO") && it.contains("com.activision.callofduty.warzone") })
+        assertTrue(report.expectation().contains("UNKNOWN"))
     }
 
     @Test
-    fun securityExceptionIsCountedSeparatelyAndLeadsToInconclusiveReading() {
-        val (listener, client) = connectedPair()
+    fun securityExceptionIsCountedSeparatelyAndLeadsToUnknown() {
+        val listener = loopbackListener()
         try {
             val report = OwnerProbe.run(
-                loopbackPort = 44321,
-                tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-                tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-                tunnelAddressAssigned = true,
-                selfPortRegistrar = {},
-                connect = { _, _ -> Socket("127.0.0.1", listener.localPort) },
+                loopbackPort = listener.localPort,
+                targetPackage = "com.activision.callofduty.warzone",
+                connect = { host, port -> Socket(host, port) },
                 querySocket = { ConnectionOwnership.Result(ConnectionOwnership.Outcome.SECURITY_EXCEPTION) },
                 queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.SECURITY_EXCEPTION) }
             )
 
-            // Os três passos que consultam a API (loopback, túnel e tupla inexistente) receberam
-            // SEM_PERMISSAO: o resultado é inconclusivo — nunca "não é do jogo".
-            assertEquals(3, report.noPermission)
+            assertEquals(2, report.noPermission)
             assertEquals(0, report.resolved)
             assertEquals(0, report.invalid)
-            val expectation = report.expectation()
-            assertTrue("precisa dizer que é inconclusivo: $expectation", expectation.contains("inconclusivo"))
-            assertTrue(expectation.contains("VPN ATIVO"))
+            assertTrue(report.expectation().contains("UNKNOWN"))
+            assertTrue(report.expectation().contains("VPN ativo"))
         } finally {
-            runCatching { client.close() }
             runCatching { listener.close() }
         }
     }
@@ -184,24 +142,34 @@ class OwnerProbeTest {
     fun connectionFailureIsSkipNotFabricatedResult() {
         val report = OwnerProbe.run(
             loopbackPort = 44321,
-            tunnelAddress = CdnRouterConfig.VPN_ADDRESS,
-            tunnelPort = CdnRouterConfig.LOCAL_HTTPS_PORT,
-            tunnelAddressAssigned = true,
-            selfPortRegistrar = {},
+            targetPackage = "com.activision.callofduty.warzone",
             connect = { _, _ -> throw java.net.ConnectException("recusada") },
             querySocket = { ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) },
             queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) }
         )
 
         assertFalse(report.steps[0].ran)
-        assertFalse(report.steps[1].ran)
         assertTrue(report.steps[0].skippedReason!!.contains("não foi possível conectar"))
-        assertTrue("o passo da tupla inexistente não depende de socket", report.steps[2].ran)
-        assertEquals("nenhuma autoria resolvida", 0, report.resolved)
-        assertEquals(
-            "o único resultado é a tupla inexistente (INVALID_UID) — nada de resultado fabricado",
-            1,
-            report.invalid
-        )
+        assertTrue("a tupla ausente não depende do listener", report.steps[1].ran)
+        assertEquals(0, report.resolved)
+        assertEquals("uma única consulta foi INVALID_UID", 1, report.invalid)
+    }
+
+    @Test
+    fun unexpectedQueryExceptionIsNotMisclassifiedAsMissingAddresses() {
+        val listener = loopbackListener()
+        try {
+            val report = OwnerProbe.run(
+                loopbackPort = listener.localPort,
+                targetPackage = "com.activision.callofduty.warzone",
+                connect = { host, port -> Socket(host, port) },
+                querySocket = { throw IllegalStateException("platform failure") },
+                queryTuple = { _, _, _ -> ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID) }
+            )
+            assertEquals(ConnectionOwnership.Outcome.CONSULTA_FALHOU, report.steps[0].result?.outcome)
+            assertTrue(report.lines()[0].contains("CONSULTA_FALHOU"))
+        } finally {
+            runCatching { listener.close() }
+        }
     }
 }

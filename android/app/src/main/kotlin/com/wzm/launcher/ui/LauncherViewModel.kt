@@ -98,11 +98,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(serverStatus = ServerStatus.INICIANDO, isServerStarting = true)
             val result = serverController.start()
             _uiState.value = _uiState.value.copy(serverStatus = result, isServerStarting = false)
-            when (result) {
-                ServerStatus.ONLINE -> log("Servidor stub ONLINE em ${LauncherConfig.HOST}:${LauncherConfig.PORT}")
-                ServerStatus.ERRO -> log("Erro ao iniciar servidor stub")
-                else -> log("Servidor stub: $result")
+            val resultMessage = when (result) {
+                ServerStatus.ONLINE -> "Servidor stub ONLINE em ${LauncherConfig.HOST}:${LauncherConfig.PORT}"
+                ServerStatus.ERRO -> "Erro ao iniciar servidor stub"
+                ServerStatus.PARADO,
+                ServerStatus.INICIANDO,
+                ServerStatus.PARANDO -> "Servidor stub: $result"
             }
+            log(resultMessage)
         }
     }
 
@@ -250,12 +253,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(wzmStatus = WzmStatus.INICIANDO)
         val result = wzmLauncher.launch()
         if (result.success) {
-            // M3.5: marcador de sessão — conexões anteriores a este instante não podem ser do WZM.
+            // M3.5: registra o retorno bem-sucedido do pedido de lançamento do launcher, não a criação
+            // do processo. Um processo/helper pode preexistir; a marca só permite correlação temporal.
             val startedAt = System.currentTimeMillis()
             RequestLog.markWzmStarted(startedAt)
             log(
-                "Warzone Mobile iniciado — marcador de sessão epochMs=$startedAt: conexões anteriores a " +
-                    "este instante (inclusive em 127.0.0.1:443) NÃO podem ser atribuídas ao WZM"
+                "pedido de lançamento do Warzone Mobile retornou sucesso — marcador epochMs=$startedAt; " +
+                    "antes/depois é ordem temporal apenas, não atribuição de processo ou tráfego"
             )
             _uiState.value = _uiState.value.copy(wzmStatus = WzmStatus.EXECUTANDO)
         } else {

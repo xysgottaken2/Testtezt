@@ -6,10 +6,11 @@ import android.net.TrafficStats
  * Contabilidade de tráfego **por UID** (M3.6) — a peça que faltava para responder à pergunta
  * "o WZM está gerando tráfego de rede?" **sem** depender do TUN.
  *
- * Motivo: na evidência de 2026-10-04 o túnel ficou silencioso depois de iniciar o WZM. Isso admite
- * duas leituras opostas — (a) o jogo não fez rede naquela janela; (b) o jogo fez rede e ela **não
- * passou pelo túnel**. [android.net.TrafficStats] responde por UID (contadores do kernel, desde o
- * boot), então a diferença entre duas amostras separa as duas hipóteses com observação, não achismo.
+ * Motivo: no registro de 2026-10-04 não foram observados pacotes no TUN após o marcador de lançamento.
+ * Essa ausência não determina se o WZM tentou rede nem qual caminho usou. [android.net.TrafficStats]
+ * responde por UID (contadores cumulativos do kernel, desde o boot): crescimento medido enquanto o TUN
+ * está vazio pode apoiar uma hipótese PROBABLE de tráfego daquele UID fora do TUN, mas inclui helpers e
+ * não identifica processo/rota. Sem crescimento ou sem contadores utilizáveis, a causa permanece UNKNOWN.
  *
  * Limites, declarados em vez de escondidos:
  *  * os contadores contam **o UID**, não um processo: processos auxiliares do mesmo pacote entram juntos;

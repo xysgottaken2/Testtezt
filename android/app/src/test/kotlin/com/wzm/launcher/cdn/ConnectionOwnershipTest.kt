@@ -5,6 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.Socket
 
 /**
@@ -13,7 +16,7 @@ import java.net.Socket
  * para "dono existe mas está fora da VPN que chamou" (AOSP: `appliesToUid`) — colapsar os dois em
  * "não é do jogo" seria o erro que este arquivo existe para impedir.
  *
- * Nada aqui toca rede ou Android: são classificações puras.
+ * O único teste de socket abaixo usa loopback sintético local; nenhum tráfego externo é gerado.
  */
 class ConnectionOwnershipTest {
 
@@ -70,14 +73,33 @@ class ConnectionOwnershipTest {
     }
 
     @Test
-    fun illegalArgumentMeansUnsupportedProtocolAndOthersMeanUnusableAddresses() {
+    fun everyOperationalOutcomeIsExplicitlyDescribedAsUnavailable() {
+        listOf(
+            ConnectionOwnership.Outcome.API_ANTIGA,
+            ConnectionOwnership.Outcome.SERVICO_INDISPONIVEL,
+            ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+            ConnectionOwnership.Outcome.ARGUMENTO_INVALIDO,
+            ConnectionOwnership.Outcome.CONSULTA_FALHOU
+        ).forEach { outcome ->
+            val line = ConnectionOwnership.describe(ConnectionOwnership.Result(outcome))
+            assertTrue("$outcome deve ser indisponível: $line", line.contains("dono=INDISPONIVEL"))
+            assertTrue("$outcome deve manter seu código: $line", line.contains(outcome.code))
+        }
+    }
+
+    @Test
+    fun onlyIllegalArgumentMeansBadInputAndOtherFailuresStayDistinct() {
         assertEquals(
             ConnectionOwnership.Outcome.ARGUMENTO_INVALIDO,
             ConnectionOwnership.classifyException(IllegalArgumentException("protocol")).outcome
         )
         assertEquals(
-            ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
-            ConnectionOwnership.classifyException(IOException("sem tupla")).outcome
+            ConnectionOwnership.Outcome.CONSULTA_FALHOU,
+            ConnectionOwnership.classifyException(IOException("platform query failed")).outcome
+        )
+        assertEquals(
+            ConnectionOwnership.Outcome.CONSULTA_FALHOU,
+            ConnectionOwnership.classifyException(IllegalStateException("binder failed")).outcome
         )
     }
 
@@ -89,6 +111,31 @@ class ConnectionOwnershipTest {
         assertEquals(null, ConnectionOwnership.toInet(socket.localSocketAddress))
         assertEquals(null, ConnectionOwnership.toInet(socket.remoteSocketAddress))
         assertEquals(null, ConnectionOwnership.toInet(null))
+    }
+
+
+    @Test
+    fun acceptedServerSocketMustBeReversedToQueryItsClientPeer() {
+        val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
+        val client = Socket()
+        var accepted: Socket? = null
+        try {
+            client.connect(InetSocketAddress("127.0.0.1", listener.localPort))
+            accepted = listener.accept()
+
+            val clientTuple = ConnectionOwnership.tupleForSocket(client)!!
+            val acceptedServerTuple = ConnectionOwnership.tupleForSocket(accepted)!!
+            val acceptedPeerTuple = ConnectionOwnership.peerTupleForAcceptedSocket(accepted)!!
+
+            assertEquals("peer query equals the connecting client's own tuple", clientTuple, acceptedPeerTuple)
+            assertEquals(acceptedServerTuple.remote, acceptedPeerTuple.local)
+            assertEquals(acceptedServerTuple.local, acceptedPeerTuple.remote)
+            assertFalse("accepted server tuple identifies the server side, not the peer", acceptedServerTuple == acceptedPeerTuple)
+        } finally {
+            runCatching { accepted?.close() }
+            runCatching { client.close() }
+            runCatching { listener.close() }
+        }
     }
 
     @Test

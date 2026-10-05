@@ -1,6 +1,8 @@
-# APK WebView Patch — Protótipo separado (NÃO instalar sem review)
+# APK WebView patch — protótipo retirado
 
-> **Objetivo M2.1-D:** se os métodos não-invasivos A/B/C falharem (WebView ignora hotspot DNS / proxy / pinning bloqueia CA user), este protótipo mostra **exatamente** o que seria alterado num repack do APK 3.10.0. **Não aplique sem ler `APK_PATCH_DIFF.md` e sem aprovação.**
+> **DEPRECATED / NÃO APLICAR.** Este diretório era um rascunho de M2.1. Patch, repack, reassinatura,
+> instalação ou alteração de `network_security_config` do APK WZM estão fora do escopo vigente.
 
-**Regras:** sem tocar Activision (só localhost), sem auth/Demonware, sem distribuir APK, reassinar com keystore debug local.
-
+Não há patch funcional aqui, e nada deve ser compilado/aplicado ao APK do jogo. M3.2/M4.1 determinam
+investigação read-only até que o caminho de rede real seja atribuído; TLS/trust/pinning permanecem
+intocados. Consulte [`APK_PATCH_DIFF.md`](APK_PATCH_DIFF.md) para a nota de retirada e as fontes atuais.

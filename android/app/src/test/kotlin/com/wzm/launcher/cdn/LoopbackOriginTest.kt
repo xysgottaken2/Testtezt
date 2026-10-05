@@ -5,118 +5,126 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * M4.1: qual veredito dar a uma conexão que chega no listener — e com **qual nível de confiança**.
- *
- * Precedência (nunca invertida): uid resolvido pela API > marca do próprio processo (teste sintético
- * + janela de portas) > porta registrada pelo processo > INDETERMINADO. O veredito `VERIFIED` fica
- * reservado ao que a API resolveu e ao que o próprio processo abriu de propósito.
- */
+/** M4.1: distingue UID, processo exato e mera correlação temporal sem promover localhost a tráfego WZM. */
 class LoopbackOriginTest {
 
     private fun facts(
         roleLoopback: Boolean = true,
         peerPort: Int = 45000,
-        ownerUid: Int? = null,
+        peerUid: Int? = null,
+        ownerOutcome: ConnectionOwnership.Outcome =
+            if (peerUid == null) ConnectionOwnership.Outcome.INVALID_UID else ConnectionOwnership.Outcome.RESOLVIDO,
         launcherUid: Int = 10101,
         targetUid: Int? = 10692,
         duranteTeste: Boolean = false,
-        portVerdict: SelfPorts.PortVerdict = SelfPorts.PortVerdict.INDETERMINADO
+        portVerdict: SelfPorts.PortVerdict = SelfPorts.PortVerdict.INDETERMINADO,
+        registeredProcessPid: Int? = null
     ) = LoopbackOrigin.Facts(
         roleLoopback = roleLoopback,
         peerAddress = "127.0.0.1",
         peerPort = peerPort,
-        ownerUidResolvido = ownerUid,
+        peerOwnerResult = ConnectionOwnership.Result(ownerOutcome, uid = peerUid),
         launcherUid = launcherUid,
         targetUid = targetUid,
         duranteTesteSintetico = duranteTeste,
-        portVerdict = portVerdict
+        portVerdict = portVerdict,
+        registeredProcessPid = registeredProcessPid
     )
 
     @Test
-    fun resolvedUidsDecideBeforeAnythingElse() {
-        val launcher = LoopbackOrigin.conclude(facts(ownerUid = 10101))
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, launcher.verdict)
+    fun resolvedUidIdentifiesUidButNotPidOrProcess() {
+        val launcher = LoopbackOrigin.conclude(facts(peerUid = 10101))
+        assertEquals(LoopbackOrigin.Verdict.UID_LAUNCHER, launcher.verdict)
         assertEquals(Evidence.VERIFIED, launcher.evidence)
+        assertTrue(launcher.detail.contains("não identifica PID/processo"))
 
-        val target = LoopbackOrigin.conclude(facts(ownerUid = 10692))
-        assertEquals(LoopbackOrigin.Verdict.APP_ALVO, target.verdict)
+        val target = LoopbackOrigin.conclude(facts(peerUid = 10692))
+        assertEquals(LoopbackOrigin.Verdict.UID_APP_ALVO, target.verdict)
         assertEquals(Evidence.VERIFIED, target.evidence)
-        assertTrue(
-            "uid do app alvo é prova de autoria (a API só resolve uid dentro da VPN)",
-            target.detail.contains("evidência de autoria")
-        )
+        assertTrue(target.detail.contains("não prova tráfego externo do WZM"))
 
-        val other = LoopbackOrigin.conclude(facts(ownerUid = 2000))
+        val other = LoopbackOrigin.conclude(facts(peerUid = 2000))
         assertEquals(LoopbackOrigin.Verdict.OUTRO_UID, other.verdict)
         assertEquals(Evidence.VERIFIED, other.evidence)
+        assertTrue(other.detail.contains("não identifica processo/PID"))
     }
 
     @Test
     fun launcherUidWinsOverTargetUidWhenTheyWouldBeEqual() {
-        // Cinto de segurança de precedência: se os dois uids coincidirem, o veredito é "launcher".
-        val conclusion = LoopbackOrigin.conclude(facts(ownerUid = 10101, launcherUid = 10101, targetUid = 10101))
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, conclusion.verdict)
+        val conclusion = LoopbackOrigin.conclude(
+            facts(peerUid = 10101, launcherUid = 10101, targetUid = 10101)
+        )
+        assertEquals(LoopbackOrigin.Verdict.UID_LAUNCHER, conclusion.verdict)
     }
 
     @Test
-    fun syntheticWindowIsProbableNotProof() {
-        val conclusion = LoopbackOrigin.conclude(
-            facts(duranteTeste = true, portVerdict = SelfPorts.PortVerdict.NA_JANELA_DO_PROCESSO)
+    fun syntheticWindowIsOnlyAProbableHintAndNotCausalProof() {
+        val synthetic = facts(
+            duranteTeste = true,
+            portVerdict = SelfPorts.PortVerdict.NA_JANELA_EFIMERA_OBSERVADA
         )
-
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, conclusion.verdict)
-        assertEquals(
-            "a mesma porta na janela do teste sintético é PROBABLE, não prova: ${conclusion.detail}",
-            Evidence.PROBABLE,
-            conclusion.evidence
-        )
-        assertTrue("precisa admitir que a janela é compartilhada: ${conclusion.detail}", conclusion.detail.contains("compartilhada"))
-        assertTrue(
-            "o nível exato precisa aparecer na linha do log",
-            LoopbackOrigin.line(facts(duranteTeste = true, portVerdict = SelfPorts.PortVerdict.NA_JANELA_DO_PROCESSO))
-                .contains("(PROBABLE)")
-        )
+        val conclusion = LoopbackOrigin.conclude(synthetic)
+        assertEquals(LoopbackOrigin.Verdict.POSSIVEL_LAUNCHER, conclusion.verdict)
+        assertEquals(Evidence.PROBABLE, conclusion.evidence)
+        assertTrue(conclusion.detail.contains("não provam"))
+        assertTrue(LoopbackOrigin.line(synthetic).contains("(PROBABLE)"))
     }
 
     @Test
     fun windowWithoutTheSyntheticMarkDoesNotAttributeAnything() {
         val conclusion = LoopbackOrigin.conclude(
-            facts(duranteTeste = false, portVerdict = SelfPorts.PortVerdict.NA_JANELA_DO_PROCESSO)
+            facts(
+                duranteTeste = false,
+                portVerdict = SelfPorts.PortVerdict.NA_JANELA_EFIMERA_OBSERVADA
+            )
         )
         assertEquals(LoopbackOrigin.Verdict.INDETERMINADO, conclusion.verdict)
     }
 
     @Test
-    fun aPortRegisteredByThisProcessIsVerified() {
+    fun exactRegisteredConnectionTupleIdentifiesTheLauncherControlSocket() {
         val conclusion = LoopbackOrigin.conclude(
-            facts(portVerdict = SelfPorts.PortVerdict.REGISTRADA_PELO_PROCESSO)
+            facts(
+                peerUid = 10101,
+                portVerdict = SelfPorts.PortVerdict.TUPLA_REGISTRADA_PELO_PROCESSO,
+                registeredProcessPid = 1234
+            )
         )
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, conclusion.verdict)
+        assertEquals(LoopbackOrigin.Verdict.PROCESSO_LAUNCHER, conclusion.verdict)
         assertEquals(Evidence.VERIFIED, conclusion.evidence)
+        assertTrue(conclusion.detail.contains("tupla completa"))
+        assertTrue(conclusion.detail.contains("PID=1234"))
+        assertTrue(
+            LoopbackOrigin.line(
+                facts(
+                    portVerdict = SelfPorts.PortVerdict.TUPLA_REGISTRADA_PELO_PROCESSO,
+                    registeredProcessPid = 1234
+                )
+            ).contains("pid-do-processo-registrado=1234")
+        )
     }
 
     @Test
-    fun withoutUidAndWithoutMarkTheVerdictIsIndeterminateWithTheLoopbackCaveat() {
-        val conclusion = LoopbackOrigin.conclude(facts())
-        assertEquals(LoopbackOrigin.Verdict.INDETERMINADO, conclusion.verdict)
-        assertEquals(Evidence.UNKNOWN, conclusion.evidence)
+    fun invalidUidRemainsDistinctFromPermissionOrApiFailure() {
+        val invalid = LoopbackOrigin.report(facts())
+        assertEquals(LoopbackOrigin.Verdict.INDETERMINADO, invalid.verdict)
+        assertEquals(Evidence.UNKNOWN, invalid.evidence)
+        assertTrue(invalid.text.contains("INVALID_UID"))
+        assertTrue(invalid.text.contains("owner-outcome=INVALID_UID"))
+        assertTrue(invalid.text.contains("fora do escopo da VPN"))
 
-        val line = LoopbackOrigin.line(facts(), conclusion)
-        assertTrue("a linha precisa citar o veredito", line.contains("origem-da-conexao=indeterminado"))
-        assertTrue("a linha precisa citar a porta e o veredito dela", line.contains("porta-de-origem=45000"))
-        assertTrue("loopback não passa pelo túnel precisa estar explícito", line.contains("não passa pelo túnel"))
+        val denied = LoopbackOrigin.report(facts(ownerOutcome = ConnectionOwnership.Outcome.SECURITY_EXCEPTION))
+        assertEquals(Evidence.UNKNOWN, denied.evidence)
+        assertTrue(denied.text.contains("SecurityException"))
+        assertFalse("erro de permissão não pode ser rotulado como INVALID_UID", denied.text.contains("owner-outcome=INVALID_UID"))
 
-        val viaTunnel = LoopbackOrigin.line(facts(roleLoopback = false))
-        assertFalse(
-            "a ressalva de loopback não vale para o endereço do túnel",
-            viaTunnel.contains("não passa pelo túnel")
-        )
+        val failed = LoopbackOrigin.report(facts(ownerOutcome = ConnectionOwnership.Outcome.CONSULTA_FALHOU))
+        assertTrue(failed.text.contains("erro da plataforma"))
     }
 
     @Test
     fun reportPairsVerdictWithTheSameTextUsedInTheLog() {
-        val f = facts(portVerdict = SelfPorts.PortVerdict.REGISTRADA_PELO_PROCESSO)
+        val f = facts(portVerdict = SelfPorts.PortVerdict.TUPLA_REGISTRADA_PELO_PROCESSO)
         val report = LoopbackOrigin.report(f)
 
         assertEquals(LoopbackOrigin.conclude(f).verdict, report.verdict)
@@ -125,21 +133,20 @@ class LoopbackOriginTest {
     }
 
     @Test
-    fun reportCarriesTheExactEvidenceLevelNotTheTypicalOne() {
-        // O mesmo veredito (mesmo-processo) tem dois níveis: uid resolvido/porta registrada = VERIFIED;
-        // janela do teste sintético = PROBABLE. O nível tem de vir da CONCLUSÃO, não do enum.
+    fun reportKeepsProbableUidAndUnknownEvidenceLevelsSeparate() {
         val probable = LoopbackOrigin.report(
-            facts(duranteTeste = true, portVerdict = SelfPorts.PortVerdict.NA_JANELA_DO_PROCESSO)
+            facts(
+                duranteTeste = true,
+                portVerdict = SelfPorts.PortVerdict.NA_JANELA_EFIMERA_OBSERVADA
+            )
         )
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, probable.verdict)
+        assertEquals(LoopbackOrigin.Verdict.POSSIVEL_LAUNCHER, probable.verdict)
         assertEquals(Evidence.PROBABLE, probable.evidence)
 
-        val verified = LoopbackOrigin.report(
-            facts(portVerdict = SelfPorts.PortVerdict.REGISTRADA_PELO_PROCESSO)
-        )
-        assertEquals(LoopbackOrigin.Verdict.MESMO_PROCESSO, verified.verdict)
-        assertEquals(Evidence.VERIFIED, verified.evidence)
+        val uid = LoopbackOrigin.report(facts(peerUid = 10692))
+        assertEquals(LoopbackOrigin.Verdict.UID_APP_ALVO, uid.verdict)
+        assertEquals(Evidence.VERIFIED, uid.evidence)
 
-        assertTrue(LoopbackOrigin.Verdict.INDETERMINADO.label.contains("indeterminado"))
+        assertEquals(Evidence.UNKNOWN, LoopbackOrigin.Verdict.INDETERMINADO.evidence)
     }
 }

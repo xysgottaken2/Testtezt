@@ -22,8 +22,7 @@ class HypothesisBoardTest {
         uidTrafficBytesSinceStart: Long? = null,
         uidTrafficGrew: Boolean? = null,
         ipv6Profiles: List<String> = emptyList(),
-        targetDeclaredProcesses: List<String> = listOf("com.activision.callofduty.warzone"),
-        uidTrafficOutsideTunnel: Boolean = false
+        targetDeclaredProcesses: List<String> = listOf("com.activision.callofduty.warzone")
     ) = DiagFacts(
         perAppApplied = perAppApplied,
         perAppError = if (perAppApplied) null else "sem pacote alvo",
@@ -39,8 +38,7 @@ class HypothesisBoardTest {
         uidTrafficBytesSinceStart = uidTrafficBytesSinceStart,
         uidTrafficGrew = uidTrafficGrew,
         ipv6Profiles = ipv6Profiles,
-        targetDeclaredProcesses = targetDeclaredProcesses,
-        uidTrafficOutsideTunnel = uidTrafficOutsideTunnel
+        targetDeclaredProcesses = targetDeclaredProcesses
     )
 
     private fun claim(counters: RequestCounters, id: String, facts: DiagFacts = baseFacts()): EvidenceClaim =
@@ -62,14 +60,16 @@ class HypothesisBoardTest {
     }
 
     @Test
-    fun trafficFromTargetIsOnlyProbableWithoutOwnerEvidence() {
+    fun tunnelPacketsWithoutTargetUidAreNotWarzoneEvidence() {
         val packetsOnly = RequestCounters(tunPacketsTotal = 12)
         val claim = claim(packetsOnly, "trafego_do_app_alvo_no_tun")
-        assertEquals(Evidence.PROBABLE, claim.level)
-        assertTrue("deve explicar que per-app não é prova de autoria", claim.detail.contains("não é prova de autoria"))
+        assertEquals(Evidence.UNKNOWN, claim.level)
+        assertTrue("pacote sem UID não pode ser atribuído ao WZM", claim.detail.contains("não são evidência"))
 
-        val withOwner = RequestCounters(tunPacketsTotal = 12, tunUidVerifiedFlows = 1)
-        assertEquals(Evidence.VERIFIED, claim(withOwner, "trafego_do_app_alvo_no_tun").level)
+        val withTargetUid = RequestCounters(tunPacketsTotal = 12, tunUidVerifiedFlows = 1)
+        val verified = claim(withTargetUid, "trafego_do_app_alvo_no_tun")
+        assertEquals(Evidence.VERIFIED, verified.level)
+        assertTrue("a API identifica UID, não PID/processo", verified.detail.contains("não o processo/PID"))
         assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "trafego_do_app_alvo_no_tun").level)
     }
 
@@ -80,14 +80,11 @@ class HypothesisBoardTest {
             Evidence.VERIFIED,
             claim(RequestCounters(dnsIntercepted = 2, dnsQueries = 5), "consulta_dns_de_host_cdni").level
         )
-        assertEquals(
-            Evidence.VERIFIED,
-            claim(RequestCounters(tunUdpDnsNoVirtualDns = 3), "dns_do_app_no_dns_virtual").level
-        )
-        assertEquals(
-            Evidence.UNKNOWN,
-            claim(RequestCounters(tunUdpDns53 = 3), "dns_do_app_no_dns_virtual").level
-        )
+        val observedDns = claim(RequestCounters(tunUdpDnsNoVirtualDns = 3), "consulta_dns_no_dns_virtual")
+        assertEquals(Evidence.VERIFIED, observedDns.level)
+        assertTrue(observedDns.detail.contains("origem UID/processo não foi confirmada"))
+        assertEquals(Evidence.UNKNOWN, claim(RequestCounters(tunUdpDnsNoVirtualDns = 3), "dns_do_app_no_dns_virtual").level)
+        assertEquals(Evidence.UNKNOWN, claim(RequestCounters(tunUdpDns53 = 3), "dns_do_app_no_dns_virtual").level)
     }
 
     @Test
@@ -95,12 +92,16 @@ class HypothesisBoardTest {
         assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "pacotes_ipv6_no_tun").level)
         val ipv6 = claim(RequestCounters(tunIpv6Packets = 2, tunIpv6ToCdnTarget = 2), "pacotes_ipv6_no_tun")
         assertEquals(Evidence.VERIFIED, ipv6.level)
-        assertTrue(ipv6.detail.contains("não atendidos por política"))
+        assertTrue(ipv6.detail.contains("origem UID/processo não confirmada"))
 
         assertEquals(Evidence.UNKNOWN, claim(RequestCounters(), "tcp_para_o_alvo_cdni_443").level)
         assertEquals(
-            Evidence.VERIFIED,
+            Evidence.UNKNOWN,
             claim(RequestCounters(tunTcpSynToRedirect = 1), "tcp_para_o_alvo_cdni_443").level
+        )
+        assertEquals(
+            Evidence.VERIFIED,
+            claim(RequestCounters(tunTcpSynToRedirect = 1, tunUidVerifiedCdniSyns = 1), "tcp_para_o_alvo_cdni_443").level
         )
     }
 
@@ -124,15 +125,25 @@ class HypothesisBoardTest {
             loopbackClaim.detail.contains("do WZM chegou")
         )
 
-        // Uma conexão no listener do túnel (com TLS) já promove os dois claims para VERIFIED.
-        val tunnelOnly = RequestCounters(tcpConnectionsTunel = 1, tlsOkTunel = 1)
-        assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "conexoes_no_listener_do_tunel").level)
-        assertEquals(Evidence.VERIFIED, claim(tunnelOnly, "tls_no_listener_do_tunel").level)
-        assertTrue(claim(tunnelOnly, "tls_no_listener_do_tunel").detail.contains("1 aceito"))
-        assertTrue(
-            "o claim do listener precisa negar autoria de conexão feita pelo próprio launcher",
-            claim(tunnelOnly, "conexoes_no_listener_do_tunel").detail.contains("prova o CAMINHO, NÃO o WZM")
+        // Listener/TLS observados sem owner UID não atribuem a conexão ao WZM.
+        val tunnelUnowned = RequestCounters(tcpConnectionsTunel = 1, tlsOkTunel = 1)
+        assertEquals(Evidence.UNKNOWN, claim(tunnelUnowned, "conexoes_no_listener_do_tunel").level)
+        assertEquals(Evidence.UNKNOWN, claim(tunnelUnowned, "tls_no_listener_do_tunel").level)
+        assertTrue(claim(tunnelUnowned, "tls_no_listener_do_tunel").detail.contains("nenhum owner UID-alvo"))
+
+        val targetOwned = RequestCounters(
+            tcpConnectionsTunel = 1,
+            tcpConnectionsTunelUidAlvo = 1,
+            tlsOkTunel = 1,
+            tlsOkTunelUidAlvo = 1
         )
+        assertEquals(Evidence.VERIFIED, claim(targetOwned, "conexoes_no_listener_do_tunel").level)
+        assertEquals(Evidence.VERIFIED, claim(targetOwned, "tls_no_listener_do_tunel").level)
+        assertTrue(claim(targetOwned, "tls_no_listener_do_tunel").detail.contains("UID não identifica PID/processo"))
+
+        val synthetic = RequestCounters(tcpConnectionsTunel = 1, tcpConnectionsTunelSintetico = 1, tlsOkTunel = 1)
+        assertEquals(Evidence.UNKNOWN, claim(synthetic, "conexoes_no_listener_do_tunel").level)
+        assertTrue(claim(synthetic, "conexoes_no_listener_do_tunel").detail.contains("caminho apenas"))
 
         assertEquals(
             Evidence.UNKNOWN,
@@ -141,12 +152,12 @@ class HypothesisBoardTest {
     }
 
     @Test
-    fun loopbackBeforeWzmStartIsReportedAsSuch() {
+    fun loopbackBeforeLauncherLaunchMarkerIsReportedAsTemporalOrder() {
         val claim = claim(
             RequestCounters(tcpConnectionsLoopback = 5, loopbackAntesDoWzm = 5),
             "conexoes_de_loopback_sao_diagnostico"
         )
-        assertTrue(claim.detail.contains("antes do WZM iniciado=5"))
+        assertTrue(claim.detail.contains("antes do marcador de lançamento=5"))
         assertTrue(claim.detail.contains("depois=0"))
     }
 
@@ -157,17 +168,17 @@ class HypothesisBoardTest {
         val claim = claim(RequestCounters(), "trafego_do_app_alvo_fora_do_tunel", facts)
         assertEquals(Evidence.PROBABLE, claim.level)
         assertTrue(claim.detail, claim.detail.contains("CRESCEU"))
-        assertTrue(claim.detail, claim.detail.contains("FORA do túnel"))
+        assertTrue(claim.detail, claim.detail.contains("não passou pelo TUN"))
         assertFalse("não pode afirmar causalidade", claim.detail.contains("por causa"))
         assertTrue("precisa lembrar que a conta é por UID", claim.detail.contains("por UID"))
     }
 
     @Test
-    fun noGrowthWithEmptyTunnelIsVerifiedThatTheAppDidNotUseTheNetwork() {
+    fun noUidGrowthAndEmptyTunnelDoNotProveAbsenceOfNetworkActivity() {
         val facts = baseFacts(uidTrafficAvailable = true, uidTrafficGrew = false)
         val claim = claim(RequestCounters(), "trafego_do_app_alvo_fora_do_tunel", facts)
-        assertEquals(Evidence.VERIFIED, claim.level)
-        assertTrue(claim.detail, claim.detail.contains("não fez rede"))
+        assertEquals(Evidence.UNKNOWN, claim.level)
+        assertTrue(claim.detail, claim.detail.contains("não prova ausência de rede"))
     }
 
     @Test
@@ -178,7 +189,7 @@ class HypothesisBoardTest {
     }
 
     @Test
-    fun ipv6OnlyDiscoveryIsProbableAndNeverAttributedToTheGame() {
+    fun ipv6DiscoveryProfileIsProbableButNotAttributedToAnyProcess() {
         val counters = RequestCounters(
             tunIpv6Packets = 10,
             tunIpv6DescobertaLocal = 10,
@@ -209,12 +220,12 @@ class HypothesisBoardTest {
     fun dnsDestinationMatchingDistinguishesResolvedFromUnresolvedDestinations() {
         val resolved = claim(RequestCounters(dnsRespostasRegistradas = 2, tunFluxosDestinoResolvido = 1),
             "dns_observado_para_os_destinos")
-        assertEquals(Evidence.PROBABLE, resolved.level)
-        assertTrue(resolved.detail, resolved.detail.contains("a resolução passou pelo túnel"))
+        assertEquals(Evidence.VERIFIED, resolved.level)
+        assertTrue(resolved.detail, resolved.detail.contains("não liga app/processo"))
 
         val unmatched = claim(RequestCounters(dnsRespostasRegistradas = 3), "dns_observado_para_os_destinos")
-        assertTrue(unmatched.detail, unmatched.detail.contains("HYPOTHESIS"))
-        assertTrue(unmatched.detail, unmatched.detail.contains("não causa"))
+        assertEquals(Evidence.UNKNOWN, unmatched.level)
+        assertTrue(unmatched.detail, unmatched.detail.contains("não permite concluir"))
 
         val nothing = claim(RequestCounters(), "dns_observado_para_os_destinos")
         assertEquals(Evidence.UNKNOWN, nothing.level)
@@ -261,7 +272,7 @@ class HypothesisBoardTest {
             claim(RequestCounters(dnsQueries = 2, dnsForwarded = 2), "wzm_resolve_cdni_por_mecanismo_proprio").level
         )
         assertEquals(
-            Evidence.PROBABLE,
+            Evidence.UNKNOWN,
             claim(RequestCounters(tunDohCandidates = 1), "wzm_resolve_cdni_por_mecanismo_proprio").level
         )
         assertEquals(
@@ -279,7 +290,7 @@ class HypothesisBoardTest {
         assertEquals(Evidence.VERIFIED, captura.level)
         assertTrue(
             "a distinção allowlist != captura total é a base do M4.1: ${captura.detail}",
-            captura.detail.contains("não") && captura.detail.contains("capturado")
+            captura.detail.contains("não") && captura.detail.contains("captura do WZM")
         )
         assertTrue("precisa citar a rota declarada: ${captura.detail}", captura.detail.contains(CdnRouterConfig.VPN_ROUTE))
     }
@@ -288,18 +299,18 @@ class HypothesisBoardTest {
     fun emptyTunIsOnlyProbableWhenTheUidTrafficGrew() {
         val grew = claim(RequestCounters(), "silencio_do_tun_e_escopo_ou_dns", baseFacts(uidTrafficGrew = true))
         assertEquals(Evidence.PROBABLE, grew.level)
-        assertTrue(grew.detail.contains("fora da rota declarada"))
+        assertTrue(grew.detail.contains("não passou pelo TUN"))
 
         val unknown = claim(
             RequestCounters(),
             "silencio_do_tun_e_escopo_ou_dns",
             baseFacts(uidTrafficAvailable = true, uidTrafficGrew = null)
         )
-        assertEquals(Evidence.HYPOTHESIS, unknown.level)
+        assertEquals(Evidence.UNKNOWN, unknown.level)
 
         val withPackets = claim(RequestCounters(tunPacketsTotal = 3), "silencio_do_tun_e_escopo_ou_dns")
         assertEquals(Evidence.UNKNOWN, withPackets.level)
-        assertTrue(withPackets.detail.contains("não se aplica"))
+        assertTrue(withPackets.detail.contains("não são prova de tráfego do WZM"))
     }
 
     @Test
@@ -310,13 +321,14 @@ class HypothesisBoardTest {
 
         val resolved = claim(RequestCounters(ownerProbeResolvido = 1), "atribuicao_de_dono_pela_api")
         assertEquals(Evidence.VERIFIED, resolved.level)
-        assertTrue(resolved.detail.contains("appliesToUid"))
+        assertTrue(resolved.detail.contains("não o resultado para o UID-alvo/WZM"))
+        assertTrue(resolved.detail.contains("não PID/processo"))
 
         val invalid = claim(RequestCounters(ownerProbeInvalid = 3), "atribuicao_de_dono_pela_api")
         assertEquals(Evidence.UNKNOWN, invalid.level)
         assertTrue(
             "INVALID_UID não pode virar afirmação de autoria: ${invalid.detail}",
-            invalid.detail.contains("NÃO autoriza")
+            invalid.detail.contains("UNKNOWN") && invalid.detail.contains("não pode ser generalizado")
         )
         assertFalse(invalid.detail.contains("é do jogo"))
         assertFalse("não pode dizer que é de outro app", invalid.detail.contains("de outro app"))
@@ -334,10 +346,17 @@ class HypothesisBoardTest {
         assertEquals(Evidence.UNKNOWN, none.level)
 
         val own = claim(RequestCounters(loopbackMesmoProcesso = 2), "origem_das_conexoes_loopback")
-        assertEquals(Evidence.PROBABLE, own.level)
-        assertTrue(own.detail.contains("alcançável por QUALQUER app"))
-        assertTrue(own.detail.contains("não passa pelo túnel"))
-        assertFalse("conexão de loopback não é tráfego do WZM", own.detail.contains("WZM fez"))
+        assertEquals(Evidence.VERIFIED, own.level)
+        assertTrue(own.detail.contains("UID resolvido identifica UID, não PID/processo"))
+        assertTrue(own.detail.contains("não prova tráfego externo do WZM"))
+        assertTrue(own.detail.contains("diagnóstico secundário"))
+
+        val targetUid = claim(RequestCounters(loopbackUidAlvo = 1), "origem_das_conexoes_loopback")
+        assertEquals(Evidence.VERIFIED, targetUid.level)
+        assertTrue("UID do peer não prova tráfego externo", targetUid.detail.contains("não prova tráfego externo"))
+
+        val probable = claim(RequestCounters(loopbackPossivelLauncher = 1), "origem_das_conexoes_loopback")
+        assertEquals(Evidence.PROBABLE, probable.level)
 
         val indeterminate = claim(RequestCounters(loopbackIndeterminado = 5), "origem_das_conexoes_loopback")
         assertEquals(Evidence.UNKNOWN, indeterminate.level)

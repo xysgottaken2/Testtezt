@@ -5,29 +5,34 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Process
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.SocketAddress
 
 /**
  * Autoria de uma conexão pela API pública do Android (M4.1).
  *
- * **O que a documentação e o AOSP dizem** (pesquisa registrada em
+ * **O que a documentação e o AOSP dizem** (fontes registradas em
  * `docs/research/m4.1-dono-das-conexoes-loopback.md`):
  *
- *  * `ConnectivityManager.getConnectionOwnerUid` (API 29+) devolve o uid do **socket** proprietário
- *    de um par (protocolo, endereço/porta local, endereço/porta remoto), usando netlink `inet_diag`;
- *  * só o **VPN ativo** (ou quem tem `NETWORK_STACK`) pode chamar; caso contrário `SecurityException`;
- *  * devolve `Process.INVALID_UID` (`-1`) em **dois** casos distintos: (a) a conexão não está na
- *    tabela do sistema; (b) a conexão existe, mas o uid dono **não está coberto** pela VPN que chama
- *    (`ConnectivityService`: `if (vpn != null && !vpn.appliesToUid(uid)) return INVALID_UID`).
+ *  * `ConnectivityManager.getConnectionOwnerUid` (API 29+) recebe a tupla orientada do socket:
+ *    endereço/porta **local** e **remoto**; o AOSP grava `local` como origem (`idiag_src/sport`) e
+ *    `remote` como destino (`idiag_dst/dport`) na consulta `inet_diag`;
+ *  * só o **VPN ativo** (ou quem tem `NETWORK_STACK`) pode chamar; caso contrário → `SecurityException`;
+ *  * devolve `Process.INVALID_UID` (`-1`) se a tupla não for encontrada **ou** se o UID encontrado não
+ *    estiver coberto pela VPN chamadora (`ConnectivityService`: `!vpn.appliesToUid(uid)`).
  *
- * **Consequência que muda a leitura do log antigo:** com allowlist estrita (só o WZM dentro da VPN),
- * a API responde `INVALID_UID` para **tudo** que não seja do WZM — inclusive para as conexões do
- * próprio launcher. `INVALID_UID` **não** autoriza dizer "não é do jogo" nem "é do jogo".
+ * **Consequência:** em um socket retornado por `ServerSocket.accept()`, `local` é o endpoint do
+ * servidor; para perguntar pelo dono do cliente/peer, a tupla tem de ser invertida (`remote -> local`).
+ * Não tentamos a direção oposta como fallback: isso poderia responder pelo socket do servidor e
+ * atribuir a conexão à parte errada.
  *
- * O caminho simétrico é o que interessa: se a API **resolver** um uid, esse uid está dentro da VPN —
- * e isso é evidência de autoria (autorização) que nenhuma outra técnica sem root oferece.
+ * `INVALID_UID` não autoriza dizer "não é do jogo" nem "é do jogo". Só um UID resolvido na direção
+ * correta pode atribuir o peer; ainda assim, a API dá **UID, não PID**.
  */
 object ConnectionOwnership {
+
+    /** Endpoints orientados do socket cujo UID estamos consultando. */
+    data class ConnectionTuple(val local: InetSocketAddress, val remote: InetSocketAddress)
 
     /** Desfecho de uma consulta de autoria — estados distintos, nunca colapsados em um booleano. */
     enum class Outcome(val code: String, val hint: String) {
@@ -42,15 +47,17 @@ object ConnectionOwnership {
             "SecurityException: quem chama não é o VPN ativo nem tem NETWORK_STACK"
         ),
         API_ANTIGA("API_ANTIGA", "getConnectionOwnerUid exige API 29+"),
+        SERVICO_INDISPONIVEL("SERVICO_INDISPONIVEL", "ConnectivityManager não está disponível"),
         ENDERECOS_INDISPONIVEIS("ENDERECOS_INDISPONIVEIS", "socket sem par de endereços utilizável"),
-        ARGUMENTO_INVALIDO("ARGUMENTO_INVALIDO", "protocolo não suportado (só TCP e UDP)")
+        ARGUMENTO_INVALIDO("ARGUMENTO_INVALIDO", "protocolo não suportado (só TCP e UDP)"),
+        CONSULTA_FALHOU("CONSULTA_FALHOU", "a consulta falhou por erro da plataforma; autoria desconhecida")
     }
 
     data class Result(
         val outcome: Outcome,
         val uid: Int? = null,
         val packages: List<String> = emptyList(),
-        val detail: String = ""
+        val detail: String = outcome.hint
     ) {
         /** `true` só quando a API provou a autoria (uid resolvido e coberto pela VPN). */
         val provesOwner: Boolean get() = outcome == Outcome.RESOLVIDO && uid != null
@@ -72,7 +79,7 @@ object ConnectionOwnership {
         val outcome = when (error) {
             is SecurityException -> Outcome.SECURITY_EXCEPTION
             is IllegalArgumentException -> Outcome.ARGUMENTO_INVALIDO
-            else -> Outcome.ENDERECOS_INDISPONIVEIS
+            else -> Outcome.CONSULTA_FALHOU
         }
         return Result(outcome, null, emptyList(), "${error.javaClass.simpleName}: ${error.message}")
     }
@@ -83,44 +90,61 @@ object ConnectionOwnership {
             "dono=uid=${result.uid}" + (if (result.packages.isNotEmpty()) " (${result.packages.joinToString(",")})" else "")
         Outcome.INVALID_UID ->
             "dono=NAO_RESOLVIDO (INVALID_UID — ${result.detail})"
-        else ->
+        Outcome.SECURITY_EXCEPTION,
+        Outcome.API_ANTIGA,
+        Outcome.SERVICO_INDISPONIVEL,
+        Outcome.ENDERECOS_INDISPONIVEIS,
+        Outcome.ARGUMENTO_INVALIDO,
+        Outcome.CONSULTA_FALHOU ->
             "dono=INDISPONIVEL (${result.outcome.code} — ${result.detail})"
     }
 
     /**
-     * Consulta real. Tenta as duas orientações (local→remoto e remoto→local) porque o `inet_diag`
-     * indexa a tupla na direção do cliente, que nem sempre é a que temos em mãos.
+     * Consulta uma tupla na direção explícita do socket que queremos identificar.
+     * Não inverte nem tenta fallback: `local` e `remote` têm semântica de origem/destino no AOSP.
      */
     fun query(
         context: Context,
         protocol: Int,
-        first: InetSocketAddress,
-        second: InetSocketAddress
+        local: InetSocketAddress,
+        remote: InetSocketAddress
     ): Result {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return Result(Outcome.API_ANTIGA)
         val manager = context.getSystemService(ConnectivityManager::class.java)
-            ?: return Result(Outcome.ENDERECOS_INDISPONIVEIS, detail = "ConnectivityManager ausente")
-        val order = listOf(first to second, second to first)
-        var last: Result? = null
-        for ((local, remote) in order) {
-            val result = try {
-                val uid = manager.getConnectionOwnerUid(protocol, local, remote)
-                classifyUid(uid, packagesFor(context, uid))
-            } catch (error: Throwable) {
-                classifyException(error)
-            }
-            if (result.provesOwner) return result
-            last = result
+            ?: return Result(Outcome.SERVICO_INDISPONIVEL)
+        return try {
+            val uid = manager.getConnectionOwnerUid(protocol, local, remote)
+            val packages = if (uid == Process.INVALID_UID) emptyList() else packagesFor(context, uid)
+            classifyUid(uid, packages)
+        } catch (error: Exception) {
+            classifyException(error)
         }
-        return last ?: Result(Outcome.ENDERECOS_INDISPONIVEIS)
     }
 
-    /** Consulta para um [java.net.Socket] já aceito. */
-    fun querySocket(context: Context, socket: java.net.Socket): Result {
-        val local = toInet(socket.localSocketAddress)
-        val remote = toInet(socket.remoteSocketAddress)
-        if (local == null || remote == null) return Result(Outcome.ENDERECOS_INDISPONIVEIS)
-        return query(context, PROTOCOL_TCP, local, remote)
+    /** Tupla orientada do socket conectado, isto é, do processo dono desse próprio socket. */
+    fun tupleForSocket(socket: Socket): ConnectionTuple? {
+        val local = toInet(socket.localSocketAddress) ?: return null
+        val remote = toInet(socket.remoteSocketAddress) ?: return null
+        return ConnectionTuple(local, remote)
+    }
+
+    /**
+     * Tupla do cliente para um socket aceito pelo servidor. `accept()` devolve o socket do lado
+     * servidor; o peer cliente tem os endpoints invertidos.
+     */
+    fun peerTupleForAcceptedSocket(socket: Socket): ConnectionTuple? =
+        tupleForSocket(socket)?.let { ConnectionTuple(local = it.remote, remote = it.local) }
+
+    /** Consulta para um [Socket] conectado que foi aberto por este processo (lado cliente). */
+    fun querySocket(context: Context, socket: Socket): Result {
+        val tuple = tupleForSocket(socket) ?: return Result(Outcome.ENDERECOS_INDISPONIVEIS)
+        return query(context, PROTOCOL_TCP, tuple.local, tuple.remote)
+    }
+
+    /** Consulta pelo processo peer, quando [socket] veio de `ServerSocket.accept()`. */
+    fun queryPeerOfAcceptedSocket(context: Context, socket: Socket): Result {
+        val tuple = peerTupleForAcceptedSocket(socket) ?: return Result(Outcome.ENDERECOS_INDISPONIVEIS)
+        return query(context, PROTOCOL_TCP, tuple.local, tuple.remote)
     }
 
     private fun packagesFor(context: Context, uid: Int): List<String> = runCatching {

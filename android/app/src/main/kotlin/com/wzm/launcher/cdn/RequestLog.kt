@@ -44,32 +44,42 @@ data class RequestCounters(
     val tunDotFlows: Int = 0,
     val tunDohCandidates: Int = 0,
     val tunTcp443Externo: Int = 0,
+    /** SYNs no TUN cujo owner UID resolvido é o UID-alvo; UID não identifica PID/processo. */
     val tunUidVerifiedFlows: Int = 0,
+    /** Subconjunto dos SYNs acima para 10.111.222.1:443. */
+    val tunUidVerifiedCdniSyns: Int = 0,
     /** Consultas DNS que NÃO eram do CDNI e foram encaminhadas ao DNS real. */
     val dnsForwarded: Int = 0,
     // ---- Listener local: separação por papel (M3.5) ----
-    /** Conexões aceitas no listener do ENDEREÇO DO TÚNEL (10.111.222.1:443) — único caminho com valor de evidência. */
+    /** Conexões aceitas no endereço do túnel, sem implicar autoria do WZM. */
     val tcpConnectionsTunel: Int = 0,
-    /** Conexões aceitas em 127.0.0.1:443 — DIAGNÓSTICO; nunca contam como evidência de tráfego do WZM. */
+    /** Aceitas fora da janela sintética e com owner UID resolvido igual ao UID do pacote-alvo. */
+    val tcpConnectionsTunelUidAlvo: Int = 0,
+    /** Aceitas no endereço do túnel durante o teste sintético; caminho do launcher, nunca prova WZM. */
+    val tcpConnectionsTunelSintetico: Int = 0,
+    /** Conexões aceitas em 127.0.0.1:443 — DIAGNÓSTICO; nunca contam como evidência de tráfego externo do WZM. */
     val tcpConnectionsLoopback: Int = 0,
     val tlsOkTunel: Int = 0,
     val tlsFailedTunel: Int = 0,
+    /** Handshakes na mesma conexão aceita cujo UID peer foi resolvido como UID-alvo. */
+    val tlsOkTunelUidAlvo: Int = 0,
+    val tlsFailedTunelUidAlvo: Int = 0,
     val tlsOkLoopback: Int = 0,
     val tlsFailedLoopback: Int = 0,
-    /** Conexões de loopback que ocorreram ANTES do WZM iniciado (não podem ser dele). */
+    /** Conexões de loopback antes do marcador de lançamento do launcher (não significa processo ausente). */
     val loopbackAntesDoWzm: Int = 0,
-    /** Conexões de loopback que ocorreram DEPOIS do WZM iniciado (ainda assim: só diagnóstico). */
+    /** Conexões de loopback depois do marcador (correlação temporal apenas; diagnóstico). */
     val loopbackDepoisDoWzm: Int = 0,
     // ---- M3.6: classificação do IPv6 descartado e rastreio do destino ----
     /** IPv6 descartado que é descoberta local (ICMPv6 vizinhança/MLD em multicast/link-local). */
     val tunIpv6DescobertaLocal: Int = 0,
     /** IPv6 descartado em multicast que NÃO é descoberta (ex.: outro tráfego de grupo). */
     val tunIpv6MulticastOutro: Int = 0,
-    /** IPv6 descartado em endereço unicast (link-local ou global) — tráfego "de verdade". */
+    /** IPv6 descartado em endereço unicast (link-local ou global); origem UID/processo não inferida. */
     val tunIpv6Unicast: Int = 0,
-    /** Pacotes IPv6 vistos ANTES do WZM iniciado (separação temporal, como no loopback). */
+    /** Pacotes IPv6 antes do marcador de lançamento do launcher (ordem temporal, não ausência do processo). */
     val tunIpv6AntesDoWzm: Int = 0,
-    /** Pacotes IPv6 vistos DEPOIS do WZM iniciado. */
+    /** Pacotes IPv6 depois do marcador de lançamento do launcher (ordem temporal apenas). */
     val tunIpv6DepoisDoWzm: Int = 0,
     /** Fluxos cujo destino casou com uma resposta DNS observada no túnel (nome → IP). */
     val tunFluxosDestinoResolvido: Int = 0,
@@ -78,17 +88,23 @@ data class RequestCounters(
     /** ICMPv4 observado no túnel (simetria de instrumentação com o ICMPv6). */
     val tunIcmpv4Flows: Int = 0,
     // ---- M4.1: autoria das conexões (teste de controle da API) e origem das conexões de loopback ----
-    /** Passos do teste de controle em que a API resolveu o uid (autoria comprovada). */
+    /** Passos do teste de controle em que a API resolveu UID da tupla do próprio launcher. */
     val ownerProbeResolvido: Int = 0,
     /** Passos em que a API devolveu INVALID_UID (ambíguo por desenho — ver ConnectionOwnership). */
     val ownerProbeInvalid: Int = 0,
     /** Passos em que a API recusou a chamada (não somos o VPN ativo / sem NETWORK_STACK). */
     val ownerProbeSemPermissao: Int = 0,
-    /** Conexões de loopback cuja origem foi atribuída ao próprio launcher. */
+    /** Conexões do próprio processo provadas por match único da tupla cliente completa registrada. */
     val loopbackMesmoProcesso: Int = 0,
-    /** Conexões de loopback atribuídas a outro uid (ou a um uid que não é o launcher). */
+    /** Peer cujo UID resolvido é o UID do launcher (não identifica qual processo). */
+    val loopbackUidLauncher: Int = 0,
+    /** Peer cujo UID resolvido é o UID do app-alvo (não identifica processo nem tráfego externo). */
+    val loopbackUidAlvo: Int = 0,
+    /** Possível processo launcher por janela temporal + faixa efêmera compartilhada (PROBABLE). */
+    val loopbackPossivelLauncher: Int = 0,
+    /** Peer atribuído a um UID resolvido que não é launcher nem app-alvo. */
     val loopbackOutroUid: Int = 0,
-    /** Conexões de loopback sem atribuição possível (INVALID_UID sem marca do processo). */
+    /** Conexões sem UID/processo identificável (INVALID_UID ou evidência insuficiente). */
     val loopbackIndeterminado: Int = 0,
     /** Respostas DNS em que NÓS devolvemos 127.0.0.1 — deve ser sempre 0 (o destino é 10.111.222.1). */
     val dnsRespostasParaLoopback: Int = 0,
@@ -104,28 +120,32 @@ data class RequestCounters(
             "TCP: $tcpConnections conexões • HTTP: $httpRequests requests / $unknownRequests desconhecidos • " +
             "TLS: $tlsOk ok / $tlsFailed falhas " +
             "(túnel $tlsOkTunel/$tlsFailedTunel · loopback $tlsOkLoopback/$tlsFailedLoopback) • " +
-            "listener: túnel $tcpConnectionsTunel conexão(ões) / loopback $tcpConnectionsLoopback " +
-            "(diagnóstico; antes-do-WZM $loopbackAntesDoWzm, depois $loopbackDepoisDoWzm) • " +
+            "listener: túnel $tcpConnectionsTunel conexão(ões) (UID-alvo $tcpConnectionsTunelUidAlvo; " +
+            "sintético $tcpConnectionsTunelSintetico) / loopback $tcpConnectionsLoopback " +
+            "(diagnóstico; antes-do-marcador $loopbackAntesDoWzm, depois $loopbackDepoisDoWzm) • " +
             "TUN: $tunPacketsTotal pacotes (IPv4 $tunIpv4Packets / IPv6 $tunIpv6Packets / inválidos $tunInvalidPackets; " +
             "TCP $tunTcpPackets / UDP $tunUdpPackets / ICMP $tunIcmpPackets) • " +
             "alvo-CDNI: $tunToRedirect bounce $tunBounces / $tunDiscards descartes • " +
             "IPv6 descartado: descoberta-local $tunIpv6DescobertaLocal / multicast-outro $tunIpv6MulticastOutro / " +
-            "unicast $tunIpv6Unicast (antes-do-WZM $tunIpv6AntesDoWzm, depois $tunIpv6DepoisDoWzm) • " +
+            "unicast $tunIpv6Unicast (antes-do-marcador $tunIpv6AntesDoWzm, depois $tunIpv6DepoisDoWzm) • " +
             "destino-resolvido $tunFluxosDestinoResolvido (respostas DNS guardadas $dnsRespostasRegistradas) • " +
             "autoria: api-resolvido $ownerProbeResolvido / INVALID_UID $ownerProbeInvalid / " +
-            "sem-permissao $ownerProbeSemPermissao • loopback: mesmo-processo $loopbackMesmoProcesso / " +
+            "sem-permissao $ownerProbeSemPermissao • loopback peer: processo-exato $loopbackMesmoProcesso / " +
+            "uid-launcher $loopbackUidLauncher / uid-alvo $loopbackUidAlvo / possivel-launcher $loopbackPossivelLauncher / " +
             "outro-uid $loopbackOutroUid / indeterminado $loopbackIndeterminado • " +
             "DNS-para-loopback $dnsRespostasParaLoopback (deve ser 0)"
 
     /** Versão curta para os cards. */
     fun compact(): String =
         "DNS $dnsQueries/$dnsIntercepted/$dnsForwarded • TCP $tcpConnections • HTTP $httpRequests/$unknownRequests • " +
-            "TLS $tlsOk/$tlsFailed (túnel $tlsOkTunel/$tlsFailedTunel) • " +
-            "listener túnel $tcpConnectionsTunel / loopback $tcpConnectionsLoopback • " +
+            "TLS $tlsOk/$tlsFailed (túnel $tlsOkTunel/$tlsFailedTunel; UID-alvo $tlsOkTunelUidAlvo/$tlsFailedTunelUidAlvo) • " +
+            "listener túnel $tcpConnectionsTunel (UID-alvo $tcpConnectionsTunelUidAlvo; sintético $tcpConnectionsTunelSintetico) / " +
+            "loopback $tcpConnectionsLoopback • " +
             "TUN $tunPacketsTotal(v4 $tunIpv4Packets/v6 $tunIpv6Packets/inv $tunInvalidPackets) " +
             "bounce $tunBounces desc $tunDiscards • v6-descoberta $tunIpv6DescobertaLocal/v6-unicast $tunIpv6Unicast • " +
-            "destino-resolvido $tunFluxosDestinoResolvido • loopback mesmo-proc $loopbackMesmoProcesso/" +
-            "indet $loopbackIndeterminado • api INVALID_UID $ownerProbeInvalid"
+            "destino-resolvido $tunFluxosDestinoResolvido • loopback processo-exato $loopbackMesmoProcesso / " +
+            "uid-alvo $loopbackUidAlvo / uid-launcher $loopbackUidLauncher / indet $loopbackIndeterminado • " +
+            "api INVALID_UID $ownerProbeInvalid"
 
     /** Linha `chave=valor` com os nomes exatos usados no log e no relatório (export .txt). */
     fun exportLine(): String =
@@ -140,9 +160,11 @@ data class RequestCounters(
             "tunTcpSyn=$tunTcpSyn tunTcpSynToRedirect=$tunTcpSynToRedirect tunTcpSynOther=$tunTcpSynOther " +
             "tunUdpDns53=$tunUdpDns53 tunUdpDnsNoVirtualDns=$tunUdpDnsNoVirtualDns " +
             "tunDotFlows=$tunDotFlows tunDohCandidates=$tunDohCandidates tunTcp443Externo=$tunTcp443Externo " +
-            "tunUidVerifiedFlows=$tunUidVerifiedFlows " +
-            "tcpConnectionsTunel=$tcpConnectionsTunel tcpConnectionsLoopback=$tcpConnectionsLoopback " +
+            "tunUidVerifiedFlows=$tunUidVerifiedFlows tunUidVerifiedCdniSyns=$tunUidVerifiedCdniSyns " +
+            "tcpConnectionsTunel=$tcpConnectionsTunel tcpConnectionsTunelUidAlvo=$tcpConnectionsTunelUidAlvo " +
+            "tcpConnectionsTunelSintetico=$tcpConnectionsTunelSintetico tcpConnectionsLoopback=$tcpConnectionsLoopback " +
             "tlsOkTunel=$tlsOkTunel tlsFailedTunel=$tlsFailedTunel " +
+            "tlsOkTunelUidAlvo=$tlsOkTunelUidAlvo tlsFailedTunelUidAlvo=$tlsFailedTunelUidAlvo " +
             "tlsOkLoopback=$tlsOkLoopback tlsFailedLoopback=$tlsFailedLoopback " +
             "loopbackAntesDoWzm=$loopbackAntesDoWzm loopbackDepoisDoWzm=$loopbackDepoisDoWzm " +
             "tunIpv6DescobertaLocal=$tunIpv6DescobertaLocal tunIpv6MulticastOutro=$tunIpv6MulticastOutro " +
@@ -151,7 +173,9 @@ data class RequestCounters(
             "dnsRespostasRegistradas=$dnsRespostasRegistradas tunIcmpv4Flows=$tunIcmpv4Flows " +
             "ownerProbeResolvido=$ownerProbeResolvido ownerProbeInvalid=$ownerProbeInvalid " +
             "ownerProbeSemPermissao=$ownerProbeSemPermissao loopbackMesmoProcesso=$loopbackMesmoProcesso " +
-            "loopbackOutroUid=$loopbackOutroUid loopbackIndeterminado=$loopbackIndeterminado " +
+            "loopbackUidLauncher=$loopbackUidLauncher loopbackUidAlvo=$loopbackUidAlvo " +
+            "loopbackPossivelLauncher=$loopbackPossivelLauncher loopbackOutroUid=$loopbackOutroUid " +
+            "loopbackIndeterminado=$loopbackIndeterminado " +
             "dnsRespostasParaLoopback=$dnsRespostasParaLoopback"
 }
 
@@ -164,7 +188,9 @@ interface LogSink {
 }
 
 /**
- * Buffer único de log do launcher: eventos do próprio app + DNS/TLS/HTTP interceptados do WZM.
+ * Buffer único de log do launcher: eventos locais, pedidos aceitos pelos listeners e metadados observados
+ * no TUN. Um evento de listener/TUN não é automaticamente atribuído ao WZM; autoria exige owner UID/tupla
+ * conforme o nível de evidência registrado.
  *
  * Este é o `RequestLog` mostrado na tela "VER LOGS". Requisitos de privacidade (M3/M3.4):
  * registramos apenas tag, horário, método, host/path, status e **metadados de cabeçalho IP**
@@ -222,10 +248,15 @@ object RequestLog {
     private val tunDohCandidates = AtomicInteger(0)
     private val tunTcp443Externo = AtomicInteger(0)
     private val tunUidVerifiedFlows = AtomicInteger(0)
+    private val tunUidVerifiedCdniSyns = AtomicInteger(0)
     private val tcpConnectionsTunel = AtomicInteger(0)
+    private val tcpConnectionsTunelUidAlvo = AtomicInteger(0)
+    private val tcpConnectionsTunelSintetico = AtomicInteger(0)
     private val tcpConnectionsLoopback = AtomicInteger(0)
     private val tlsOkTunel = AtomicInteger(0)
     private val tlsFailedTunel = AtomicInteger(0)
+    private val tlsOkTunelUidAlvo = AtomicInteger(0)
+    private val tlsFailedTunelUidAlvo = AtomicInteger(0)
     private val tlsOkLoopback = AtomicInteger(0)
     private val tlsFailedLoopback = AtomicInteger(0)
     private val loopbackAntesDoWzm = AtomicInteger(0)
@@ -242,6 +273,9 @@ object RequestLog {
     private val ownerProbeInvalid = AtomicInteger(0)
     private val ownerProbeSemPermissao = AtomicInteger(0)
     private val loopbackMesmoProcesso = AtomicInteger(0)
+    private val loopbackUidLauncher = AtomicInteger(0)
+    private val loopbackUidAlvo = AtomicInteger(0)
+    private val loopbackPossivelLauncher = AtomicInteger(0)
     private val loopbackOutroUid = AtomicInteger(0)
     private val loopbackIndeterminado = AtomicInteger(0)
     private val dnsRespostasParaLoopback = AtomicInteger(0)
@@ -268,8 +302,7 @@ object RequestLog {
     fun incDnsIntercepted() { dnsIntercepted.incrementAndGet(); publishCounters() }
     fun incDnsForwarded() { dnsForwarded.incrementAndGet(); publishCounters() }
     /**
-     * Total de conexões aceitas (legado). **Não é evidência:** para o quadro use
-     * [incTcpConnectionTunel] (túnel) e [incTcpConnectionLoopback] (diagnóstico).
+     * Total de conexões aceitas (legado). O total e o listener isolados não atribuem autoria.
      */
     fun incTcpConnection() { tcpConnections.incrementAndGet(); publishCounters() }
     fun incHttpRequest() { httpRequests.incrementAndGet(); publishCounters() }
@@ -277,17 +310,16 @@ object RequestLog {
     fun incTlsOk() { tlsOk.incrementAndGet(); publishCounters() }
     fun incTlsFailed() { tlsFailed.incrementAndGet(); publishCounters() }
 
-    /**
-     * Conexão aceita no listener do endereço do túnel (papel principal).
-     * Este é o único contador de conexão com valor de evidência sobre o WZM (M3.5).
-     */
-    fun incTcpConnectionTunel() {
+    /** Conexão aceita no listener do túnel; só UID resolvido + fora da janela sintética atribui o UID-alvo. */
+    fun incTcpConnectionTunel(targetUidVerified: Boolean = false, synthetic: Boolean = false) {
         tcpConnectionsTunel.incrementAndGet()
+        if (synthetic) tcpConnectionsTunelSintetico.incrementAndGet()
+        if (targetUidVerified && !synthetic) tcpConnectionsTunelUidAlvo.incrementAndGet()
         tcpConnections.incrementAndGet()
         publishCounters()
     }
 
-    /** Conexão aceita em 127.0.0.1:443 (diagnóstico). [beforeWzm] separa "antes" de "depois" do WZM. */
+    /** Conexão aceita em loopback (diagnóstico). [beforeWzm] é somente ordem ao redor do marcador do launcher. */
     fun incTcpConnectionLoopback(beforeWzm: Boolean) {
         tcpConnectionsLoopback.incrementAndGet()
         tcpConnections.incrementAndGet()
@@ -295,9 +327,19 @@ object RequestLog {
         publishCounters()
     }
 
-    fun incTlsOkTunel() { tlsOkTunel.incrementAndGet(); tlsOk.incrementAndGet(); publishCounters() }
+    fun incTlsOkTunel(targetUidVerified: Boolean = false) {
+        tlsOkTunel.incrementAndGet()
+        if (targetUidVerified) tlsOkTunelUidAlvo.incrementAndGet()
+        tlsOk.incrementAndGet()
+        publishCounters()
+    }
 
-    fun incTlsFailedTunel() { tlsFailedTunel.incrementAndGet(); tlsFailed.incrementAndGet(); publishCounters() }
+    fun incTlsFailedTunel(targetUidVerified: Boolean = false) {
+        tlsFailedTunel.incrementAndGet()
+        if (targetUidVerified) tlsFailedTunelUidAlvo.incrementAndGet()
+        tlsFailed.incrementAndGet()
+        publishCounters()
+    }
 
     fun incTlsOkLoopback() { tlsOkLoopback.incrementAndGet(); tlsOk.incrementAndGet(); publishCounters() }
 
@@ -319,20 +361,25 @@ object RequestLog {
     fun incTunToRedirect() { tunToRedirect.incrementAndGet(); publishCounters() }
     fun incTunBounce() { tunBounces.incrementAndGet(); publishCounters() }
     fun incTunDiscard() { tunDiscards.incrementAndGet(); publishCounters() }
-    fun incTunUidVerifiedFlow() { tunUidVerifiedFlows.incrementAndGet(); publishCounters() }
+    fun incTunUidVerifiedFlow(toCdniTarget: Boolean = false) {
+        tunUidVerifiedFlows.incrementAndGet()
+        if (toCdniTarget) tunUidVerifiedCdniSyns.incrementAndGet()
+        publishCounters()
+    }
 
     /** Registra uma observação de caminho ([TunObservation]) no contador correspondente. */
     /**
      * IPv6 descartado, classificado (M3.6) — descoberta local, multicast outro ou unicast — e
-     * separado por relação com o WZM iniciado. É o que permite dizer se o IPv6 descartado
-     * ocorreu antes ou depois de o jogo abrir, em vez de supor que é dele.
+     * separado pela ordem do marcador de lançamento do launcher. Isso não mostra quando o processo
+     * do jogo/helper iniciou e não atribui o pacote ao WZM.
      */
     fun incTunIpv6Category(category: TrafficClassifier.Ipv6Category, beforeWzm: Boolean) {
-        when (category) {
-            TrafficClassifier.Ipv6Category.DESCOBERTA_LOCAL -> tunIpv6DescobertaLocal.incrementAndGet()
-            TrafficClassifier.Ipv6Category.MULTICAST_OUTRO -> tunIpv6MulticastOutro.incrementAndGet()
-            TrafficClassifier.Ipv6Category.UNICAST -> tunIpv6Unicast.incrementAndGet()
+        val counter = when (category) {
+            TrafficClassifier.Ipv6Category.DESCOBERTA_LOCAL -> tunIpv6DescobertaLocal
+            TrafficClassifier.Ipv6Category.MULTICAST_OUTRO -> tunIpv6MulticastOutro
+            TrafficClassifier.Ipv6Category.UNICAST -> tunIpv6Unicast
         }
+        counter.incrementAndGet()
         if (beforeWzm) tunIpv6AntesDoWzm.incrementAndGet() else tunIpv6DepoisDoWzm.incrementAndGet()
         publishCounters()
     }
@@ -352,24 +399,38 @@ object RequestLog {
         publishCounters()
     }
 
-    /** M4.1: desfecho de uma consulta de autoria (`getConnectionOwnerUid`) no teste de controle. */
+    /**
+     * M4.1: desfecho de uma consulta de autoria (`getConnectionOwnerUid`) no teste de controle.
+     * Só há contadores dedicados para RESOLVIDO, INVALID_UID e SEM_PERMISSAO; os cinco resultados
+     * operacionais restantes são preservados no log do passo, mas não inflacionam esses contadores.
+     * O `when` é uma expressão exaustiva: adicionar um Outcome exige revisar esta política.
+     */
     fun incOwnerProbeResult(result: ConnectionOwnership.Result) {
-        when (result.outcome) {
-            ConnectionOwnership.Outcome.RESOLVIDO -> ownerProbeResolvido.incrementAndGet()
-            ConnectionOwnership.Outcome.INVALID_UID -> ownerProbeInvalid.incrementAndGet()
-            ConnectionOwnership.Outcome.SECURITY_EXCEPTION -> ownerProbeSemPermissao.incrementAndGet()
-            else -> Unit
+        val counter = when (result.outcome) {
+            ConnectionOwnership.Outcome.RESOLVIDO -> ownerProbeResolvido
+            ConnectionOwnership.Outcome.INVALID_UID -> ownerProbeInvalid
+            ConnectionOwnership.Outcome.SECURITY_EXCEPTION -> ownerProbeSemPermissao
+            ConnectionOwnership.Outcome.API_ANTIGA,
+            ConnectionOwnership.Outcome.SERVICO_INDISPONIVEL,
+            ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+            ConnectionOwnership.Outcome.ARGUMENTO_INVALIDO,
+            ConnectionOwnership.Outcome.CONSULTA_FALHOU -> null
         }
+        counter?.incrementAndGet()
         publishCounters()
     }
 
     /** M4.1: origem de uma conexão aceita no listener (só o que os fatos permitem afirmar). */
     fun incLoopbackOrigin(verdict: LoopbackOrigin.Verdict) {
-        when (verdict) {
-            LoopbackOrigin.Verdict.MESMO_PROCESSO -> loopbackMesmoProcesso.incrementAndGet()
-            LoopbackOrigin.Verdict.APP_ALVO, LoopbackOrigin.Verdict.OUTRO_UID -> loopbackOutroUid.incrementAndGet()
-            LoopbackOrigin.Verdict.INDETERMINADO -> loopbackIndeterminado.incrementAndGet()
+        val counter = when (verdict) {
+            LoopbackOrigin.Verdict.PROCESSO_LAUNCHER -> loopbackMesmoProcesso
+            LoopbackOrigin.Verdict.UID_LAUNCHER -> loopbackUidLauncher
+            LoopbackOrigin.Verdict.UID_APP_ALVO -> loopbackUidAlvo
+            LoopbackOrigin.Verdict.POSSIVEL_LAUNCHER -> loopbackPossivelLauncher
+            LoopbackOrigin.Verdict.OUTRO_UID -> loopbackOutroUid
+            LoopbackOrigin.Verdict.INDETERMINADO -> loopbackIndeterminado
         }
+        counter.incrementAndGet()
         publishCounters()
     }
 
@@ -380,22 +441,22 @@ object RequestLog {
     }
 
     fun incTunObservation(observation: TunObservation) {
-        when (observation) {
-            TunObservation.TCP_SYN -> tunTcpSyn.incrementAndGet()
-            TunObservation.TCP_SYN_PARA_ALVO_443 -> tunTcpSynToRedirect.incrementAndGet()
-            TunObservation.TCP_SYN_OUTRO_DESTINO -> tunTcpSynOther.incrementAndGet()
-            TunObservation.UDP_DNS_53 -> tunUdpDns53.incrementAndGet()
-            TunObservation.UDP_DNS_NO_DNS_VIRTUAL -> tunUdpDnsNoVirtualDns.incrementAndGet()
-            TunObservation.FLUXO_DOT -> tunDotFlows.incrementAndGet()
-            TunObservation.TCP_443_EXTERNO -> tunTcp443Externo.incrementAndGet()
-            TunObservation.UDP_443_QUIC_DOH -> tunDohCandidates.incrementAndGet()
-            // M3.6: categorias de IPv6 e ICMPv4 são contadas com relação temporal própria
-            // (incTunIpv6Category) — aqui só o ICMPv4 genérico.
-            TunObservation.ICMPV4 -> tunIcmpv4Flows.incrementAndGet()
+        val counter = when (observation) {
+            TunObservation.TCP_SYN -> tunTcpSyn
+            TunObservation.TCP_SYN_PARA_ALVO_443 -> tunTcpSynToRedirect
+            TunObservation.TCP_SYN_OUTRO_DESTINO -> tunTcpSynOther
+            TunObservation.UDP_DNS_53 -> tunUdpDns53
+            TunObservation.UDP_DNS_NO_DNS_VIRTUAL -> tunUdpDnsNoVirtualDns
+            TunObservation.FLUXO_DOT -> tunDotFlows
+            TunObservation.TCP_443_EXTERNO -> tunTcp443Externo
+            TunObservation.UDP_443_QUIC_DOH -> tunDohCandidates
+            TunObservation.ICMPV4 -> tunIcmpv4Flows
+            // As três categorias IPv6 têm contador/ordenação temporal em incTunIpv6Category().
             TunObservation.IPV6_DESCOBERTA_LOCAL,
             TunObservation.IPV6_MULTICAST_OUTRO,
-            TunObservation.IPV6_UNICAST -> Unit
+            TunObservation.IPV6_UNICAST -> null
         }
+        counter?.incrementAndGet()
         publishCounters()
     }
 
@@ -430,10 +491,15 @@ object RequestLog {
             tunDohCandidates = tunDohCandidates.get(),
             tunTcp443Externo = tunTcp443Externo.get(),
             tunUidVerifiedFlows = tunUidVerifiedFlows.get(),
+            tunUidVerifiedCdniSyns = tunUidVerifiedCdniSyns.get(),
             tcpConnectionsTunel = tcpConnectionsTunel.get(),
+            tcpConnectionsTunelUidAlvo = tcpConnectionsTunelUidAlvo.get(),
+            tcpConnectionsTunelSintetico = tcpConnectionsTunelSintetico.get(),
             tcpConnectionsLoopback = tcpConnectionsLoopback.get(),
             tlsOkTunel = tlsOkTunel.get(),
             tlsFailedTunel = tlsFailedTunel.get(),
+            tlsOkTunelUidAlvo = tlsOkTunelUidAlvo.get(),
+            tlsFailedTunelUidAlvo = tlsFailedTunelUidAlvo.get(),
             tlsOkLoopback = tlsOkLoopback.get(),
             tlsFailedLoopback = tlsFailedLoopback.get(),
             loopbackAntesDoWzm = loopbackAntesDoWzm.get(),
@@ -448,6 +514,9 @@ object RequestLog {
             ownerProbeInvalid = ownerProbeInvalid.get(),
             ownerProbeSemPermissao = ownerProbeSemPermissao.get(),
             loopbackMesmoProcesso = loopbackMesmoProcesso.get(),
+            loopbackUidLauncher = loopbackUidLauncher.get(),
+            loopbackUidAlvo = loopbackUidAlvo.get(),
+            loopbackPossivelLauncher = loopbackPossivelLauncher.get(),
             loopbackOutroUid = loopbackOutroUid.get(),
             loopbackIndeterminado = loopbackIndeterminado.get(),
             dnsRespostasParaLoopback = dnsRespostasParaLoopback.get(),
@@ -473,15 +542,18 @@ object RequestLog {
         tunToRedirect.set(0); tunBounces.set(0); tunDiscards.set(0)
         tunTcpSyn.set(0); tunTcpSynToRedirect.set(0); tunTcpSynOther.set(0)
         tunUdpDns53.set(0); tunUdpDnsNoVirtualDns.set(0); tunDotFlows.set(0)
-        tunDohCandidates.set(0); tunTcp443Externo.set(0); tunUidVerifiedFlows.set(0)
-        tcpConnectionsTunel.set(0); tcpConnectionsLoopback.set(0)
-        tlsOkTunel.set(0); tlsFailedTunel.set(0); tlsOkLoopback.set(0); tlsFailedLoopback.set(0)
+        tunDohCandidates.set(0); tunTcp443Externo.set(0); tunUidVerifiedFlows.set(0); tunUidVerifiedCdniSyns.set(0)
+        tcpConnectionsTunel.set(0); tcpConnectionsTunelUidAlvo.set(0); tcpConnectionsTunelSintetico.set(0)
+        tcpConnectionsLoopback.set(0)
+        tlsOkTunel.set(0); tlsFailedTunel.set(0); tlsOkTunelUidAlvo.set(0); tlsFailedTunelUidAlvo.set(0)
+        tlsOkLoopback.set(0); tlsFailedLoopback.set(0)
         loopbackAntesDoWzm.set(0); loopbackDepoisDoWzm.set(0)
         tunIpv6DescobertaLocal.set(0); tunIpv6MulticastOutro.set(0); tunIpv6Unicast.set(0)
         tunIpv6AntesDoWzm.set(0); tunIpv6DepoisDoWzm.set(0)
         tunFluxosDestinoResolvido.set(0); dnsRespostasRegistradas.set(0); tunIcmpv4Flows.set(0)
         ownerProbeResolvido.set(0); ownerProbeInvalid.set(0); ownerProbeSemPermissao.set(0)
-        loopbackMesmoProcesso.set(0); loopbackOutroUid.set(0); loopbackIndeterminado.set(0)
+        loopbackMesmoProcesso.set(0); loopbackUidLauncher.set(0); loopbackUidAlvo.set(0)
+        loopbackPossivelLauncher.set(0); loopbackOutroUid.set(0); loopbackIndeterminado.set(0)
         dnsRespostasParaLoopback.set(0)
         ownerProbeResumo = ""
         publishCounters()
@@ -496,13 +568,16 @@ object RequestLog {
         clearSyntheticWindow()
     }
 
-    // ---- Marcador de sessão: quando o WZM foi iniciado (M3.5) ----
-    // Sem isso, as conexões de loopback de 2026-10-04 (13:20:16) pareciam do WZM (iniciado 13:20:21).
+    // ---- Marcador de sessão: retorno bem-sucedido do lançamento do WZM pelo launcher (M3.5) ----
+    // Não é evento de criação de processo: WZM/helper pode já estar em background antes do marcador.
 
     @Volatile
     private var wzmStartedAtMs: Long = -1L
 
-    /** Registra o instante em que o WZM foi iniciado (chamado pelo launcher ao iniciá-lo). */
+    /**
+     * Registra quando a chamada de lançamento do launcher retornou sucesso. O nome é legado: isto
+     * não observa criação/execução de processo nem exclui um processo/helper já ativo.
+     */
     fun markWzmStarted(atMillis: Long = System.currentTimeMillis()) {
         wzmStartedAtMs = atMillis
     }
@@ -514,13 +589,13 @@ object RequestLog {
 
     val wzmStartedAt: Long? get() = wzmStartedAtMs.takeIf { it > 0 }
 
-    /** `true` quando [atMillis] é anterior ao WZM iniciado (ou quando ele não foi iniciado). */
+    /** `true` se a hora é anterior ao marcador de lançamento bem-sucedido (ou se ele não existe). */
     fun isBeforeWzmStart(atMillis: Long): Boolean = wzmStartedAt?.let { atMillis < it } ?: true
 
     // ---- Janela do teste sintético (M3.5) ----
-    // O próprio launcher conecta no listener do túnel para provar o CAMINHO; essa conexão tem o UID do
-    // launcher, não o do WZM. Sem esta marca alguém poderia ler "conexão aceita no túnel" como evidência
-    // de tráfego do jogo — por isso a janela tem precedência sobre a relação com o WZM.
+    // O próprio launcher pode conectar no listener do túnel para validar o caminho; esta janela só
+    // indica sobreposição temporal. A autoria de uma conexão exige correspondência da tupla registrada,
+    // e nenhum teste sintético vira evidência de tráfego do WZM.
 
     @Volatile
     private var syntheticStartedAtMs: Long = -1L
@@ -553,30 +628,33 @@ object RequestLog {
     }
 
     /**
-     * Relação da conexão para o log: durante o teste sintético a conexão é **prova do caminho**, feita
-     * pelo launcher (UID do launcher) — nunca do WZM; fora da janela vale a relação com o WZM iniciado.
+     * Relação temporal, não causal: o marcador do teste ou do lançamento só ordena eventos do
+     * launcher. Uma conexão durante/depois do marcador não é automaticamente do launcher/WZM.
      */
     fun connectionOrigin(atMillis: Long): String =
         if (isDuringSyntheticTest(atMillis)) {
-            "DURANTE o teste sintético do launcher — prova o CAMINHO CDNI, NÃO o WZM " +
-                "(autoria do jogo exige dono=uid=<pacote do WZM>)"
+            "DURANTE a janela temporal do teste sintético do launcher — correlação apenas; " +
+                "só uma tupla completa registrada identifica a conexão de controle; NÃO prova tráfego do WZM"
         } else {
             wzmRelation(atMillis)
         }
 
     /**
-     * Relação temporal de uma conexão com o WZM iniciado — parte obrigatória do log de conexão (M3.5):
-     * "antes" nunca pode ser atribuído ao WZM; "sem WZM iniciado" também não.
+     * Relação temporal com o retorno bem-sucedido do lançamento pelo launcher (M3.5). Isso não
+     * observa quando o processo/serviço do jogo começou; antes/depois é apenas correlação temporal.
      */
     fun wzmRelation(atMillis: Long): String {
-        val started = wzmStartedAt
-            ?: return "WZM não iniciado nesta sessão — conexão NÃO pode ser atribuída ao WZM"
-        val deltaSeconds = (atMillis - started) / 1000.0
+        val marker = wzmStartedAt
+            ?: return "nenhum marcador de lançamento do WZM nesta sessão — relação temporal UNKNOWN, " +
+                "processo/helper pode já existir; autoria não resolvida"
+        val deltaSeconds = (atMillis - marker) / 1000.0
         val formatted = String.format(Locale.US, "%.1f", kotlin.math.abs(deltaSeconds))
         return if (deltaSeconds < 0) {
-            "antes do WZM iniciado (Δ -$formatted s) — NÃO pode ser atribuída ao WZM"
+            "antes do marcador de lançamento do WZM (Δ -$formatted s) — ordem temporal apenas; " +
+                "processo/helper pode já existir"
         } else {
-            "depois do WZM iniciado (Δ +$formatted s)"
+            "depois do marcador de lançamento do WZM (Δ +$formatted s) — ordem temporal apenas, " +
+                "sem atribuição de processo"
         }
     }
 

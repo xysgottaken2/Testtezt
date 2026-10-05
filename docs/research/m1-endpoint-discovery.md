@@ -1,8 +1,12 @@
 # M1 — Descoberta de Endpoints e Mecanismo de Redirecionamento para localhost
 
-> **Milestone:** M1 — Client communication  
-> **Branch:** `research/m1-endpoint-discovery`  
-> **Data:** 2026-10-04  
+> **Aviso vigente:** plano histórico supersedido por M3.2/M4.1. Menções a proxy TLS, Frida, `VerifyPeer`,
+> CA, root ou patch/repack abaixo são apenas contexto histórico; não executar nem alterar TLS/trust/pinning.
+> O caminho real do WZM deve ser atribuído primeiro.
+>
+> **Milestone:** M1 — Client communication<br>
+> **Branch:** `research/m1-endpoint-discovery`<br>
+> **Data:** 2026-10-04<br>
 > **Regra deste milestone:** Não implementar nada baseado em hipótese não verificada. `DBD_REFERENCE` usado somente como metodologia.
 
 ---
@@ -167,7 +171,7 @@ Para **qualquer** domínio descoberto, a hierarquia de tentativas é:
 
 4. Para UDP/TCP 3074 (se confirmado):
    - hosts funciona também para TCP/UDP (resolução DNS igual)
-   - porta precisa ser descoberta e então servidor em `0.0.0.0:<porta>` com protocol framing correto (ainda UNKNOWN)
+   - porta precisa ser descoberta e então servidor local em `127.0.0.1:<porta>` com protocol framing correto (ainda UNKNOWN; acesso LAN fora do escopo)
 ```
 
 **Mecanismo implementado neste PR:** `(1)` + capture HTTP genérico. `(2)` documentado como próximo experimento com Frida, **não implementado** porque sem APK não há como saber se há pinning.

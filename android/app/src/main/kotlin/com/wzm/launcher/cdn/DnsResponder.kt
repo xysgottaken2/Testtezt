@@ -3,9 +3,10 @@ package com.wzm.launcher.cdn
 /**
  * Decide como responder as consultas DNS do WZM que chegam pelo túnel.
  *
- * - Hosts CDNI comprovados (`prod.cdni.callofduty.com` e 1 nível abaixo) → resposta A = 127.0.0.1
- *   (o cliente então conecta no servidor HTTPS local). AAAA/HTTPS → NOERROR sem respostas
- *   (força IPv4; evita que o cliente tente IPv6).
+ * - Hosts CDNI comprovados (`prod.cdni.callofduty.com` e 1 nível abaixo) → resposta A =
+ *   [CdnRouterConfig.REDIRECT_TO] (`10.111.222.1`, endereço do túnel; não é `127.0.0.1`).
+ * - Consultas AAAA/HTTPS para esses hosts recebem NOERROR sem respostas. Isso descreve a resposta
+ *   deste servidor; não prova que o cliente não use cache, outro resolver ou outro caminho.
  * - Qualquer outro domínio → [answer] devolve null e o chamador encaminha para DNS real.
  */
 class DnsResponder(

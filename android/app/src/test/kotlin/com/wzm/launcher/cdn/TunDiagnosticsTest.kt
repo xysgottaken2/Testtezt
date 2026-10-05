@@ -144,11 +144,31 @@ class TunDiagnosticsTest {
             "para-alvo-ipv4=5", "para-alvo-ipv6=2", "toRedirect=5", "bounces=5", "descartes=6",
             "syn=6/alvo443=5/outros=1", "dns53=2/virtual=2", "dot=0", "quic/doh=1",
             "dns-total=3", "dns-cdni-interceptado=1", "dns-encaminhado=2", "tcp-conexoes=5", "tls-falha=5",
-            // M3.6: a seção que separa descoberta local de tráfego IPv6 de verdade e o rastreio de destino
+            // M3.6: classificação de perfil IPv6 (descoberta/multicast/unicast) e rastreio de destino
             "ipv6-descartado=2", "descoberta-local=0", "unicast=0", "destino-resolvido=0", "respostas-dns=0"
         )) {
             assertTrue("resumo deve conter $expected", line.contains(expected))
         }
+    }
+
+    @Test
+    fun ipv6DiscoveryProfileDoesNotAttributePacketsToSystemOrGame() {
+        val line = checkNotNull(
+            TunDiagnostics.ipv6DiscoveryInterpretation(
+                RequestCounters(tunIpv6Packets = 3, tunIpv6DescobertaLocal = 3)
+            )
+        )
+        assertTrue(line.contains("3 pacote(s)"))
+        assertTrue(line.contains("compatível com descoberta local"))
+        assertTrue(line.contains("origem UID/processo desconhecida"))
+        assertTrue(line.contains("não sabemos se veio do sistema ou do WZM"))
+        assertTrue(line.contains("não inferimos relação causal"))
+        assertNull(
+            "sem pacote na categoria NDP/MLD, não deve aparecer interpretação de descoberta",
+            TunDiagnostics.ipv6DiscoveryInterpretation(
+                RequestCounters(tunIpv6Packets = 1, tunIpv6MulticastOutro = 1)
+            )
+        )
     }
 
     @Test

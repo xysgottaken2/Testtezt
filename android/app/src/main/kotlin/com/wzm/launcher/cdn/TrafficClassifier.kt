@@ -6,9 +6,9 @@ package com.wzm.launcher.cdn
  *
  * Aqui só se olha **metadados de cabeçalho** (versão, protocolo, tipo ICMP, endereços, portas).
  *
- * Regra que este módulo existe para tornar explícita: **multicast/link-local ICMPv6 é descoberta
- * local do vizinho**, não tráfego de jogo; endereço unicast é tráfego de verdade. A classificação é
- * factual ("este perfil é vizinhança"), não uma afirmação de autoria — quem decide autoria é o UID.
+ * Regra que este módulo torna explícita: distinguir ICMPv6 multicast de tipos NDP/MLD selecionados,
+ * outro multicast e unicast. Esses rótulos descrevem endereços e protocolo — não atribuem origem ao
+ * sistema, ao WZM ou a qualquer processo; autoria continua UNKNOWN sem uma consulta UID/tupla correspondente.
  */
 object TrafficClassifier {
 
@@ -69,7 +69,7 @@ object TrafficClassifier {
 
     /**
      * Perfil de um pacote IPv6 — o que aparece no log de descarte e no resumo.
-     * [localDiscovery] = vizinhança/multicast típica de descoberta local do Android.
+     * [localDiscovery] = tipo de cabeçalho multicast NDP/MLD compatível com descoberta local; não identifica emissor.
      */
     data class Ipv6Profile(
         val transport: String,
@@ -101,7 +101,9 @@ object TrafficClassifier {
         }
         val discoveryType = header.protocol == TransportKind.ICMPV6 &&
             header.icmpType in setOf(133, 134, 135, 136, 137, 130, 131, 132, 143)
-        val localDiscovery = multicast && (discoveryType || header.protocol == TransportKind.ICMPV6)
+        // Only selected NDP/MLD control types are given this profile; other ICMPv6 multicast remains
+        // multicast traffic, and neither category attributes the sender to the system or an app.
+        val localDiscovery = multicast && discoveryType
         return Ipv6Profile(
             transport = transport,
             detail = detail,

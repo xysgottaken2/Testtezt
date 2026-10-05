@@ -17,6 +17,7 @@
  */
 
 import http from 'node:http';
+import { requireLoopbackHost } from '../config/index.js';
 
 export const BOOTSTRAP_HOST = 'prod.cdni.callofduty.com';
 export const BUILD_SELECTOR_PATH = '/manifest/build-selector-103.js';
@@ -68,7 +69,11 @@ export class BootstrapServer {
   private server: http.Server | null = null;
   private hits: Array<{ ts: string; method: string; path: string; host: string }> = [];
 
-  constructor(private opts: BootstrapServerOpts) {}
+  private opts: BootstrapServerOpts;
+
+  constructor(opts: BootstrapServerOpts) {
+    this.opts = { ...opts, host: requireLoopbackHost(opts.host) };
+  }
 
   listen(): Promise<void> {
     return new Promise((resolve, reject) => {

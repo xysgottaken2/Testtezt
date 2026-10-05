@@ -8,8 +8,8 @@ import org.junit.Test
 /**
  * M3.6: classificação do tráfego do TUN só com metadados de cabeçalho.
  *
- * O ponto crítico da etapa (item 4 do pedido): separar **descoberta local do Android** (ICMPv6 de
- * vizinhança/MLD em multicast/link-local) de **tráfego de verdade** (unicast) — sem presumir autoria.
+ * Distingue ICMPv6 multicast de tipos NDP/MLD selecionados, outro multicast e unicast.
+ * As categorias não identificam o emissor nem presumem tráfego do sistema ou do jogo.
  */
 class TrafficClassifierTest {
 
@@ -75,6 +75,15 @@ class TrafficClassifierTest {
         val profile = TrafficClassifier.ipv6Profile(header)
         assertFalse("unicast global não é descoberta local", profile.localDiscovery)
         assertEquals(TrafficClassifier.Ipv6Category.UNICAST, TrafficClassifier.ipv6Category(header))
+    }
+
+    @Test
+    fun multicastIcmpEchoIsNotClassifiedAsNeighborDiscovery() {
+        val header = ipv6Header("fe80::a", "ff02::1", 58, icmpType = 128)
+        val profile = TrafficClassifier.ipv6Profile(header)
+        assertTrue(profile.multicast)
+        assertFalse(profile.label(), profile.localDiscovery)
+        assertEquals(TrafficClassifier.Ipv6Category.MULTICAST_OUTRO, TrafficClassifier.ipv6Category(header))
     }
 
     @Test

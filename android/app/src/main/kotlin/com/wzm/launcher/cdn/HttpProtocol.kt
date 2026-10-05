@@ -87,7 +87,8 @@ object HttpResponses {
         405 -> "Method Not Allowed"
         500 -> "Internal Server Error"
         501 -> "Not Implemented"
-        else -> "OK"
+        // Statuses outside this deliberately small response set must not be mislabeled as success.
+        else -> "Unknown"
     }
 
     fun build(

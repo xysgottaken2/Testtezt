@@ -15,6 +15,10 @@ describe('CaptureServer (M1 generic)', () => {
     await server.close();
   });
 
+  it('rejects non-loopback bind addresses', () => {
+    expect(() => new CaptureServer({ host: '0.0.0.0', port: 0 })).toThrow(/must be loopback/i);
+  });
+
   it('health returns ok', async () => {
     const res = await fetch(`http://${host}:${port}/health`);
     expect(res.status).toBe(200);

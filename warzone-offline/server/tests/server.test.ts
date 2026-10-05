@@ -6,12 +6,19 @@ import { createPlayerState } from '../src/player/index.js';
 import { serialize, deserialize } from '../src/protocol/index.js';
 
 describe('config', () => {
-  it('loads defaults', () => {
+  it('loads defaults on loopback', () => {
     const cfg = loadConfig({});
-    expect(cfg.host).toBe('0.0.0.0');
+    expect(cfg.host).toBe('127.0.0.1');
     expect(cfg.map).toBe('VERDANSK');
     expect(cfg.botCount).toBe(20);
     expect(cfg.tickRate).toBe(21);
+  });
+
+  it('rejects non-loopback server hosts', () => {
+    expect(() => loadConfig({ HOST: '0.0.0.0' })).toThrow(/must be loopback/i);
+    expect(() => loadConfig({ HOST: '192.168.1.2' })).toThrow(/must be loopback/i);
+    expect(loadConfig({ HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
+    expect(loadConfig({ HOST: '::1' }).host).toBe('::1');
   });
 });
 

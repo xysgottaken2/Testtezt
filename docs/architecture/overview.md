@@ -131,7 +131,7 @@ warzone-offline/
 
 ```env
 # warzone-offline/server/.env.example — [HYPOTHESIS] valores a descobrir
-HOST=0.0.0.0
+HOST=127.0.0.1
 PORT=3074              # AUTH/LSG TCP — confirmar via APK
 HTTP_PORT=8080         # CDN mock (manifest/shard)
 UDP_PORT=27000         # gameplay — confirmar
@@ -175,8 +175,7 @@ launcher/
 ├── hosts-patch/
 │   ├── patch.ts        # escreve/remova entradas 127.0.0.1 para domínios WZM
 │   └── domains.json    # lista de domínios a redirecionar (a descobrir)
-├── frida/
-│   └── bypass.ts       # scripts Frida para cert pinning / VerifyPeer=false
+├── apk-analysis/       # ferramentas estáticas read-only; sem Frida/bypass
 └── adb/
     └── launch.ts       # adb install / am start -n com.activision... / logcat
 ```
@@ -192,9 +191,9 @@ launcher/
 ## 7. PC Host → Android (M0-M15) depois Android host (M16)
 
 ```
-Fase PC Host (atual):
-  PC (0.0.0.0:3074/8080) ←Wi-Fi/LAN→ Android (Warzone Mobile)
-  PC como hotspot ou mesmo Wi-Fi; celular aponta para IP do PC via hosts ou DNS local
+Fase PC Host (adiada):
+  PC (127.0.0.1:3074/8080 — loopback somente)
+  Sem acesso por Wi-Fi/LAN enquanto vigorar a regra de bind local-only.
 
 Fase Android Host (M16):
   Android (Termux: node server) → localhost → mesmo device cliente

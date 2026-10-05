@@ -168,7 +168,10 @@ class CdnVpnService : VpnService() {
             .setMtu(CdnRouterConfig.MTU)
             .addAddress(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.VPN_PREFIX)
             .addDnsServer(CdnRouterConfig.VPN_DNS)
-            .addRoute(CdnRouterConfig.VPN_ROUTE, CdnRouterConfig.VPN_ROUTE_PREFIX)
+
+        // O plano explícito é só 10.111.222.0/24; não há rota default nem prefixo IPv6.
+        // addAllowedApplication abaixo restringe UIDs separadamente e não amplia essas rotas.
+        VpnCapturePlan.routes.forEach { route -> builder.addRoute(route.address, route.prefixLength) }
 
         var perAppApplied = false
         var perAppError: String? = null
@@ -307,14 +310,12 @@ class CdnVpnService : VpnService() {
             val b = before.totalBytes
             if (a != null && b != null) a - b else null
         }
-        val outsideTunnel = grew == true && RequestLog.counters.value.tunUidVerifiedFlows == 0
         diagFacts = diagFacts.copy(
             uidTrafficAvailable = stats.available,
             uidTrafficBytesSinceStart = bytes,
             uidTrafficGrew = grew,
             ipv6Profiles = ipv6Profiles.toList(),
-            targetDeclaredProcesses = targetDeclaredProcesses,
-            uidTrafficOutsideTunnel = outsideTunnel
+            targetDeclaredProcesses = targetDeclaredProcesses
         )
     }
 
@@ -404,8 +405,9 @@ class CdnVpnService : VpnService() {
 
     /**
      * Amostra periódica do vigia (M3.6): contabilidade do UID do alvo desde a última amostra e
-     * perfis IPv6 vistos. É esta linha que separa com observação as duas leituras do silêncio do TUN:
-     * "o app não fez rede" × "o app fez rede e ela não passou pelo túnel".
+     * perfis IPv6 vistos. Crescimento do UID com TUN vazio pode apoiar PROBABLE para tráfego daquele
+     * UID fora do TUN; a conta inclui helpers. Sem crescimento ou sem contadores, ausência e causa
+     * permanecem inconclusivas.
      */
     private fun emitTrafficSample() {
         val uid = targetUidValue
@@ -436,13 +438,8 @@ class CdnVpnService : VpnService() {
                     "(antes-do-WZM=${counters.tunIpv6AntesDoWzm}, depois=${counters.tunIpv6DepoisDoWzm}); " +
                     "perfis: " + (profiles.ifEmpty { listOf("nenhum") }.joinToString(" | "))
             )
-            if (counters.tunIpv6Unicast == 0 && counters.tunIpv6DescobertaLocal > 0) {
-                RequestLog.add(
-                    "DIAG",
-                    "leitura do IPv6: todo o descarte é multicast/link-local de descoberta local — " +
-                        "compatível com o sistema Android, NÃO com tráfego do jogo " +
-                        "(nenhuma causalidade é afirmada; a autoria exige UID)"
-                )
+            TunDiagnostics.ipv6DiscoveryInterpretation(counters)?.let { interpretation ->
+                RequestLog.add("DIAG", interpretation)
             }
         }
         // Sem baseline (nenhuma conta disponível) NÃO se afirma nada: `grew(null, null)` não existe.
@@ -453,9 +450,11 @@ class CdnVpnService : VpnService() {
             sessionGrew == null ->
                 "contabilidade por UID sem amostra inicial — não dá para afirmar se houve tráfego do app"
             sessionGrew && counters.tunPacketsTotal == 0 ->
-                "o UID do alvo movimentou bytes e NADA apareceu no TUN: tráfego do app fora do túnel (PROBABLE)"
+                "a contabilidade do UID-alvo cresceu, mas nenhum pacote foi observado no TUN: PROBABLE que parte " +
+                    "do tráfego desse UID não passou pelo TUN; pode incluir helper e não identifica rota/processo"
             !sessionGrew && counters.tunPacketsTotal == 0 ->
-                "o UID do alvo não movimentou bytes e o TUN está vazio: nesta janela o app não fez rede (por UID)"
+                "sem crescimento medido na contabilidade do UID-alvo e sem pacote observado no TUN; " +
+                    "a ausência nesta amostra não prova ausência de tentativa/rede nem determina a causa"
             else -> null
         }
         if (trafficNote != null && loggedOnce.add("trafficNote|" + trafficNote.substringBefore(':'))) {
@@ -529,7 +528,7 @@ class CdnVpnService : VpnService() {
         watchdog.onPacket(System.currentTimeMillis())
         TunPolicy.observations(header).forEach { RequestLog.incTunObservation(it) }
         // M3.6: o IPv6 descartado é classificado (descoberta local × multicast × unicast) e separado
-        // por relação com o WZM iniciado — "antes" nunca pode ser atribuído ao jogo.
+        // pelo marcador temporal do launcher; isso não identifica processo nem atribui autoria.
         if (header.isIpv6) {
             val category = TrafficClassifier.ipv6Category(header)
             RequestLog.incTunIpv6Category(category, RequestLog.isBeforeWzmStart(System.currentTimeMillis()))
@@ -655,15 +654,24 @@ class CdnVpnService : VpnService() {
         RequestLog.incTunBounce()
         if (header.isSyn) {
             watchdog.onTargetFlow()
-            val owner = AndroidDiagnostics.connectionOwnerForFlow(this, header)
-            if (owner.contains("dono=uid=")) {
-                RequestLog.incTunUidVerifiedFlow()
-                if (diagFacts.targetPackage.isNotEmpty() && owner.contains(diagFacts.targetPackage)) {
-                    RequestLog.add(
-                        "CDNI",
-                        "fluxo do app alvo confirmado: $owner — ${header.brief()}"
-                    )
-                }
+            val ownerResult = AndroidDiagnostics.connectionOwnerForFlowResult(this, header)
+            val owner = ConnectionOwnership.describe(ownerResult)
+            val synthetic = RequestLog.isDuringSyntheticTest(System.currentTimeMillis())
+            val ownerIsTargetUid = ownerResult.provesOwner && ownerResult.uid == targetUidValue
+            if (ownerIsTargetUid && !synthetic) {
+                RequestLog.incTunUidVerifiedFlow(
+                    toCdniTarget = header.isCdnTargetV4 && header.dstPort == CdnRouterConfig.LOCAL_HTTPS_PORT
+                )
+                RequestLog.add(
+                    "CDNI",
+                    "fluxo do UID do app alvo confirmado (sem atribuição de processo/PID): $owner — ${header.brief()}"
+                )
+            } else if (ownerIsTargetUid) {
+                RequestLog.add(
+                    "CDNI",
+                    "teste sintético: resultado UID-alvo observado, mas excluído da evidência WZM — " +
+                        "$owner — ${header.brief()}"
+                )
             }
             RequestLog.add(
                 "CDNI",
@@ -694,7 +702,7 @@ class CdnVpnService : VpnService() {
             }
         }
         // IPv6 é registrado por extenso (uma vez por perfil de fluxo) — nunca como "inválido",
-        // e agora com a relação temporal (antes/depois do WZM) e o perfil classificado.
+        // junto da ordem temporal do marcador de lançamento (não de criação de processo).
         if (header.isIpv6) {
             val relation = RequestLog.connectionOrigin(System.currentTimeMillis())
             val withRelation = (if (suffix.isEmpty()) "" else "$suffix ") + "• $relation"

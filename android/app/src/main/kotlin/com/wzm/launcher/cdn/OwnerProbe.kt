@@ -4,32 +4,20 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * Teste de controle do item 2 do M4.1: **como `getConnectionOwnerUid` se comporta em conexões loopback**
- * (e no endereço do túnel), dentro do nosso cenário real (VPN per-app com allowlist estrita).
+ * Controle de interpretação de `getConnectionOwnerUid` para M4.1.
  *
- * O que ele mede, com socket de verdade:
+ * O runner real recebe um listener TCP efêmero ligado somente a 127.0.0.1, fora do HTTPS de produção.
+ * O cliente é aberto pelo launcher; portanto o teste mede apenas o retorno da API para essa tupla local
+ * conhecida. Não consulta o UID do WZM, não testa TUN e não prova origem/caminho de conexão do jogo.
  *
- *  1. `loopback_proprio` — este processo conecta em `127.0.0.1:443` (o nosso próprio listener) e
- *     pergunta à API quem é o dono. **Previsão do AOSP:** `INVALID_UID`, porque o uid do launcher
- *     **não** está coberto pela VPN (a allowlist é só o alvo). Se vier `uid=<launcher>`, a previsão
- *     está errada e isso é um achado.
- *  2. `tunel_proprio` — mesma coisa no endereço do túnel (só quando atribuído).
- *  3. `tupla_inexistente` — consulta uma tupla que **não** existe (sem abrir socket), para validar o
- *     outro significado de `INVALID_UID` ("conexão não encontrada").
- *  4. `escopo_da_vpn` — não é chamada de API: registra que a nossa allowlist contém **apenas** o alvo,
- *     portanto a API **não pode** resolver o dono de conexões de fora da VPN (incluindo as nossas).
- *
- * Nenhum pacote sai do aparelho: os alvos são o listener local e o endereço do próprio túnel. Nada é
- * descriptografado, nenhum handshake é feito — o socket é aberto (TCP) e fechado.
- *
- * A montagem do relatório é pura ([report]); o runner recebe `connect`/`query*` por injeção, então o
- * comportamento inteiro é exercitado em JVM nos testes.
+ * Um controle de tupla que não existe ajuda a demonstrar o limite da API: `INVALID_UID` também pode
+ * significar tupla ausente. Ele não revela qual causa gerou um `INVALID_UID` numa conexão diferente.
+ * A montagem do relatório é pura; os efeitos de conexão/consulta são injetados para testes JVM.
  */
 object OwnerProbe {
 
     enum class StepId(val label: String) {
         LOOPBACK_PROPRIO("loopback_proprio"),
-        TUNEL_PROPRIO("tunel_proprio"),
         TUPLA_INEXISTENTE("tupla_inexistente"),
         ESCOPO_DA_VPN("escopo_da_vpn")
     }
@@ -45,126 +33,119 @@ object OwnerProbe {
     }
 
     data class Report(val steps: List<StepResult>) {
-        val resolved: Int get() = steps.count { it.result?.outcome == ConnectionOwnership.Outcome.RESOLVIDO }
-        val invalid: Int get() = steps.count { it.result?.outcome == ConnectionOwnership.Outcome.INVALID_UID }
+        val resolved: Int
+            get() = steps.count { it.result?.provesOwner == true }
+        val invalid: Int
+            get() = steps.count { it.result?.outcome == ConnectionOwnership.Outcome.INVALID_UID }
         val noPermission: Int
             get() = steps.count { it.result?.outcome == ConnectionOwnership.Outcome.SECURITY_EXCEPTION }
 
         fun lines(): List<String> = steps.map { step ->
             when {
                 step.skippedReason != null -> "controle ${step.id.label}: PULADO (${step.skippedReason})"
-                step.result == null -> "controle ${step.id.label}: SEM RESULTADO"
-                else ->
+                step.result != null ->
                     "controle ${step.id.label} (${step.target}): ${ConnectionOwnership.describe(step.result)}" +
                         if (step.note.isEmpty()) "" else " · ${step.note}"
+                step.note.isNotEmpty() -> "controle ${step.id.label} (${step.target}): CONTEXTO · ${step.note}"
+                else -> "controle ${step.id.label} (${step.target}): SEM RESULTADO"
             }
         }
 
-        /**
-         * Leitura do teste — sempre com o nível de confiança e sem inverter o significado da API.
-         */
+        /** Leitura limitada ao teste do launcher; nunca extrapola para UID/processo/caminho do WZM. */
         fun expectation(): String = when {
-            noPermission > 0 ->
-                "SEM_PERMISSAO em $noPermission passo(s): a API exige ser o VPN ATIVO (ou ter NETWORK_STACK) — " +
-                    "resultado inconclusivo sobre loopback, investigar por que o serviço não é o VPN ativo"
             resolved > 0 ->
-                "a API RESOLVEU $resolved passo(s): autoria comprovada para uid coberto pela VPN — " +
-                    "para conexões de fora da VPN ela responde INVALID_UID por desenho"
+                "VERIFIED: a API resolveu UID em $resolved consulta(s) de controle para socket(s) aberto(s) " +
+                    "pelo próprio launcher; isso vale apenas para aquelas tuplas e não identifica PID/processo " +
+                    "nem demonstra o resultado para o UID-alvo/WZM" +
+                    if (invalid > 0 || noPermission > 0) {
+                        " (outros passos: INVALID_UID=$invalid, sem-permissao=$noPermission)"
+                    } else {
+                        ""
+                    }
+            noPermission > 0 ->
+                "UNKNOWN: SEM_PERMISSAO em $noPermission consulta(s); a API exige o VPN ativo (ou " +
+                    "NETWORK_STACK); o controle não permite conclusão sobre loopback de outros UIDs/WZM"
             invalid > 0 ->
-                "INVALID_UID em $invalid passo(s): confirma no device que a API não identifica conexão nem " +
-                    "quando o dono é o próprio launcher sob allowlist estrita — logo as conexões de loopback " +
-                    "não podem ser atribuídas por esta via (PROBABLE, com o AOSP como base)"
+                "UNKNOWN: INVALID_UID em $invalid consulta(s) de controle; a API não distingue tupla ausente " +
+                    "de UID fora do escopo observável, e esse resultado não pode ser generalizado ao WZM"
             else ->
-                "nenhum passo executado de forma útil — resultado inconclusivo (registrar como UNKNOWN)"
+                "UNKNOWN: nenhum controle de socket foi resolvido; verificar linhas PULADO/erro sem inferir " +
+                    "autoria de outro app"
         }
     }
 
     /**
-     * Execução real/injetada do teste de controle. [querySocket] e [queryTuple] recebem as consultas;
-     * `connect` abre o socket. Tudo é fechado no fim.
+     * Executa o controle local injetável. `connect` só é chamado para loopback; nenhum socket remoto,
+     * listener de produção, TLS ou caminho de túnel faz parte deste teste.
      */
     fun run(
         loopbackPort: Int?,
-        tunnelAddress: String,
-        tunnelPort: Int,
-        tunnelAddressAssigned: Boolean,
-        selfPortRegistrar: (Int) -> Unit,
+        targetPackage: String,
         connect: (String, Int) -> Socket?,
         querySocket: (Socket) -> ConnectionOwnership.Result,
         queryTuple: (Int, InetSocketAddress, InetSocketAddress) -> ConnectionOwnership.Result
     ): Report {
         val steps = mutableListOf<StepResult>()
-
-        steps += if (loopbackPort == null || loopbackPort <= 0) {
+        steps += if (loopbackPort == null || loopbackPort !in 1..65535) {
             StepResult(
-                StepId.LOOPBACK_PROPRIO, "${CdnRouterConfig.LOOPBACK_ADDRESS}:?", null,
-                skippedReason = "listener de loopback não subiu"
+                StepId.LOOPBACK_PROPRIO,
+                "${CdnRouterConfig.LOOPBACK_ADDRESS}:?",
+                null,
+                skippedReason = "listener TCP efêmero de controle indisponível"
             )
         } else {
             val target = "${CdnRouterConfig.LOOPBACK_ADDRESS}:$loopbackPort"
-            val socket = runCatching { connect(CdnRouterConfig.LOOPBACK_ADDRESS, loopbackPort) }.getOrNull()
+            val socket = runCatching {
+                connect(CdnRouterConfig.LOOPBACK_ADDRESS, loopbackPort)
+            }.getOrNull()
             if (socket == null) {
-                StepResult(StepId.LOOPBACK_PROPRIO, target, null, skippedReason = "não foi possível conectar (porta fechada?)")
+                StepResult(
+                    StepId.LOOPBACK_PROPRIO,
+                    target,
+                    null,
+                    skippedReason = "não foi possível conectar ao listener local de controle"
+                )
             } else {
-                runCatching { socket.localPort }.getOrNull()?.let(selfPortRegistrar)
-                val result = runCatching { querySocket(socket) }.getOrNull()
-                    ?: ConnectionOwnership.Result(
-                        ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
-                        detail = "consulta falhou"
-                    )
+                val result = runCatching { querySocket(socket) }.getOrElse { error ->
+                    ConnectionOwnership.classifyException(error)
+                }
                 runCatching { socket.close() }
                 StepResult(
-                    StepId.LOOPBACK_PROPRIO, target, result,
-                    note = "socket aberto pelo PRÓPRIO launcher (loopback não passa pelo túnel)"
+                    StepId.LOOPBACK_PROPRIO,
+                    target,
+                    result,
+                    note = "socket conhecido aberto pelo PRÓPRIO launcher; consulta deste socket não é evidência WZM"
                 )
             }
         }
 
-        steps += if (!tunnelAddressAssigned) {
-            StepResult(
-                StepId.TUNEL_PROPRIO, "$tunnelAddress:$tunnelPort", null,
-                skippedReason = "endereço do túnel não está atribuído a nenhuma interface"
-            )
-        } else {
-            val target = "$tunnelAddress:$tunnelPort"
-            val socket = runCatching { connect(tunnelAddress, tunnelPort) }.getOrNull()
-            if (socket == null) {
-                StepResult(StepId.TUNEL_PROPRIO, target, null, skippedReason = "não foi possível conectar")
-            } else {
-                runCatching { socket.localPort }.getOrNull()?.let(selfPortRegistrar)
-                val result = runCatching { querySocket(socket) }.getOrNull()
-                    ?: ConnectionOwnership.Result(ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS)
-                runCatching { socket.close() }
-                StepResult(
-                    StepId.TUNEL_PROPRIO, target, result,
-                    note = "conexão para o endereço do próprio túnel (loopback do tun, não sai do aparelho)"
-                )
-            }
-        }
-
-        // Tupla que não existe em tabela nenhuma: valida o significado "conexão não encontrada".
-        val closed = runCatching {
+        // A tupla é intencionalmente inexistente: nenhum socket foi aberto para esses endpoints.
+        val missing = runCatching {
             queryTuple(
                 ConnectionOwnership.PROTOCOL_TCP,
                 InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1),
                 InetSocketAddress(CdnRouterConfig.LOOPBACK_ADDRESS, 1)
             )
-        }.getOrNull() ?: ConnectionOwnership.Result(ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS)
+        }.getOrElse { error -> ConnectionOwnership.classifyException(error) }
         steps += StepResult(
-            StepId.TUPLA_INEXISTENTE, "127.0.0.1:1 -> 127.0.0.1:1", closed,
-            note = "nenhum socket foi aberto: serve para separar 'não encontrado' de 'fora da VPN'"
+            StepId.TUPLA_INEXISTENTE,
+            "127.0.0.1:1 -> 127.0.0.1:1",
+            missing,
+            note = "nenhum socket foi aberto para a tupla; controle do significado possível de INVALID_UID"
         )
 
         steps += StepResult(
-            StepId.ESCOPO_DA_VPN, "allowlist=${CdnRouterConfig.SESSION_NAME}", null,
-            note = "a VPN cobre APENAS o app alvo; a API responde INVALID_UID para uid fora dela " +
-                "(AOSP: appliesToUid) — inclusive para o próprio launcher"
+            StepId.ESCOPO_DA_VPN,
+            "pacote-alvo=$targetPackage",
+            null,
+            note = "contexto da sessão, não consulta de ownership: este controle não consulta o UID do alvo " +
+                "nem prova que cada socket dele foi capturado"
         )
         return Report(steps)
     }
 
     /** Resumo curto para o card/log de sessão. */
     fun summaryLine(report: Report): String =
-        "teste de controle de autoria: resolvidos=${report.resolved} INVALID_UID=${report.invalid} " +
-            "sem-permissao=${report.noPermission}"
+        "teste de controle de autoria (launcher, só loopback): resolvidos=${report.resolved} " +
+            "INVALID_UID=${report.invalid} sem-permissao=${report.noPermission}"
 }

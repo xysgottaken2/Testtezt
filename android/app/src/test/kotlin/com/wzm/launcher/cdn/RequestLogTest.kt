@@ -111,6 +111,38 @@ class RequestLogTest {
      * no card, no resumo e no `.txt` exportado com o **nome exato** usado no relatório.
      */
     @Test
+    fun ownerProbeCountersCountOnlyTheThreeExposedOutcomes() {
+        ConnectionOwnership.Outcome.values().forEach { outcome ->
+            val result = if (outcome == ConnectionOwnership.Outcome.RESOLVIDO) {
+                ConnectionOwnership.Result(outcome, uid = 10_101)
+            } else {
+                ConnectionOwnership.Result(outcome)
+            }
+            RequestLog.incOwnerProbeResult(result)
+        }
+
+        val counters = RequestLog.counters.value
+        assertEquals(1, counters.ownerProbeResolvido)
+        assertEquals(1, counters.ownerProbeInvalid)
+        assertEquals(1, counters.ownerProbeSemPermissao)
+        // API antiga, serviço/endereços indisponíveis, argumento inválido e consulta falhada
+        // permanecem visíveis nos resultados por passo, sem serem agregados a esses contadores.
+    }
+
+    @Test
+    fun loopbackOriginCountersMapEveryVerdict() {
+        LoopbackOrigin.Verdict.values().forEach { RequestLog.incLoopbackOrigin(it) }
+
+        val counters = RequestLog.counters.value
+        assertEquals(1, counters.loopbackMesmoProcesso)
+        assertEquals(1, counters.loopbackUidLauncher)
+        assertEquals(1, counters.loopbackUidAlvo)
+        assertEquals(1, counters.loopbackPossivelLauncher)
+        assertEquals(1, counters.loopbackOutroUid)
+        assertEquals(1, counters.loopbackIndeterminado)
+    }
+
+    @Test
     fun countersTrackTunnelActivityByVersionProtocolAndPath() {
         RequestLog.clear()
         RequestLog.incTunPacketsTotal()
@@ -121,7 +153,7 @@ class RequestLogTest {
         RequestLog.incTunIpv4ToCdnTarget()
         RequestLog.incTunToRedirect()
         RequestLog.incTunBounce()
-        RequestLog.incTunUidVerifiedFlow()
+        RequestLog.incTunUidVerifiedFlow(toCdniTarget = true)
         RequestLog.incTunPacketsTotal()
         RequestLog.incTunIpv6Packet()
         RequestLog.incTunUdpPacket()
@@ -152,6 +184,7 @@ class RequestLogTest {
         assertEquals(1, counters.tunUdpDnsNoVirtualDns)
         assertEquals(1, counters.tunDohCandidates)
         assertEquals(1, counters.tunUidVerifiedFlows)
+        assertEquals(1, counters.tunUidVerifiedCdniSyns)
         assertEquals(1, counters.dnsForwarded)
 
         val summary = counters.summary()
@@ -169,7 +202,7 @@ class RequestLogTest {
             "tunIpv6ToCdnTarget=0", "tunToRedirect=1", "tunBounces=1", "tunDiscards=1",
             "tunTcpSyn=1", "tunTcpSynToRedirect=1", "tunTcpSynOther=0", "tunUdpDns53=1",
             "tunUdpDnsNoVirtualDns=1", "tunDotFlows=0", "tunDohCandidates=1",
-            "tunTcp443Externo=0", "tunUidVerifiedFlows=1",
+            "tunTcp443Externo=0", "tunUidVerifiedFlows=1", "tunUidVerifiedCdniSyns=1",
             // M3.6: classificação do IPv6 descartado e rastreio de destino
             "tunIpv6DescobertaLocal=0", "tunIpv6MulticastOutro=0", "tunIpv6Unicast=0",
             "tunIpv6AntesDoWzm=0", "tunIpv6DepoisDoWzm=0",
@@ -262,47 +295,58 @@ class RequestLogTest {
         RequestLog.incTcpConnectionLoopback(beforeWzm = true)
         RequestLog.incTcpConnectionLoopback(beforeWzm = false)
         RequestLog.incTcpConnectionTunel()
+        RequestLog.incTcpConnectionTunel(targetUidVerified = true)
+        RequestLog.incTcpConnectionTunel(synthetic = true)
         RequestLog.incTlsFailedLoopback()
         RequestLog.incTlsOkTunel()
+        RequestLog.incTlsFailedTunel(targetUidVerified = true)
 
         val counters = RequestLog.counters.value
         assertEquals(2, counters.tcpConnectionsLoopback)
-        assertEquals(1, counters.tcpConnectionsTunel)
-        assertEquals("total continua somando os dois", 3, counters.tcpConnections)
+        assertEquals(3, counters.tcpConnectionsTunel)
+        assertEquals(1, counters.tcpConnectionsTunelUidAlvo)
+        assertEquals(1, counters.tcpConnectionsTunelSintetico)
+        assertEquals("total continua somando os dois listeners", 5, counters.tcpConnections)
         assertEquals(1, counters.loopbackAntesDoWzm)
         assertEquals(1, counters.loopbackDepoisDoWzm)
         assertEquals(1, counters.tlsFailedLoopback)
         assertEquals(1, counters.tlsOkTunel)
+        assertEquals(1, counters.tlsFailedTunelUidAlvo)
+        assertEquals(0, counters.tlsOkTunelUidAlvo)
         assertEquals(0, counters.tlsOkLoopback)
 
         val export = RequestLog.exportText(Date(0))
-        assertTrue(export.contains("tcpConnectionsTunel=1"))
+        assertTrue(export.contains("tcpConnectionsTunel=3"))
+        assertTrue(export.contains("tcpConnectionsTunelUidAlvo=1"))
+        assertTrue(export.contains("tcpConnectionsTunelSintetico=1"))
         assertTrue(export.contains("tcpConnectionsLoopback=2"))
         assertTrue(export.contains("tlsFailedLoopback=1"))
+        assertTrue(export.contains("tlsFailedTunelUidAlvo=1"))
         assertTrue(export.contains("loopbackAntesDoWzm=1"))
         assertTrue(export.contains("loopbackDepoisDoWzm=1"))
     }
 
     @Test
-    fun syntheticWindowOverridesWzmAttribution() {
+    fun syntheticWindowRecordsOnlyTemporalCorrelationNotAttribution() {
         RequestLog.clear()
         RequestLog.markWzmStarted(1_000L)
 
-        // fora da janela: relação normal com o WZM
-        assertTrue(RequestLog.connectionOrigin(2_000L).contains("depois do WZM iniciado"))
+        // Fora da janela: apenas relação com o marcador de lançamento do launcher.
+        assertTrue(RequestLog.connectionOrigin(2_000L).contains("depois do marcador de lançamento"))
 
         RequestLog.markSyntheticTestStarted(5_000L)
         assertTrue(RequestLog.syntheticWindowOpen)
         val during = RequestLog.connectionOrigin(6_000L)
-        assertTrue(during.contains("DURANTE o teste sintético"))
-        assertTrue("a janela precisa negar autoria do WZM", during.contains("prova o CAMINHO CDNI, NÃO o WZM"))
-        assertFalse("dentro da janela não pode haver atribuição temporal ao WZM", during.contains("depois do WZM iniciado"))
+        assertTrue(during.contains("DURANTE a janela temporal do teste sintético"))
+        assertTrue("a janela só permite correlação temporal", during.contains("correlação apenas"))
+        assertTrue("a janela não pode virar evidência WZM", during.contains("NÃO prova tráfego do WZM"))
+        assertFalse("dentro da janela não pode haver relação com o marcador de lançamento", during.contains("depois do marcador de lançamento"))
 
         RequestLog.markSyntheticTestFinished(9_000L)
         assertFalse(RequestLog.syntheticWindowOpen)
         assertTrue("o instante final ainda pertence à janela", RequestLog.isDuringSyntheticTest(9_000L))
         assertFalse(RequestLog.isDuringSyntheticTest(9_001L))
-        assertTrue(RequestLog.connectionOrigin(9_001L).contains("depois do WZM iniciado"))
+        assertTrue(RequestLog.connectionOrigin(9_001L).contains("depois do marcador de lançamento"))
     }
 
     @Test
@@ -321,21 +365,22 @@ class RequestLogTest {
     }
 
     @Test
-    fun wzmMarkerTellsBeforeFromAfter() {
+    fun wzmLaunchMarkerTellsTemporalOrderWithoutClaimingProcessStart() {
         val now = System.currentTimeMillis()
         RequestLog.markWzmStarted(now)
 
         val before = RequestLog.wzmRelation(now - 5_000)
         val after = RequestLog.wzmRelation(now + 5_000)
-        assertTrue("antes precisa ser explícito: $before", before.contains("antes do WZM iniciado"))
-        assertTrue(before.contains("NÃO pode ser atribuída ao WZM"))
-        assertTrue("depois precisa ser explícito: $after", after.contains("depois do WZM iniciado"))
+        assertTrue("antes precisa ser explícito: $before", before.contains("antes do marcador de lançamento"))
+        assertTrue("não se afirma ausência do processo", before.contains("processo/helper pode já existir"))
+        assertTrue("depois é correlação, não atribuição", after.contains("ordem temporal apenas"))
+        assertTrue("depois precisa ser explícito: $after", after.contains("depois do marcador de lançamento"))
         assertTrue(RequestLog.isBeforeWzmStart(now - 1))
         assertFalse(RequestLog.isBeforeWzmStart(now + 1))
 
         RequestLog.clearWzmMarker()
-        assertTrue(RequestLog.wzmRelation(now).contains("WZM não iniciado nesta sessão"))
-        assertTrue("sem WZM iniciado, qualquer conexão é 'antes'", RequestLog.isBeforeWzmStart(now))
+        assertTrue(RequestLog.wzmRelation(now).contains("nenhum marcador de lançamento do WZM"))
+        assertTrue("sem marcador, timestamp é anterior ao marcador ausente por convenção", RequestLog.isBeforeWzmStart(now))
     }
 
     @Test

@@ -82,66 +82,86 @@ object AndroidDiagnostics {
     }
 
     /**
-     * Dono (UID/pacote) de uma conexão aceita no listener — responde "o processo está mesmo
-     * na VPN per-app?" com evidência, em vez de suposição.
-     *
-     * `ConnectivityManager.getConnectionOwnerUid` existe desde a API 29; tentamos as duas
-     * orientações do par local/remoto porque a API não documenta qual delas o netd indexa.
+     * UID/pacote do **peer cliente** de uma conexão aceita pelo listener. `accept()` entrega um
+     * socket do lado servidor; a consulta inverte explicitamente a tupla para `remote -> local`.
+     * `INVALID_UID` permanece inconclusivo e a API não fornece PID.
      */
+    fun connectionOwnerResult(context: Context, socket: Socket): ConnectionOwnership.Result =
+        ConnectionOwnership.queryPeerOfAcceptedSocket(context, socket)
+
     fun connectionOwner(context: Context, socket: Socket): String =
-        ConnectionOwnership.describe(ConnectionOwnership.querySocket(context, socket))
+        ConnectionOwnership.describe(connectionOwnerResult(context, socket))
 
     /**
-     * Fatos para o veredito de origem (M4.1) de uma conexão aceita no listener: peer, uid resolvido
-     * (ou não), janela de portas efêmeras deste processo e a marca do teste sintético.
+     * Fatos para o veredito de origem (M4.1) de uma conexão aceita no listener: peer, UID resolvido
+     * na direção peer -> servidor (ou não), janela de portas efêmeras deste processo e marca sintética.
      */
     fun loopbackOriginFacts(
-        context: Context,
         socket: Socket,
         roleLoopback: Boolean,
         targetUid: Int?,
+        ownerResult: ConnectionOwnership.Result?,
         nowMs: Long = System.currentTimeMillis()
     ): LoopbackOrigin.Facts? {
         val remote = ConnectionOwnership.toInet(socket.remoteSocketAddress) ?: return null
         val peerAddress = remote.address?.hostAddress ?: return null
-        val owner = ConnectionOwnership.querySocket(context, socket)
+        val ownSocketEvidence = SelfPorts.evidenceForAcceptedSocket(socket, nowMs)
         return LoopbackOrigin.Facts(
             roleLoopback = roleLoopback,
             peerAddress = peerAddress,
             peerPort = remote.port,
-            ownerUidResolvido = owner.uid,
+            peerOwnerResult = ownerResult,
             launcherUid = Process.myUid(),
             targetUid = targetUid,
             duranteTesteSintetico = RequestLog.isDuringSyntheticTest(nowMs),
-            portVerdict = SelfPorts.verdictFor(remote.port)
+            portVerdict = ownSocketEvidence.portVerdict,
+            registeredProcessPid = ownSocketEvidence.registeredPid
         )
     }
 
     /**
      * Dono (UID/pacote) de um fluxo observado no TUN — responde "esse pacote é do WZM?" com a API
-     * pública que o sistema usa para firewall/VPN (API 29+). Delega a classificação a
-     * [ConnectionOwnership], que documenta o duplo significado de `INVALID_UID`.
+     * pública que o sistema usa para firewall/VPN (API 29+). Aqui o cabeçalho do pacote já está
+     * orientado como `origem -> destino`, ao contrário do socket retornado por `accept()`. Delega a
+     * classificação a [ConnectionOwnership], que documenta o duplo significado de `INVALID_UID`.
      */
-    fun connectionOwnerForFlow(context: Context, header: PacketHeader): String {
-        val srcPort = header.srcPort ?: return "dono=NAO_RESOLVIDO (sem porta de origem)"
-        val dstPort = header.dstPort ?: return "dono=NAO_RESOLVIDO (sem porta de destino)"
+    fun connectionOwnerForFlowResult(context: Context, header: PacketHeader): ConnectionOwnership.Result {
+        val srcPort = header.srcPort ?: return ConnectionOwnership.Result(
+            ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+            detail = "sem porta de origem"
+        )
+        val dstPort = header.dstPort ?: return ConnectionOwnership.Result(
+            ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+            detail = "sem porta de destino"
+        )
         val protocol = when {
             header.isTcp -> ConnectionOwnership.PROTOCOL_TCP
             header.isUdp -> ConnectionOwnership.PROTOCOL_UDP
-            else -> return "dono=NAO_RESOLVIDO (protocolo ${header.protocolCode} nao suportado pela consulta)"
+            else -> return ConnectionOwnership.Result(
+                ConnectionOwnership.Outcome.ARGUMENTO_INVALIDO,
+                detail = "protocolo ${header.protocolCode} não suportado pela consulta"
+            )
         }
         val sourceAddress = runCatching { InetAddress.getByName(header.srcAddress) }.getOrNull()
-            ?: return "dono=NAO_RESOLVIDO (endereco de origem invalido)"
+            ?: return ConnectionOwnership.Result(
+                ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+                detail = "endereço de origem inválido"
+            )
         val destinationAddress = runCatching { InetAddress.getByName(header.dstAddress) }.getOrNull()
-            ?: return "dono=NAO_RESOLVIDO (endereco de destino invalido)"
-        val result = ConnectionOwnership.query(
+            ?: return ConnectionOwnership.Result(
+                ConnectionOwnership.Outcome.ENDERECOS_INDISPONIVEIS,
+                detail = "endereço de destino inválido"
+            )
+        return ConnectionOwnership.query(
             context,
             protocol,
             InetSocketAddress(sourceAddress, srcPort),
             InetSocketAddress(destinationAddress, dstPort)
         )
-        return ConnectionOwnership.describe(result)
     }
+
+    fun connectionOwnerForFlow(context: Context, header: PacketHeader): String =
+        ConnectionOwnership.describe(connectionOwnerForFlowResult(context, header))
 
     /** `true` quando o endereço está atribuído a alguma interface do device. */
     fun isAddressAssigned(address: String = CdnRouterConfig.VPN_ADDRESS): Boolean =
