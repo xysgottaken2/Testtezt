@@ -96,8 +96,22 @@ class NetworkPathReportTest {
 
     @Test
     fun renderNeverInventsNetworks() {
+        // Sem redes enumeradas: uma linha por fato desconhecido — nenhuma delas inventa valor.
         val lines = NetworkPathReport.render(emptyList(), null, "com.wzm.launcher")
-        assertEquals(1, lines.size)
-        assertTrue(lines.first().contains("INDISPONIVEL"))
+        assertEquals(3, lines.size)
+        assertTrue("a ausência de redes é explícita", lines[0].contains("INDISPONIVEL"))
+        assertTrue(lines.any { it.contains("netId da nossa VPN = NAO_RESOLVIDO") })
+        assertTrue(lines.any { it.contains("always-on VPN: INDISPONIVEL") })
+    }
+
+    @Test
+    fun renderHandlesUnknownNetIdAndMissingTransports() {
+        val lines = NetworkPathReport.render(
+            facts = listOf(NetworkPathReport.NetworkFacts(null, emptyList())),
+            alwaysOn = null,
+            ownPackage = "com.wzm.launcher"
+        )
+        assertTrue(lines.any { it.contains("netId=NAO_RESOLVIDO") })
+        assertTrue("transportes desconhecidos aparecem como lista vazia", lines.any { it.contains("[]") })
     }
 }
