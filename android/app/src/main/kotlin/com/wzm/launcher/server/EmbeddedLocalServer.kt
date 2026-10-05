@@ -146,7 +146,7 @@ class EmbeddedLocalServer(
     }
 
     override fun handleRoot(): String = """
-        <html><head><title>WZM Offline Launcher</title></head>
+        <html><head><title>Project Rezone</title></head>
         <body><h1>WZM Offline Server</h1>
         <p>Servidor offline funcionando em $host:$port</p>
         <p><a href="/health">/health</a> | <a href="/__hits">/__hits</a></p>

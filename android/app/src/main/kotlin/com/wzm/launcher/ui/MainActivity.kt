@@ -133,7 +133,8 @@ fun LauncherContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("WZM Offline Launcher", fontWeight = FontWeight.Bold) },
+                // Nome exibido ao usuário (o applicationId continua com.wzm.launcher).
+                title = { Text("Project Rezone", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF1E1E1E),
                     titleContentColor = Color.White

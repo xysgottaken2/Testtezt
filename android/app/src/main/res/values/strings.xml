@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WZM Offline Launcher</string>
+    <!-- Nome exibido ao usuário (launcher/recentes/compartilhamento).
+         O nome do projeto e o applicationId permanecem com.wzm.launcher. -->
+    <string name="app_name">Project Rezone</string>
 </resources>

@@ -114,7 +114,7 @@ class FileLogSinkTest {
             Regex("^wzm-requestlog-\\d{8}-\\d{6}\\.txt$").matches(written.name)
         )
         val text = written.readText(Charsets.UTF_8)
-        assertTrue(text.contains("# WZM Offline Launcher — RequestLog do roteador CDNI local"))
+        assertTrue(text.contains("# Project Rezone — RequestLog do roteador CDNI local"))
         assertTrue(text.contains("tcpConnections=1"))
         assertTrue(text.contains("/manifest/build-selector-103.js -> 200"))
         RequestLog.clear()

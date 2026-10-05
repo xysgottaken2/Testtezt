@@ -687,7 +687,7 @@ object RequestLog {
         val stamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).format(now)
         val current = counters.value
         return buildString {
-            append("# WZM Offline Launcher — RequestLog do roteador CDNI local\n")
+            append("# Project Rezone — RequestLog do roteador CDNI local\n")
             append("# exportado em: $stamp\n")
             append("# contadores: ${current.exportLine()}\n")
             append("# resumo: ${TunDiagnostics.summaryLine(current)}\n")

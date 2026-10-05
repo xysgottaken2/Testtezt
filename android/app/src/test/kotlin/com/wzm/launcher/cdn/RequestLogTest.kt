@@ -390,7 +390,7 @@ class RequestLogTest {
         RequestLog.incHttpRequest()
 
         val export = RequestLog.exportText(Date(0))
-        assertTrue(export.startsWith("# WZM Offline Launcher — RequestLog do roteador CDNI local"))
+        assertTrue(export.startsWith("# Project Rezone — RequestLog do roteador CDNI local"))
         assertTrue(export.contains("# exportado em: "))
         assertTrue(export.contains("# contadores: dnsQueries="))
         assertTrue(export.contains("tcpConnections=1"))

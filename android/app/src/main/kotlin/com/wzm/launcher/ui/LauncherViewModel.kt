@@ -230,7 +230,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "WZM Offline Launcher — RequestLog")
+            putExtra(Intent.EXTRA_SUBJECT, "Project Rezone — RequestLog")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     } catch (e: Exception) {

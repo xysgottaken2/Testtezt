@@ -1,10 +1,8 @@
-# WZM Offline Launcher — Android
+# Project Rezone — Android
 
-> **Status:** M3/M3.2 — **roteamento CDNI local COMPROVADO no device** (S23 Ultra, 2026-10-04): 5 conexões do WZM
-> chegaram ao listener `127.0.0.1:443` e apareceram no log; todas foram recusadas pelo cliente no TLS
-> (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`) → **o bloqueio restante é exclusivamente confiança de certificado**.
-> O stub de 18081 (M2) continua existindo, mas o caminho real do CDNI é o `cdn/` (ver §5.1 e [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §6.1).
-> Investigação do trust/pinning do APK 3.10.0: [docs/research/m3.2-apk-tls-trust-investigation.md](research/m3.2-apk-tls-trust-investigation.md).
+> **Status atualizado em M4.3 (2026-10-05):** análise read-only do `libgame.so` encontrou registro/leitura de uma entrada string candidata (hash `0x2ad45424fc903d3a`, default vazio) que flui ao setter cujo diagnóstico cita `cdni_httpServer`, com montagem de URL até dispatch. A associação nome↔hash é provável; escrita suportada pelo usuário, exposição na build distribuída e envio efetivo permanecem `UNKNOWN`. Um host bare local pode seguir a lógica visível sob `http://`, sem provar conexão runtime. A identidade WZM 3.10.0 não foi confirmada pelo ELF. O TUN segue como rota implementada no launcher, não uma necessidade absoluta provada. Ver [M4.3](research/m4.3-libgame-static-analysis.md) e [M4.2 histórico](research/m4.2-configuracao-endpoint-local.md).
+> **Correção de atribuição M3.5/M4.1:** os cinco eventos históricos em `127.0.0.1:443` não provam cinco conexões do WZM. Um ocorreu antes do launch e os demais não tiveram owner UID resolvido. `SSLV3_ALERT_CERTIFICATE_UNKNOWN`/falha TLS nesses peers não pode ser atribuída ao WZM sem correlação confiável; confiança/pinning do cliente continuam `UNKNOWN` e não foram alterados.
+> A existência do listener local e da VPN descreve o launcher, não comprova uma requisição WZM. O stub de `18081` também é diagnóstico local, não caminho de rede do jogo; ver [M3.5](research/m3.5-loopback-e-teste-sintetico.md) e [M4.1](research/m4.1-dono-das-conexoes-loopback.md).
 
 ## 0. Build verificado (CI)
 
@@ -21,17 +19,14 @@
 
 > **O hash muda a cada execução** (APK *debug* embute timestamps); a fonte de verdade é sempre o arquivo `app-debug.apk.sha256` que acompanha o artifact — e o resumo do run traz a annotation `sha256=… size=…`.
 
-> `[WARZONE_VERIFIED — device]` **M3 comprovado no S23 Ultra (2026-10-04):** `tcpConnections=5` em `127.0.0.1:443`,
-> `tlsFailed=5` (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`), `httpRequests=0`, `dnsIntercepted=0`. O tráfego do jogo
-> chega ao servidor local e aparece em VER LOGS; o bloqueio é confiança de certificado.
-> `[M3.5]` **ressalva importante sobre esses 5 números:** a 1ª conexão em `127.0.0.1:443` foi às **13:20:16** e o
-> WZM só foi iniciado às **13:20:21** — ou seja, ela **não pode** ser do jogo, e as outras quatro ficaram sem
-> autoria (`getConnectionOwnerUid` → `INVALID_UID`). Desde o M3.5 o loopback tem contador próprio, é marcado como
-> **diagnóstico secundário** e nunca promove evidência sobre o WZM; ver
-> [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
+> `[DEVICE_OBSERVED — não atribuível ao WZM]` **Registro histórico M3:** foram contadas cinco conexões em
+> `127.0.0.1:443`, com erros TLS no listener e sem HTTP. A primeira ocorreu antes do launch do WZM; nas outras
+> quatro o owner lookup retornou `INVALID_UID`. Portanto, esses números **não** comprovam tráfego do jogo nem
+> uma recusa TLS do WZM. Loopback permanece diagnóstico secundário; ver
+> [M3.5](research/m3.5-loopback-e-teste-sintetico.md) e [M4.1](research/m4.1-dono-das-conexoes-loopback.md).
 > `[VERIFIED]` em CI (M3.4): compilação Kotlin/Compose, **147 testes JVM** (10 `ServerTest` + 3 `WzmLauncherTest` + 9 `CdnRouteTableTest` + 6 `TunnelPacketsTest` + 5 `DnsRouterTest` + 6 `LocalHttpsServerTest` fim-a-fim com TLS real + 5 `CertificateAssetTest` + 15 `RequestLogTest` + 7 `FileLogSinkTest` + 9 `TlsTrustTest` + 8 `TunDiagnosticsTest` + 5 `TunActivityWatchdogTest` + 3 `SessionReportTest` + 9 `LocalHttpsServerDiagnosticsTest` + **20 `IpPacketParserTest`** + **9 `HypothesisBoardTest`** + **5 `RouterLifecycleTest`** + **8 `SyntheticFlowPathTest`** + **5 `LauncherScreenScrollTest`** — este último é **teste de UI de layout na JVM com Robolectric**, roda no mesmo `testDebugUnitTest` do CI), incluindo servidor real em socket com `HTTP 200` + `"OK"` em `/health`, roteamento DNS, RST/checksums, 404 controlado com path exato e log, armazenamento/consulta/exportação do RequestLog, empacotamento do APK, SHA-256, preflight de sintaxe Kotlin e checagem anti-commit de assets proprietários. (`HealthEndpointTest` é instrumented, roda só em device.)
 > `[VERIFIED no device, launcher M2]` instalação no S23 Ultra, abertura sem crash, servidor local e `startActivity` do WZM (teste do usuário 2026-10-04).
-> `[PENDING DEVICE]` **M3 no S23 Ultra:** consentimento de VPN, `bind` em `:443`, DNS interceptado, primeiro request CDNI chegando ao servidor e o bloqueio de confiança TLS — é o teste que o usuário precisa rodar (passo a passo em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §7).
+> `[PENDING DEVICE]` A validação de plumbing ainda deve começar por `CONTROL_ONLY` com app/UID distinto e sessão isolada (plano em [M3.6 §8.1](research/m3.6-caminho-real-de-rede.md#81-controle-positivo-real-com-outro-app-planejado-nao-executado)). Depois, qualquer observação WZM exige tupla/owner UID e correlação de janela/processo. Não tratar DNS interceptado, listener ativo, erro TLS ou `addAllowedApplication()` isoladamente como prova de uso pelo jogo.
 
 ### Correções de build descobertas (para não repetir)
 
@@ -169,11 +164,21 @@ Ou instala manualmente tocando no `app-debug.apk` no gerenciador de arquivos (pe
 
 **Debug package:** `com.wzm.launcher.debug` (evita conflito com futuro release `com.wzm.launcher`).
 
+**Identidade exibida (2026-10-05):** o nome mostrado ao usuário é **Project Rezone** (`@string/app_name`,
+usado pelo `android:label` do manifest e pela barra superior da UI). O nome do projeto e o
+`applicationId` continuam `com.wzm.launcher` — nenhuma identificação técnica foi alterada.
+O ícone vem do arquivo `136 Sem Título_20261005095829.png` do branch `main` (blob `af58fd4`,
+2048×2048, opaco, sem área transparente), apenas redimensionado para
+`mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}` em 48/72/96/144/192 px: `ic_launcher.png` é a imagem
+completa, sem recorte, sem nova cor e sem redesenho; `ic_launcher_round.png` é a mesma imagem com
+máscara circular (cantos transparentes), necessária porque a arte ocupa o quadrado inteiro.
+Antes os mipmaps eram placeholders de 1×1 px.
+
 ---
 
 ## 4. Como usar
 
-1. Abra **WZM Offline Launcher** — status inicial:
+1. Abra **Project Rezone** — status inicial:
    - Servidor: **PARADO**
    - WZM: **NÃO DETECTADO** ou **INSTALADO • 3.10.0** (se WZM estiver instalado)
    - Log: `[HH:MM:SS] Launcher iniciado`
@@ -221,14 +226,15 @@ gesto de rolagem da tela nem empurra os controles para fora.
 | `POST` | `/__reset` | `200 {"reset":true,"count":0}` | Zera `hits` (também aceita `GET /__reset` por conveniência) |
 | outro | `*` | `404 Not Found` | — |
 
-**Não inventamos CDNI:** `/manifest/build-selector-*.js`, `/wzm/shard_cdn/...`, etc. **não** estão neste stub. Este stub existe só para provar que o servidor sobe; o CDNI real está em §5.1.
+**Não inventamos CDNI:** `/manifest/build-selector-*.js`, `/wzm/shard_cdn/...`, etc. **não** estão neste stub. Este stub existe só para provar que o servidor sobe; a implementação do roteador local (não evidência de caminho WZM) está descrita em §5.1.
 
 ---
 
-## 5.1 Roteador CDNI local (M3) — DNS + HTTPS de verdade
+## 5.1 Roteador CDNI local (M3) — descrição da implementação do launcher
 
-O WZM não fala com `127.0.0.1:18081`: ele resolve `prod.cdni.callofduty.com` e conecta em **HTTPS :443**.
-Sem root não há `bind` em `:443` nem `iptables`; a solução implementada é:
+A cadeia WebView histórica registra uma URL fixa em `prod.cdni.callofduty.com`; o resolver/socket usado pelo CDNI nativo do WZM é `UNKNOWN`. A arquitetura abaixo descreve o **caminho implementado no launcher** para consultas que cheguem ao TUN, não uma prova de que o WZM o usou. O servidor de `18081` é separado e não é prova de caminho de rede do jogo.
+
+Sem root, a implementação usa:
 
 1. **VpnService per-app** (`addAllowedApplication` = só `com.activision.callofduty.warzone`) com rota **apenas** de `10.111.222.0/24`
    → não é VPN de internet (o resto do tráfego do WZM continua normal).
@@ -238,10 +244,7 @@ Sem root não há `bind` em `:443` nem `iptables`; a solução implementada é:
 3. **`10.111.222.1` é endereço local** (da própria interface tun): o kernel entrega o pacote à sua pilha TCP,
    onde o **nosso listener HTTPS :443** atende; se algum aparelho mandar o pacote pelo túnel, o loop do tun
    devolve ("bounce") o pacote para a interface — mesmo resultado.
-4. **TLS** termina no kernel com um **certificado nosso** (SAN `prod.cdni.callofduty.com`, `*.cdni.callofduty.com`);
-   cada handshake (sucesso **ou falha**) é logado — é a prova de que a requisição do WZM chegou.
-   Falhas saem classificadas: `[TLS] FALHA no handshake TLS em …: motivo=CLIENTE_RECUSOU_CERTIFICADO (…) — …`
-   (`TlsTrust`), o que distingue recusa de certificado, HTTP em claro, cifra sem comum, etc.
+4. **TLS** termina no listener do launcher com um **certificado local** (SAN `prod.cdni.callofduty.com`, `*.cdni.callofduty.com`). Um handshake/log prova, no máximo, que um peer chegou ao listener; só atribuir ao WZM se tuple/owner UID e janela temporal permitirem. A classificação `TlsTrust` descreve o erro observado no socket, não demonstra pinning ou rejeição pelo WZM. Nenhuma alteração de TLS/trust/pinning está autorizada.
 5. **HTTP** → `CdnRouteTable`:
    * endpoint com evidência (M2/M2.2) → `200`: com **corpo real observado** quando ele existe
      (`cdni.meta`, M3.5) ou com corpo **placeholder marcado** (`wzm-offline-local`) quando o conteúdo
@@ -252,14 +255,14 @@ Sem root não há `bind` em `:443` nem `iptables`; a solução implementada é:
 
 Endpoints servidos (detalhes e evidência por path em [docs/research/m3-cdni-integration.md](research/m3-cdni-integration.md) §4):
 
-| Path | Chamado por | Resposta local |
+| Path | Base da rota / atribuição do caller | Resposta local |
 |---|---|---|
-| `/manifest/build-selector-103.js` | bootstrap (M2.2, 1º request) | 200 JS placeholder marcado |
-| `/manifest/build-selector-102.js` | bootstrap (M2.2) | 200 JS placeholder marcado |
-| `/static/web/index.html` | WebView (M2) | 200 HTML placeholder marcado |
-| `/manifest/manifest.json`, `/prelogin/boot-15.0.0/web/**` | boot web (M2.2) | 200 placeholder marcado |
-| `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta` | shard_cdn (M2.2/M4.0) | 200 **corpo real** (`CdniMetaBody`: `min_buildnum=19854920`, `min_tu`, `app_store_url`, flags) — M3.5 |
-| `/__wzm_offline/health`, `/__wzm_offline/requests` | diagnóstico do launcher | JSON com contadores e o log |
+| `/manifest/build-selector-103.js` | WebView histórica (M2.2); qualquer chamada ao listener ainda exige atribuição por sessão | 200 JS placeholder marcado |
+| `/manifest/build-selector-102.js` | Selector remoto legado; uso na sessão/runtime atual `UNKNOWN` | 200 JS placeholder marcado |
+| `/static/web/index.html` | WebView/bootstrap documentado; caller do listener exige atribuição | 200 HTML placeholder marcado |
+| `/manifest/manifest.json`, `/prelogin/boot-15.0.0/web/**` | Paths associados à cadeia legada de UI; requisição WZM local não demonstrada | 200 placeholder marcado |
+| `/wzm/shard_cdn/{android,ios}/_manifest/cdni.meta` | Path público consultado manualmente; chamada do WZM `UNKNOWN` | 200 **corpo documentado** (`CdniMetaBody`: `min_buildnum=19854920`, `min_tu`, `app_store_url`, flags) — servido pelo launcher |
+| `/__wzm_offline/health`, `/__wzm_offline/requests` | Diagnóstico iniciado pelo launcher | JSON com contadores e o log |
 
 Exemplo de leitura no próprio device:
 
@@ -306,9 +309,7 @@ credencial; nenhuma causa é afirmada sem evidência. Procedimento no device e l
 inatividade do túnel e motivo de cada descarte — sem alterar o roteamento. Investigação completa, hipóteses
 e protocolo de reprodução: [docs/research/m3.3-diferenca-entre-os-testes.md](research/m3.3-diferenca-entre-os-testes.md).
 
-**Bloqueio conhecido (§6 do doc M3):** apps com `targetSdk ≥ 24` não confiam em CA instalada pelo usuário;
-o WZM provavelmente recusará o certificado no handshake (logado como `[TLS] FALHA … cliente RECUSOU …`).
-Isso **não** é contornado: nada de root, patch de trust ou alteração do APK do jogo.
+**Limite TLS:** a política Android para CA de usuário não prova a validação usada por esta build WZM. O histórico de loopback não tem atribuição suficiente para afirmar rejeição pelo jogo; confiança/pinning continuam `UNKNOWN`. Não instalar CA de interceptação, não usar root/patch e não alterar o APK.
 
 ---
 
@@ -321,9 +322,9 @@ em primeiro plano).
 | Recurso | Detalhe |
 |---|---|
 | Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]`, `[SINTETICO]` |
-| Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = só este promove), **peer** (IP:porta de origem), **dono** `dono=uid=<n> (<pacote>)` e, desde o M4.1, o **veredito de origem** `origem-da-conexao=<veredito> (VERIFIED|PROBABLE|UNKNOWN)` com o veredito da porta de origem; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados — e conexões do **teste sintético** (UID do launcher) saem como prova do caminho, não do jogo (M3.3/M3.5) |
+| Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = elegível a promover somente com correlação confiável, não por papel do listener isolado), **peer** (IP:porta de origem), **dono** `dono=uid=<n> (<pacote>)` e, desde o M4.1, o **veredito de origem** `origem-da-conexao=<veredito> (VERIFIED|PROBABLE|UNKNOWN)` com o veredito da porta de origem; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados — e conexões do **teste sintético** (UID do launcher) saem como prova do caminho, não do jogo (M3.3/M3.5) |
 | Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
-| Falha de TLS | linha com `motivo=<CÓDIGO>` + dica (ex.: `CLIENTE_RECUSOU_CERTIFICADO` = o cliente recusou a CA local — a requisição **chegou**) |
+| Falha de TLS | linha com `motivo=<CÓDIGO>` descreve o erro do peer/socket observado (ex.: alerta de certificado); não prova HTTP request, caller WZM, pinning ou rejeição de certificado pelo jogo |
 | DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
 | Silêncio do túnel (M3.3/M3.4) | avisos únicos de `[DIAG] nenhum pacote no TUN…`, `[DIAG] nenhuma consulta DNS de host CDNI…` e `[DIAG] houve N pacote(s), mas nenhum para 10.111.222.1:443…` — o "não aconteceu nada" passa a ser explícito no log |
 | IPv6 no túnel (M3.4) | aparece **como IPv6** (endereço, next-header, portas) e é descartado por política (`motivo=IPV6_SEM_ATENDIMENTO`) — nunca como "pacote inválido" |
@@ -345,7 +346,7 @@ em primeiro plano).
 Exemplo do cabeçalho exportado (também é o mesmo texto do COPIAR):
 
 ```
-# WZM Offline Launcher — RequestLog do roteador CDNI local
+# Project Rezone — RequestLog do roteador CDNI local
 # exportado em: 2026-10-04T14:22:31.512-03:00
 # contadores: dnsQueries=3 dnsIntercepted=1 dnsForwarded=2 tcpConnections=2 httpRequests=1 unknownRequests=1 tlsOk=1 tlsFailed=0 … tcpConnectionsTunel=2 tcpConnectionsLoopback=0 tlsOkTunel=1 tlsFailedTunel=0 tlsOkLoopback=0 tlsFailedLoopback=0 loopbackAntesDoWzm=0 loopbackDepoisDoWzm=0 tunPacketsTotal=12 tunIpv4Packets=10 tunIpv6Packets=2 tunTcpPackets=6 tunUdpPackets=4 tunIcmpPackets=0 tunInvalidPackets=1 tunIpv4ToCdnTarget=5 tunIpv6ToCdnTarget=2 tunToRedirect=5 tunBounces=5 tunDiscards=6 tunTcpSyn=6 tunTcpSynToRedirect=5 tunTcpSynOther=1 tunUdpDns53=2 tunUdpDnsNoVirtualDns=2 tunDotFlows=0 tunDohCandidates=1 tunTcp443Externo=0 tunUidVerifiedFlows=1
 # linhas: 12 (buffer máximo: 400)
@@ -402,9 +403,9 @@ está em `docs/research/m4.1-dono-das-conexoes-loopback.md`.
 
 ## 7. O que ainda NÃO funciona / próximo
 
-- **Corpo real dos arquivos do CDNI:** o `cdni.meta` já é servido com o **corpo real observado** (M3.5); os demais (manifesto de conteúdo, JS/CSS do boot) seguem **placeholder marcado** — nenhum manifest é inventado até o WZM chegar ao roteador (ver M4.0/M3.5)
-- **Confiança TLS do lado do WZM (bloqueio CONFIRMADO no device):** 5/5 conexões recusadas com `SSLV3_ALERT_CERTIFICATE_UNKNOWN`; `targetSdk ≥ 24` não confia em CA de usuário e CA no *system store* exige root → investigação de pinning/trust no APK em `docs/research/m3.2-apk-tls-trust-investigation.md` (sem bypass, sem patch)
-- **Paths exatos da cadeia do boot (ex.: `popup/events/dailylogin`):** hoje marcados `HYPOTHESIS`; o 404 controlado revela o path real quando o cliente pedir
+- **Respostas locais CDNI:** `cdni.meta` usa o corpo público documentado (M3.5); os demais (manifesto de conteúdo, JS/CSS do boot) são placeholders marcados. Isso descreve o servidor do launcher; nenhuma chamada WZM a esses paths foi provada nesta evidência. Não inventar manifests (ver M4.0/M3.5/M4.2).
+- **TLS/confiança do cliente:** `UNKNOWN`; não há handshake recusado atribuído ao UID do WZM nesta evidência. Não alterar TLS/trust/pinning.
+- **Paths da cadeia bootstrap:** existem paths públicos observados em fetch e stubs locais, mas um 404 do listener só revela a URL recebida; não identifica o processo/caller sem correlação confiável.
 - Persistência de logs (o buffer é em memória, 400 linhas), splash, onboarding
 
 ---
@@ -415,7 +416,7 @@ Launcher é ferramenta **local/offline de preservação**. Não faz: roubo de cr
 
 M3 (VPN/DNS/HTTPS locais):
 - O `CdnVpnService` **não encaminha tráfego para a internet** e não é VPN de saída: a rota do túnel cobre apenas `10.111.222.0/24`.
-- O túnel é **per-app** (`addAllowedApplication` = WZM) e existe apenas enquanto o usuário deixa o roteador ligado; o sistema pede consentimento explícito (`VpnService.prepare`).
+- O serviço solicita uma allow-list per-app para o pacote WZM (`addAllowedApplication`); isso é configuração do escopo da VPN, não prova de que todo socket WZM use o TUN. A sessão exige consentimento explícito (`VpnService.prepare`).
 - Os listeners HTTPS escutam **somente** endereços específicos do dispositivo (`10.111.222.1`, `127.0.0.1`) — nunca `0.0.0.0`.
 - O certificado é **nosso** (CA + folha descartáveis, geradas por `openssl`, sem valor de segurança, sem relação com a Activision) e é declarado no handshake e no log — não há tentativa de se passar pelo emissor oficial.
 - Nada no launcher modifica o APK do WZM, toca credenciais, autenticação ou anti-cheat.
@@ -431,13 +432,13 @@ M3 (VPN/DNS/HTTPS locais):
 - **`Platform declaration clash`:** não declare `val status` junto de `fun getStatus()` na mesma classe (mesma assinatura JVM).
 - **`/health` não responde:** verifique `adb logcat | grep WZM` e se servidor está `ONLINE`; teste `curl http://127.0.0.1:18081/health` **dentro** do device (`adb shell`).
 - **WZM não abre:** verifique `adb shell pm list packages | grep warzone` e `LauncherConfig.WZM_PACKAGE`.
-- **Roteador não sobe / `:443` negado:** o log mostra `não foi possível escutar em 10.111.222.1:443: BindException …`; o ouvinte cai para `18443` (diagnóstico). Sem `:443` o WZM não chega — registre o erro exato e abra issue (caminho alternativo: responder TCP em userspace sobre o tun).
-- **Log mostra DNS interceptado mas nenhum `TCP SYN`:** o WZM pode estar usando DNS próprio/DoH ou IP fixo; verifique também se outra VPN estava ativa (só uma VPN por vez).
-- **`[TLS] FALHA … cliente RECUSOU o certificado local`:** esperado com `targetSdk ≥ 24` (CA de usuário não é confiada) — é evidência de que a requisição chegou; ver §5.1/§7.
-- **WZM não usa o túnel:** confirme `addAllowedApplication` no log (`per-app: somente com.activision.callofduty.warzone`).
+- **Roteador não sobe / `:443` negado:** o log mostra `não foi possível escutar em 10.111.222.1:443: BindException …`; o ouvinte cai para `18443` (diagnóstico). Sem `:443`, esse listener local não está no endereço/porta configurado; isso não permite concluir o que o WZM tentou fazer. Registre o erro exato; não implemente caminho alternativo sem revisão.
+- **Log mostra DNS interceptado mas nenhum `TCP SYN`:** registre janela, tupla, owner UID, contadores e processos observáveis. Não atribua a DNS próprio/DoH, IP fixo, IPv6, ausência de tráfego ou outra VPN sem evidência independente; ver M3.6/M4.1.
+- **`[TLS] FALHA …` no listener:** registra erro daquele socket/peer. Não inferir que o peer era WZM sem owner UID/correlação temporal; não alterar confiança ou pinning.
+- **A allow-list mostra o pacote WZM:** isso confirma apenas que `addAllowedApplication()` foi aceita para aquele pacote; não prova que todo socket do WZM entrou no TUN. Exija observação de tupla e owner UID.
 - **Não sei onde o log foi salvo:** a tela VER LOGS mostra o caminho (`arquivo: /data/user/0/<pkg>/files/request-log.txt`); o `.txt` exportado vai para `/sdcard/Android/data/<pkg>/files/logs/` (sem permissão de armazenamento).
 - **`dono=NAO_RESOLVIDO (INVALID_UID …)` em conexões que o launcher abriu:** isso é o esperado sob allowlist estrita — a API devolve `-1` para quem está **fora** da VPN que chamou (o launcher não está dentro da própria allowlist); não é sinal de erro nem prova de que a conexão é de outro app.
 - **Teste de controle sem nenhum uid resolvido:** significa "a API não identificou", não "não há conexões". Se aparecer `SEM_PERMISSAO`, o serviço não era o VPN ativo no instante do teste — resultado inconclusivo (registre e repita com o roteador ativo).
-- **Log vazio mesmo com o WZM aberto:** confirme que o **ROTEADOR CDNI** está ativo e que apareceu `[DNS] prod.cdni.callofduty.com … [interceptado]`; sem DNS interceptado, nada chega ao servidor local.
+- **Log vazio enquanto o WZM está aberto:** confira o estado do roteador, mas não conclua que o jogo não gerou tráfego nem que usou outro caminho. Para atribuir algo ao WZM são necessárias janela/tupla e owner UID; DNS interceptado só confirma uma consulta observada pelo serviço, não sua autoria.
 - **Como ver o log do CI sem baixar artifact:** os passos `Report Gradle failure as annotations` / `Announce APK SHA256` publicam trechos legíveis em **check-runs/annotations** (útil quando o blob de logs está inacessível).
 
