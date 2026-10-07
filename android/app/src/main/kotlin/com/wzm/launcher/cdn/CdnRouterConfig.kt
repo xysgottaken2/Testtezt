@@ -55,6 +55,15 @@ object CdnRouterConfig {
     /** Porta de diagnóstico alternativa (usada se 443 for negada — só para log/health). */
     const val LOCAL_FALLBACK_PORT = 18443
 
+    /**
+     * Sonda CONNECT (M6): listener em **claro**, somente em [LOOPBACK_ADDRESS].
+     *
+     * É o mesmo número do fallback, mas em outro endereço: o fallback é o túnel
+     * (`10.111.222.1:18443`), a sonda é loopback (`127.0.0.1:18443`). Não há conflito de bind.
+     * Serve para apontar o proxy HTTP manual do Wi-Fi e descobrir se o cliente o respeita.
+     */
+    const val CONNECT_PROBE_PORT = 18443
+
     // ---- Certificado local (não-Activision; gerado por nós) ----
     const val CERT_ASSET = "cdn_local.p12"
     const val CERT_PASSWORD = "wzm-offline-local"

@@ -48,6 +48,9 @@ object CdnRouterController {
 
     private var server: LocalHttpsServer? = null
 
+    /** Sonda CONNECT (M6): listener em claro só em loopback; mede se o cliente usa o proxy manual. */
+    private var connectProbe: ConnectProbeServer? = null
+
     /** Pacote alvo da sessão (usado pelo veredito de origem e pelo teste de controle). */
     @Volatile
     private var targetPackage: String = ""
@@ -135,6 +138,23 @@ object CdnRouterController {
         )
         // M4.1: teste de controle de autoria — só faz sentido com o listener no ar.
         runOwnerControlProbe(appContext)
+        // M6: sonda CONNECT em loopback — independente do listener HTTPS e do túnel.
+        startConnectProbe(appContext)
+    }
+
+    /**
+     * Sonda CONNECT (M6): listener **em claro** em `127.0.0.1:18443`, para responder se o cliente
+     * respeita o proxy HTTP manual do sistema. Não abre túnel, não termina TLS, não encaminha bytes
+     * e não participa de [CdnRouteTable] nem do handler do `cdni.meta`.
+     */
+    private fun startConnectProbe(context: Context) {
+        val probe = ConnectProbeServer(
+            ownerDescription = { socket ->
+                ConnectionOwnership.describe(AndroidDiagnostics.connectionOwnerResult(context, socket))
+            }
+        )
+        connectProbe = probe
+        probe.start()
     }
 
     /** Cria ambos os listeners pelo mesmo caminho de atribuição; evita divergência entre startRouter/startHttps. */
@@ -258,6 +278,8 @@ object CdnRouterController {
     fun stopHttps() {
         server?.stop()
         server = null
+        connectProbe?.stop()
+        connectProbe = null
         publishStatus(httpsRunning = false, endpoints = "", tunnelBound = false)
     }
 
