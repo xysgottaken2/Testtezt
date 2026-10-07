@@ -47,6 +47,9 @@ required=(
   "docs/research/m4.7-meta-fetch-pre-engine-dns.md"
   "docs/research/m4.8-preengine-sequencia-e-preservacao.md"
   "docs/research/m5.0-servidor-local-dns.md"
+  "docs/research/m6.2-tls-diagnostico-device.md"
+  "docs/research/m6.3-libgame-pos-meta-cadeia-cdni.md"
+  "docs/architecture/apk-build-process.md"
   "warzone-offline/patches/apk-webview-patch/README.md"
   "warzone-offline/patches/apk-webview-patch/APK_PATCH_DIFF.md"
 )
@@ -69,4 +72,7 @@ grep -q "CDNI_META_SO_PELO_JNI_PORTOS_ANTES_DO_SOCKET" docs/research/m4.6-manife
 grep -q "META_FETCH_JAVA_DNS_ANTES_DO_SOCKET" docs/research/m4.7-meta-fetch-pre-engine-dns.md || { echo "M4.7 meta fetch marker missing"; exit 1; }
 grep -q "PREENGINE_META_JAVA_CADEIA_PARCIALMENTE_REPRODUZIVEL" docs/research/m4.8-preengine-sequencia-e-preservacao.md || { echo "M4.8 pre-engine sequence marker missing"; exit 1; }
 grep -q "M5_SERVIDOR_LOCAL_DNS_CDNI_META_PRIMEIRO" docs/research/m5.0-servidor-local-dns.md || { echo "M5.0 local server marker missing"; exit 1; }
+grep -q "D1_MEDIDO" docs/research/m6.2-tls-diagnostico-device.md || { echo "M6.2 D1 marker missing"; exit 1; }
+grep -q "POS_META_CADEIA_ESTATICA_CONCLUIDA" docs/research/m6.3-libgame-pos-meta-cadeia-cdni.md || { echo "M6.3 post-meta marker missing"; exit 1; }
+grep -q "BUILD_APK_DOCUMENTADO" docs/architecture/apk-build-process.md || { echo "APK build process marker missing"; exit 1; }
 echo "markers ok"
