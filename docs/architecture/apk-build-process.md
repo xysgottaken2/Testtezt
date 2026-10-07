@@ -60,7 +60,7 @@ O APK **só** nasce em `android-build.yml`. Os dois gatilhos (push/PR e `workflo
 | 8 | Run unit tests (:87-98) | `./gradlew :app:testDebugUnitTest --stacktrace 2>&1 \| tee ../gradle-test.log`; guarda `PIPESTATUS[0]` em `TEST_EXIT` via `$GITHUB_ENV`; `exit 0` | roda **antes** do APK; o `tee` + `PIPESTATUS` é para capturar o código real sem perder o log nem morrer no `pipefail` do shell do Actions |
 | 9 | Anotações de falha (:100-118) | `grep` do log → `::error title=gradle-error-N::` | o log bruto do Actions nem sempre é legível de todo ambiente; a anotação aparece na API de checks |
 | 10 | Falhas de teste como check-run (:120-124) | `scripts/ci-report-test-failures.py --dir android/app/build/test-results/testDebugUnitTest` | idem, via XML |
-| 11 | Contagem de testes (:128-143) | soma os `tests/failures/errors/skipped` dos XMLs → `::notice title=testes-jvm::` | evidência numérica de que a suíte rodou neste build (último estado conhecido: **262 testes, 0 falhas**) |
+| 11 | Contagem de testes (:128-143) | soma os `tests/failures/errors/skipped` dos XMLs → `::notice title=testes-jvm::` | evidência numérica de que a suíte rodou neste build. Medido no run `37657231158`: `arquivos=31 testes=262 falhas=0 erros=0 pulados=0` (`VERIFIED`) |
 | 12 | Upload de logs em falha (:145-155) | `gradle-test.log`, `reports/`, `test-results/` (7 dias) | diagnóstico sem reconstruir |
 | 13 | **Fail if unit tests failed** (:157-161) | `exit 1` se `TEST_EXIT != 0` | nenhum APK nasce de uma suíte vermelha |
 | 14 | **Build debug APK** (:163-166) | `./gradlew assembleDebug --stacktrace` | única tarefa que produz APK |
@@ -149,6 +149,8 @@ O que **não** é igual ao CI: a chave de assinatura (keystore da sua máquina),
 ## 6. Intermediários úteis quando algo quebra
 
 `android/app/build/` → `intermediates/` (packaged manifest em `intermediates/merged_manifest*/`, `packaged_res/`, `compiled_local_resources`), `test-results/testDebugUnitTest/*.xml` (o que as anotações dos passos 10-11 leem), `reports/tests/testDebugUnitTest/index.html`, e `outputs/apk/debug/`. Como `org.gradle.caching=true`, um passo `assembleDebug` pode **não recompilar** nada: para depuração honesta, `./gradlew clean :app:testDebugUnitTest assembleDebug`.
+
+Ruído conhecido que **não** quebra o build (visto no run `37657231158`, `VERIFIED`): `Restore Gradle distribution 8.7 failed: Cache service responded with 400` e `Failed to restore gradle-home-v1|Linux|build…` — o `setup-gradle` tenta restaurar o cache, falha, e simplesmente baixa/builder do zero. Enquanto isso persistir, o job fica ~1-2 min mais lento; não é sinal de problema no APK. Também há os avisos de deprecação (`Node.js 20`, `setup-java v4`) e o aviso de `ubuntu-latest → Ubuntu 26 (19/10/2026)` — quando a runner migrar, vale revalidar o passo 3 (`sdkmanager`).
 
 Ordem de falha mais frequente, da mais barata para a mais cara: `preflight` (passo 6) → wrapper (5) → `sdk.dir` ausente → asset de certificado ausente (7) → teste vermelho (8/13) → APK ausente (15) → pacote inesperado/asset proprietário (16) → layout de artifact (19).
 
