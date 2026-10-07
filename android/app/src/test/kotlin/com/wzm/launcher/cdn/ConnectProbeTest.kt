@@ -8,7 +8,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.Socket
 
 /**
@@ -183,9 +185,18 @@ class ConnectProbeTest {
         server = null
 
         assertFalse("isRunning precisa cair para false", probe.isRunning)
-        val refused = runCatching {
-            Socket().use { socket -> socket.connect(InetSocketAddress("127.0.0.1", port), 1_000) }
-        }.isFailure
-        assertTrue("depois de stop() a porta precisa recusar conexão", refused)
+        assertEquals("o listener precisa ser liberado (sem porta própria)", -1, probe.localPort)
+        // Prova de que nada mais escuta: um bind novo no MESMO endereço/porta tem de funcionar.
+        // Não usamos "conexão recusada" porque, no Linux, o socket cliente pode receber do SO a
+        // porta efêmera recém-libertada e conectar-se a si mesmo — falso negativo intermitente.
+        val rebound = runCatching { ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")) }
+        assertTrue(
+            "a porta precisa estar livre depois de stop(): ${rebound.exceptionOrNull()?.message}",
+            rebound.isSuccess
+        )
+        rebound.getOrNull()?.close()
+        // stop() repetido não pode lançar nem ressuscitar o listener.
+        probe.stop()
+        assertFalse(probe.isRunning)
     }
 }
