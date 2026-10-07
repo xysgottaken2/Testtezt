@@ -347,10 +347,11 @@ def cmd_refs(a, args):
 
 
 def cmd_dis(a, args):
+    """`dis <endereço> [n]` — decompila n instruções a partir do endereço dado
+    (não alinha ao início da função; `refs <endereço>` sim, esse usa o início)."""
     f = int(args[0], 16)
     n = int(args[1]) if len(args) > 1 else 200
-    s, e = a.fnrange(f)
-    a.dis(s, min(e, s + n * 4))
+    a.dis(f, f + n * 4)
 
 
 def cmd_callers(a, args):
