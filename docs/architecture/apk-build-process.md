@@ -83,6 +83,7 @@ Job `build` do workflow `build` (:1-82) roda `npm ci || npm install`, `npx tsc -
 | `applicationId` efetivo | `com.wzm.launcher.debug` (sufixo `debug`) |
 | Assinatura | **keystore debug default do AGP** (`$HOME/.android/debug.keystore`, alias `androiddebugkey`, senha `android`), criado automaticamente se faltar — `PROBABLE` (documentação do AGP: [app-signing#debug-mode](https://developer.android.com/studio/publish/app-signing)); **0** `signingConfig` no `build.gradle.kts` |
 | Conteúdo extra | os dois assets de certificado gerados no passo 7 |
+| Tamanho real observado | artifact `wzm-offline-launcher-debug` = **15 731 906 B** no run `37657231158` (commit `9fe86ff`, docs-only) contra **15 732 644 B** no run anterior — **o `.apk` não é bit-a-bit reproduzível entre runs**: muda a keystore de debug, muda o timestamp das assinaturas em `META-INF`, muda o par CA gerado no passo 7 |
 
 **Consequência 1 — reinstalação.** Num runner efêmero o `debug.keystore` nasce de novo a cada run, então **cada APK publicado tem assinatura diferente** e o `adb install -r` sobre uma instalação anterior falha (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). É preciso **desinstalar** o app do launcher antes de instalar um build novo (ou versionar uma keystore de debug em secret, o que este repo não faz). `PROBABLE`, e é o comportamento clássico de CI sem keystore fixa.
 
@@ -141,7 +142,7 @@ gradle wrapper --gradle-version 8.7        # exige: gradle 8.7 instalado
 sha256sum app/build/outputs/apk/debug/app-debug.apk
 ```
 
-O que **não** é igual ao CI: a chave de assinatura (keystore da sua máquina), o timestamp do `META-INF`, e portanto o SHA-256 do arquivo. Comparar hash local × hash do artifact é **inútil** — comparar *layout e conteúdo* (`unzip -l`) é o que faz sentido. `PROBABLE` por construção do AGP.
+O que **não** é igual ao CI: a chave de assinatura (keystore da sua máquina), o timestamp do `META-INF`, e portanto o SHA-256 do arquivo. Comparar hash local × hash do artifact é **inútil** — comparar *layout e conteúdo* (`unzip -l`) é o que faz sentido. `PROBABLE` para o caso local; a **variação entre runs do CI já é `VERIFIED`** (15 731 906 × 15 732 644 bytes com a mesma árvore-fonte).
 
 ---
 
