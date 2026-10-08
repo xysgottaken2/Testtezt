@@ -4,8 +4,11 @@ package com.wzm.launcher.cdn
  * Corpo **real e documentado** do `cdni.meta` (M3.5).
  *
  * Origem dos valores (público, sem auth, sem token):
- *  * `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` — 200, ~320 B
- *  * `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/ios/_manifest/cdni.meta` — 200, ~410 B
+ *  * `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` — 200, **397 B**
+ *    (CRLF + 4 espaços; reobservado ao vivo 2026-10-08 — o "~320 B" anotado em M2.2 era a ordem de
+ *    grandeza do `fetch_page`, não uma contagem de bytes: 386 B é o mesmo conteúdo em LF)
+ *  * `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/ios/_manifest/cdni.meta` — 200, ~410 B (M2.2;
+ *    tamanho não reconciliado com o literal, que tem 509 B em LF — ver docs/protocol/cdni-meta.md)
  *  * observado em M2.2 (2026-10-03) e reconfirmado na íntegra em 2026-10-04 (M4.0);
  *    campos descritos em `docs/protocol/cdni-meta.md`.
  *
@@ -40,7 +43,16 @@ object CdniMetaBody {
     fun flagKeys(body: String = ANDROID): List<String> =
         Regex("\"(#x[0-9a-fA-F]+)\"\\s*:").findAll(body).map { it.groupValues[1] }.toList()
 
-    /** Idêntico ao corpo observado para Android. */
+    /**
+     * Idêntico ao corpo observado para Android — **inclusive a quebra de linha**.
+     *
+     * Reobservado ao vivo em 2026-10-08 (`GET https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta`):
+     * o arquivo real usa **CRLF** (`\r\n`) com indentação de 4 espaços e **termina em `}` sem quebra final**
+     * = 397 B. Antes deste incremento o launcher servia o mesmo conteúdo com LF (386 B): os campos e
+     * valores batiam, a separação de linhas não. Como o corpo é a única coisa que o cliente lê aqui,
+     * "exatamente o JSON real" passou a significar byte a byte (M7): as linhas abaixo são unidas por CRLF
+     * exatamente como chegam do CDN. Nenhum campo foi acrescentado/removido/reordenado.
+     */
     val ANDROID: String = """
 {
     "min_tu": 0,
@@ -54,9 +66,16 @@ object CdniMetaBody {
     "#x3bc57a21a42173b49": true,
     "#x377addea98016dad6": true
 }
-""".trimIndent()
+""".trimIndent().replace("\n", "\r\n")
 
-    /** Idêntico ao corpo observado para iOS (inclui `future_*` e uma flag extra). */
+    /**
+     * Corpo observado para iOS (inclui `future_*` e uma flag extra) — **não reobservado em 2026-10-08**,
+     * então continua na renderização original com LF e **não** é afirmado byte a byte: o documento de
+     * protocolo registra `~410 B` para o arquivo iOS, enquanto este literal tem 509 B (LF) / 523 B (CRLF).
+     * A divergência de tamanho está registrada como `UNKNOWN` em `docs/protocol/cdni-meta.md`; enquanto
+     * ela não for liquidada por uma reobservação, o caminho iOS serve o conteúdo verificado (campos e
+     * valores) sem reivindicação de bytes idênticos. O experimento M7 é do caminho **android**.
+     */
     val IOS: String = """
 {
     "min_tu": 0,

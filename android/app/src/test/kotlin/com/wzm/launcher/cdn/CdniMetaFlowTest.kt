@@ -38,6 +38,10 @@ class CdniMetaFlowTest {
 
     // ---------- 1. o corpo é o JSON real ----------
 
+    /**
+     * O JSON especificado para o experimento. `\r\n` porque o arquivo real do CDN usa CRLF
+     * (reobservado 2026-10-08): o launcher serve exatamente esses bytes — M7 item 2.
+     */
     private val upstreamJson = """
         {
             "min_tu": 0,
@@ -51,7 +55,7 @@ class CdniMetaFlowTest {
             "#x3bc57a21a42173b49": true,
             "#x377addea98016dad6": true
         }
-    """.trimIndent()
+    """.trimIndent().replace("\n", "\r\n")
 
     @Test
     fun servedBodyIsByteForByteTheUpstreamJson() {

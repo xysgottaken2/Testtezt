@@ -291,7 +291,7 @@ linha e a frase "NÃO conta como evidência de tráfego do WZM". Todo evento de 
 do túnel — só ele pode promover `tcp_para_o_alvo_cdni_443`/`tls_no_listener_do_tunel` a `VERIFIED`.
 O botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** prova esse caminho sem o WZM (consulta DNS por
 bytes + TCP + TLS com a CA local + `GET cdni.meta`), e o `cdni.meta` passou a ser servido com o **corpo real**
-(~320 B, `min_buildnum=19854920`) em vez de placeholder. Detalhes e o procedimento no device:
+(`min_buildnum=19854920`; 397 B, CRLF, byte a byte desde M7) em vez de placeholder. Detalhes e o procedimento no device:
 [docs/research/m3.5-loopback-e-teste-sintetico.md](research/m3.5-loopback-e-teste-sintetico.md).
 
 **Experimento M4.4 — `cdni.meta` real servido localmente (observação, sem mexer em TLS/TUN):** o objetivo é

@@ -10,9 +10,11 @@
 - **Direction:** WZM caller `UNKNOWN`; recurso CDN foi consultado manualmente via `fetch_page` (GET anônimo). Não há captura/owner UID que prove que o WZM pediu este path.
 - **Transport:** `HTTPS`
 - **Endpoint:** `GET https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` (Android) e `…/ios/_manifest/cdni.meta` (iOS)
-- **Encoding:** `JSON` (application/json, sem BOM, `\r\n` + 4-space indent)
+- **Encoding:** `JSON` (application/json, sem BOM, `\r\n` + 4-space indent) — **reconfirmado ao vivo 2026-10-08**: o arquivo usa CRLF; o launcher servia LF até M7 (mesmo conteúdo, 11 bytes a menos), agora serve CRLF byte a byte
 - **Encryption:** `TLS` (Akamai edgesuite)
-- **Size:** ~320 B (android) / ~410 B (ios) — 2026-10-03 live
+- **Size:** **397 B** medidos (android, CRLF + 4 espaços, sem quebra final; reobservado 2026-10-08) / ~410 B (ios, M2.2)
+  - O `~320 B` registrado em M2.2/M2.2.1/M3 era uma ordem de grandeza do corpo devolvido pela ferramenta de fetch, **não** contagem de bytes: o mesmo conteúdo em LF dá 386 B e em CRLF 397 B. Correção lavrada em M7; os documentos históricos (M2.2, M2.2.1, M3) ficam como foram observados.
+  - `ios`: **discrepância não liquidada** — o documento registra ~410 B e o literal em `CdniMetaBody.IOS` tem 509 B (LF) / 523 B (CRLF). Como não houve reobservação do arquivo iOS em 2026-10-08, o corpo iOS segue servido como estava e a fidelidade byte a byte dele é `UNKNOWN`. O caminho do experimento M7 é **android**.
 - **Version:** `min_buildnum: 19854920`, `min_tu: 0` (ambas plataformas) — WZM 3.x até 4.x
 - **Observed:** `2026-10-03T…Z` e **reconfirmado em 2026-10-04** via `fetch_page` (externo, sem auth, sem volume) — `200` para ambos; `Not a file` para diretórios, `Not found` para inexistente (prova Akamai diferencia)
 
@@ -52,7 +54,8 @@ iOS adiciona `"#x3febec63a7c2351ab": false` + `future_*`.
 ## Evidência
 
 - **SOURCE:** `prod.cdni.callofduty.com` Akamai (`edgesuite.net` → `a224.dscw27.akamai.net`)
-- **EVIDENCE:** `fetch_page https://…/android/_manifest/cdni.meta` → JSON acima (320 B); `…/ios/…` → 410 B; ambos `200`. Diretórios `…/android/` → ````\nNot a file\n```` (403-like). Ver `docs/research/m2.2-assets-cdni-investigation.md` §3.
+- **EVIDENCE (2026-10-08, M7):** `fetch_page https://prod.cdni.callofduty.com/wzm/shard_cdn/android/_manifest/cdni.meta` → corpo acima **com `\r\n` explícito entre as 12 linhas e sem quebra final** = 397 B; observado duas vezes no mesmo dia, resultado idêntico (10 membros, mesma ordem, mesmos 7 booleanos). `android`: `VERIFIED` byte a byte.
+- **EVIDENCE (2026-10-03/04):** `fetch_page` → JSON acima (320 B); `…/ios/…` → 410 B; ambos `200`. Diretórios `…/android/` → ````\nNot a file\n```` (403-like). Ver `docs/research/m2.2-assets-cdni-investigation.md` §3.
 - **CONFIDENCE:** `VERIFIED — observado live 200 via fetch_page 2026-10-03` (sem auth, sem token)
 
 ## Comportamento observado
@@ -107,6 +110,22 @@ sendo registradas como **opacas** (`CdniMetaBody.flagKeys()`), com significado `
 3. **Contadores** (`cdniMetaServidos`, `cdniMetaSintetico`, `cdniMetaForaDaJanela`,
    `pedidosAposCdniMeta`) no cabeçalho exportado e nos cards.
 4. Rastreio (`CdniMetaFlow`) — nada de TLS/pinning, TUN, DNS virtual ou roteamento foi alterado.
+
+## Experimento M7 (2026-10-08) — byte a byte e contrato travado
+
+Análise curta + mapeamento dos 12 itens do escopo: `docs/research/m7-cdni-meta-experimento-local.md`.
+
+- **Correção de fidelidade:** o `cdni.meta` android do CDN usa **CRLF** + 4 espaços, sem quebra final
+  (reobservado ao vivo 2026-10-08, duas vezes, idêntico) = **397 B**. Até aqui o launcher servia o mesmo
+  conteúdo em **LF** (386 B). `CdniMetaBody.ANDROID` passou a ser unido por `\r\n`; nenhum campo, ordem ou
+  valor mudou, e as chaves `#x…` seguem opacas (extraídas por regex, nunca interpretadas).
+- **Contrato:** `CdniMetaResponseContractTest` trava a resposta inteira — corpo golden escrito por extenso
+  no teste (independente de `CdniMetaBody`), os 7 cabeçalhos na ordem exata e sem duplicata,
+  `Content-Length: 397`, ausência de BOM e de quebra final, caminho android nunca servindo o corpo iOS, e
+  query string não alterando a resposta.
+- **Fora do escopo M7 (deliberadamente não implementado):** `environment.config`, manifests de conteúdo,
+  downloads/shards, TLS/pinning, TUN/VPN, DNS, autenticação. Path desconhecido continua em 404 controlado.
+- O que o launcher devolve no total: `220 B` de cabeçalho + `397 B` de corpo = `617 B` por resposta.
 
 ### Como ler o resultado
 

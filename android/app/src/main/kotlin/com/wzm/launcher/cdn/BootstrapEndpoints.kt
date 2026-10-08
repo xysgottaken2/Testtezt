@@ -137,8 +137,9 @@ object BootstrapEndpoints {
             contentType = "application/json; charset=utf-8",
             body = { CdniMetaBody.android() },
             confidence = Confidence.VERIFIED,
-            note = "M2.2/M4.0: corpo REAL observado (android, ~320 B; min_buildnum=19854920) — " +
-                "servido sem alterações para o teste do caminho CDNI (M3.5).",
+            note = "M2.2/M4.0/M7: corpo REAL observado (android, 397 B CRLF + 4 espaços; " +
+                "min_buildnum=19854920) — servido byte a byte, sem alterações, para o teste do " +
+                "caminho CDNI (M3.5; reobservado ao vivo 2026-10-08).",
             realUpstreamBody = true
         ),
         CdnEndpoint(
@@ -147,7 +148,8 @@ object BootstrapEndpoints {
             contentType = "application/json; charset=utf-8",
             body = { CdniMetaBody.ios() },
             confidence = Confidence.VERIFIED,
-            note = "M2.2/M4.0: corpo REAL observado (ios, ~410 B; inclui future_*) — servido sem alterações.",
+            note = "M2.2/M4.0: corpo REAL observado (ios, ~410 B; inclui future_*) — servido sem " +
+                "alterações; tamanho/EOL do arquivo iOS segue não reconciliado (ver docs/protocol/cdni-meta.md).",
             realUpstreamBody = true
         )
     )
