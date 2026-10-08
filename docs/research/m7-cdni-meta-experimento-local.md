@@ -98,3 +98,19 @@ Pré-requisitos e procedimento estão em `docs/research/m3.5-loopback-e-teste-si
 
 **Próximo passo, e apenas ele:** rodar o APK debug deste build no device com o servidor local + DNS virtual,
 observar a tela e o log `[CDNI-META]`, e anotar aqui o resultado (com owner UID quando a API resolver).
+
+## 6. Verificação (medida no CI, não estimada)
+
+| Verificação | Resultado |
+|---|---|
+| `python3 scripts/check-kotlin-preflight.py --dir android` | OK (81 arquivos) |
+| `python3 scripts/check-kotlin-literals.py android` | OK (9 473 linhas) |
+| `bash scripts/check-docs.sh` | docs obrigatórios presentes, marcadores ok |
+| `android-build` run `37850384872` (commit `9935fcd`) | **sucesso** — `arquivos=32 testes=269 falhas=0 erros=0 pulados=0` |
+| regressão da mudança de corpo | nenhuma: os 262 testes anteriores seguem passando (32º arquivo = +7 testes do contrato) |
+| artefato | `wzm-offline-launcher-debug` — 15 731 908 B (zip), job `verify-artifact` OK (layout + sha256 conferidos no artefato publicado) |
+
+O contrato byte-a-byte foi, portanto, validado por compilação + asserções reais no CI (397 B servidos com
+`Content-Length: 397`), não só pela simulação local do `trimIndent()` feita durante a edição.
+
+Resta **uma** coisa fora do alcance do CI: a observação no device (§4).
