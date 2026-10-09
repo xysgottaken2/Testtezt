@@ -15,6 +15,72 @@ import org.junit.Test
  */
 class TlsTrustTest {
 
+    // ---------- M8: as duas assinaturas reais observadas no device em 2026-10-08 ----------
+
+    /** Alerta 46 (o cliente chegou à verificação do certificado e recusou a cadeia). */
+    private val deviceAlert46 =
+        "Read error: ssl=0xb4000075a3a9b548: Failure in SSL library, usually a protocol error " +
+            "error:10000416:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_UNKNOWN " +
+            "(external/boringssl/src/ssl/tls_record.cc:489 0xb4000075a3b22140:0x00000003)"
+
+    /** Falha na camada de registro: o servidor não conseguiu abrir o registro recebido (4 de 12). */
+    private val deviceRecordLayer =
+        "Read error: ssl=0xb4000075a3a9c088: Failure in SSL library, usually a protocol error " +
+            "error:10000070:SSL routines:OPENSSL_internal:BAD_PACKET_LENGTH " +
+            "(external/boringssl/src/ssl/ssl_aead_ctx.cc:242 0x760b2efbc6:0x00000000) " +
+            "error:1000008b:SSL routines:OPENSSL_internal:DECRYPTION_FAILED_OR_BAD_RECORD_MAC " +
+            "(external/boringssl/src/ssl/tls_record.cc:190 0x760b2efbc6:0x00000000)"
+
+    @Test
+    fun recordLayerFailureGetsItsOwnCodeAndIsNeverReadAsCertRefusal() {
+        val failure = TlsTrust.analyze(deviceRecordLayer)
+
+        assertEquals(
+            "BAD_PACKET_LENGTH/DECRYPTION_FAILED_OR_BAD_RECORD_MAC não pode cair em DESCONHECIDO " +
+                "(era o que acontecia: 4 linhas sem código útil no log de 2026-10-08)",
+            TlsFailure.RECORD_LAYER_INTEGRITY,
+            failure.code
+        )
+        assertFalse(
+            "o log NÃO prova recusa de certificado aqui; afirmar isso seria inventar causa",
+            TlsTrust.isClientTrustFailure(deviceRecordLayer)
+        )
+        assertTrue("a dica precisa dizer explicitamente que não é evidência de recusa", failure.hint.contains("NÃO é evidência"))
+        assertTrue("as causas candidatas ficam declaradas como indistinguíveis", failure.hint.contains("não são distinguíveis"))
+    }
+
+    @Test
+    fun certificateEvidenceStillWinsOverTheRecordLayerSignal() {
+        // A mensagem do alerta 46 contém "tls_record.cc" e é uma falha de leitura: ela não pode ser
+        // reclassificada como registro. E uma mensagem que trouxer os dois sinais continua sendo
+        // interpretada pelo sinal que prova política de confiança (o alerta), não pelo que não prova.
+        assertEquals(TlsFailure.CLIENT_REJECTED_CERTIFICATE, TlsTrust.analyze(deviceAlert46).code)
+        assertEquals(
+            TlsFailure.CLIENT_REJECTED_CERTIFICATE,
+            TlsTrust.analyze("$deviceRecordLayer $deviceAlert46").code
+        )
+        assertTrue(TlsTrust.isClientTrustFailure(deviceAlert46))
+    }
+
+    @Test
+    fun everyDocumentedSignatureIsClassifiedIntoAKnownCode() {
+        val known = setOf(
+            TlsFailure.CLIENT_REJECTED_CERTIFICATE,
+            TlsFailure.CLIENT_CLEARTEXT,
+            TlsFailure.HOSTNAME_MISMATCH,
+            TlsFailure.CERTIFICATE_EXPIRED,
+            TlsFailure.NO_COMMON_CIPHER,
+            TlsFailure.PEER_CLOSED,
+            TlsFailure.RECORD_LAYER_INTEGRITY,
+            TlsFailure.UNKNOWN
+        )
+        for (sample in listOf(deviceAlert46, deviceRecordLayer, "algo totalmente inesperado")) {
+            val code = TlsTrust.analyze(sample).code
+            assertTrue("código fora do conjunto estável: $code (amostra: $sample)", code in known)
+            assertTrue("código instável (não é [A-Z_]+): $code", Regex("^[A-Z_]+$").matches(code))
+        }
+    }
+
     @Test
     fun classifiesDeviceEvidenceAlert() {
         // String exata observada no device
@@ -93,6 +159,8 @@ class TlsTrustTest {
             "Unrecognized SSL message",
             "no cipher suites in common",
             "Remote host terminated the handshake",
+            "bad_record_mac",
+            "SSLV3_ALERT_BAD_RECORD_MAC (external/boringssl/src/ssl/ssl_aead_ctx.cc:242)",
             "",
             "qualquer coisa"
         )

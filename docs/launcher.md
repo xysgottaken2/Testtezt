@@ -288,7 +288,16 @@ linha e a frase "NÃO conta como evidência de tráfego do WZM". Todo evento de 
 **marcador de sessão** gravado ao iniciar o WZM: `antes do WZM iniciado (Δ -X s)`, `depois (Δ +X s)` ou
 `WZM não iniciado nesta sessão` (`loopbackAntesDoWzm`/`loopbackDepoisDoWzm`). No listener do túnel, a linha de
 **conexão aceita** traz peer (IP:porta de origem), `dono=uid=<n> (<pacote>)` quando a API resolve e o contador
-do túnel — só ele pode promover `tcp_para_o_alvo_cdni_443`/`tls_no_listener_do_tunel` a `VERIFIED`.
+do túnel — só ele pode promover `tls_no_listener_do_tunel` a `VERIFIED`.
+
+**Nota estrutural (M8, lida do log de 2026-10-08):** `tcp_para_o_alvo_cdni_443` **nunca** pode ser promovido
+por pacote de TUN neste desenho, e isso não é evidência negativa sobre o WZM: o destino devolvido pelo DNS é o
+próprio endereço do túnel (`CdnRouterConfig.REDIRECT_TO = VPN_ADDRESS`), então a tabela `local` do kernel entrega
+o SYN direto ao listener — o pacote jamais aparece no fd do TUN. Por isso `tunTcpSyn=0`, `tunBounces=0` e `tunTcpPackets=0`
+coexistem com 13 conexões aceitas. Pelo mesmo motivo `tunFluxosDestinoResolvido` fica em 0: o join nome↔destino em
+`CdnVpnService` é deliberadamente `!header.isCdnTarget`, logo fluxo CDNI está excluído por construção. Quem responde
+sobre o cliente é a linha de aceite do listener (com owner UID) e a linha `[TLS]` — não os contadores de pacote.
+
 O botão **TESTE SINTÉTICO DNS → 10.111.222.1:443 → cdni.meta** prova esse caminho sem o WZM (consulta DNS por
 bytes + TCP + TLS com a CA local + `GET cdni.meta`), e o `cdni.meta` passou a ser servido com o **corpo real**
 (`min_buildnum=19854920`; 397 B, CRLF, byte a byte desde M7) em vez de placeholder. Detalhes e o procedimento no device:
@@ -336,8 +345,8 @@ em primeiro plano).
 | Tags visíveis | `[DNS]`, `[CDNI]`, `[CDNI?]` (desconhecidos), `[HTTP]`, `[TLS]`, `[TUN]`, `[VPN]`, `[DIAG]`, `[LAUNCHER]`, `[SINTETICO]` |
 | Conexões TCP | listener + caminho (`via loopback`/`via túnel`), **papel** (`LOOPBACK_DIAGNOSTICO` = diagnóstico, nunca evidência / `TUNEL_PRIMARIO` = elegível a promover somente com correlação confiável, não por papel do listener isolado), **peer** (IP:porta de origem), **dono** `dono=uid=<n> (<pacote>)` e, desde o M4.1, o **veredito de origem** `origem-da-conexao=<veredito> (VERIFIED|PROBABLE|UNKNOWN)` com o veredito da porta de origem; o loopback ainda traz a relação com o WZM (`antes`/`depois`/`não iniciado`) e contadores separados — e conexões do **teste sintético** (UID do launcher) saem como prova do caminho, não do jogo (M3.3/M3.5) |
 | Sessão (M3.3) | `[DIAG]` abre a sessão com número da execução, pacote/versão/UID alvo, se o per-app foi aceito, interfaces/rotas/dns aplicados e quais listeners subiram |
-| Falha de TLS | linha com `motivo=<CÓDIGO>` descreve o erro do peer/socket observado (ex.: alerta de certificado); não prova HTTP request, caller WZM, pinning ou rejeição de certificado pelo jogo |
-| DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0` |
+| Falha de TLS | linha com `motivo=<CÓDIGO>` descreve o erro do peer/socket observado (ex.: alerta de certificado); **desde o M8 a linha de falha também traz `sni=<nome>`** (só o nome do ClientHello — nunca payload, cabeçalhos HTTP ou material de chave), que é o único campo capaz de separar tentativas contra `prod.cdni.callofduty.com` e `dev.cdni.callofduty.com`, já que os dois nomes resolvem para o mesmo IP e caem no mesmo listener; se a pilha TLS não expor a sessão depois do handshake quebrado, a linha declara `sni=INDISPONIVEL` (isso não é "o cliente não enviou SNI"). Códigos: `CLIENTE_RECUSOU_CERTIFICADO`, `CLIENTE_FALOU_HTTP_EM_CLARO`, `HOSTNAME_DIVERGENTE`, `CERTIFICADO_EXPIRADO`, `SEM_CIFRA_COMUM`, `CLIENTE_ENCERROU`, **`FALHA_REGISTRO_TLS`** (novo no M8: `BAD_PACKET_LENGTH`/`DECRYPTION_FAILED_OR_BAD_RECORD_MAC` — o servidor não conseguiu abrir o registro recebido; **não** é evidência de recusa de certificado nem de aceitação, e as causas candidatas não são distinguíveis daqui) e `DESCONHECIDO`. Nenhum código prova HTTP request, caller WZM, pinning ou rejeição de certificado pelo jogo |
+| DNS | consultas interceptadas (`[DNS CDNI recebido e interceptado]`), as vistas no túnel (as 12 primeiras) e as **encaminhadas** (uma vez por nome) — útil para diagnosticar `dnsIntercepted=0`. Desde o M8 a linha distingue o tipo pedido: `RESPOSTA A=<ip>` **somente** para tipo A, e `NOERROR sem respostas (resposta vazia para tipo 28/65…)` para AAAA/HTTPS, que é o que o `DnsResponder` realmente devolve (antes a linha afirmava um registro A em toda consulta interceptada; os tamanhos no log batem com a resposta vazia: A=58/57 B contra AAAA=42/41 B) |
 | Silêncio do túnel (M3.3/M3.4) | avisos únicos de `[DIAG] nenhum pacote no TUN…`, `[DIAG] nenhuma consulta DNS de host CDNI…` e `[DIAG] houve N pacote(s), mas nenhum para 10.111.222.1:443…` — o "não aconteceu nada" passa a ser explícito no log |
 | IPv6 no túnel (M3.4) | aparece **como IPv6** (endereço, next-header, portas) e é descartado por política (`motivo=IPV6_SEM_ATENDIMENTO`) — nunca como "pacote inválido" |
 | Quadro de evidências (M3.4) | bloco `[DIAG] evidência <id>: VERIFIED|PROBABLE|HYPOTHESIS|UNKNOWN — <motivo>` a cada ciclo do vigia e no fim da sessão (per-app, tráfego no TUN, DNS virtual, consulta CDNI, IPv6, SYN ao alvo, listener do túnel, Private DNS) |

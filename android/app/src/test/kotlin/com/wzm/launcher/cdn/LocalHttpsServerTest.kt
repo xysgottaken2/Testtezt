@@ -205,6 +205,7 @@ class LocalHttpsServerTest {
                 TlsFailure.CERTIFICATE_EXPIRED,
                 TlsFailure.NO_COMMON_CIPHER,
                 TlsFailure.PEER_CLOSED,
+                TlsFailure.RECORD_LAYER_INTEGRITY,
                 TlsFailure.UNKNOWN
             )
             assertTrue("código de falha desconhecido: $code", code != null && code in known)
@@ -214,5 +215,114 @@ class LocalHttpsServerTest {
     @Test
     fun serverOnlyListensOnRequestedEndpoint() {
         assertEquals(listOf(LocalHttpsServer.BindEndpoint("127.0.0.1", port)), server.boundEndpoints)
+    }
+
+    // ---------- M8: SNI registrado também nas FALHAS de handshake (só o nome; nunca payload) ----------
+
+    /**
+     * Por que isto existe: no run do device de 2026-10-08, 12 conexões com owner UID do alvo caíram no
+     * listener e **nenhuma** linha de falha dizia contra qual host o cliente falou — `prod.cdni` e
+     * `dev.cdni` resolvem para o mesmo IP e batem no mesmo listener, então o SNI é o único discriminador.
+     * O SNI só era lido no caminho de sucesso, e a leitura usava `handshakeSession` (null depois de
+     * completado), o que produziu `SNI=?` no handshake que **deu certo**.
+     */
+
+    /** Cliente que NÃO confia no certificado local e envia SNI — o cenário do WZM no aparelho. */
+    private fun untrustedConnectWithSni(sni: String, targetPort: Int): SSLSocket {
+        val untrusting = SSLContext.getInstance("TLS").apply { init(null, null, null) }
+        val socket = untrusting.socketFactory.createSocket("127.0.0.1", targetPort) as SSLSocket
+        val parameters = socket.sslParameters
+        parameters.serverNames = mutableListOf<SNIServerName>(SNIHostName(sni))
+        socket.sslParameters = parameters
+        return socket
+    }
+
+    /** Espera por uma linha do log (o atendimento acontece na thread do servidor). */
+    private fun awaitLine(needle: String, timeoutMs: Long = 8_000): String {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            RequestLog.snapshot().lines().firstOrNull { it.contains(needle) }?.let { return it }
+            Thread.sleep(50)
+        }
+        throw AssertionError("linha contendo \"$needle\" não apareceu no log em ${timeoutMs} ms")
+    }
+
+    @Test
+    fun tlsFailureLineCarriesTheSniAskedByTheClient() {
+        // Servidor próprio com a leitura de SNI injetada: prova o QUE a linha registra, sem depender do
+        // que cada pilha TLS expõe durante um handshake quebrado (o ponto seguinte cobre o caminho real).
+        val secondPort = ServerSocket(0).use { it.localPort }
+        val lookupCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val instrumented = LocalHttpsServer(
+            tlsMaterial = TlsContextFactory.FromBytes(
+                asset("cdn_local.p12").readBytes(),
+                CdnRouterConfig.CERT_PASSWORD.toCharArray()
+            ),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint("127.0.0.1", secondPort)),
+            sniLookup = { _ ->
+                lookupCalls.incrementAndGet()
+                "dev.cdni.callofduty.com"
+            }
+        )
+        assertTrue("o segundo servidor HTTPS não subiu", instrumented.start())
+        try {
+            val client = untrustedConnectWithSni("dev.cdni.callofduty.com", secondPort)
+            val clientFailure = runCatching { client.startHandshake() }.exceptionOrNull()
+            runCatching { client.close() }
+            assertNotNull("o cliente sem confiança deveria falhar no handshake", clientFailure)
+
+            val line = awaitLine("FALHA no handshake TLS")
+            assertTrue(
+                "a linha de FALHA precisa trazer o SNI (é o que separa prod de dev)",
+                line.contains("sni=dev.cdni.callofduty.com")
+            )
+            assertTrue("o código estável do motivo continua presente", line.contains("motivo="))
+            assertEquals("nenhum HTTP pode ser contado antes do TLS", 0, RequestLog.counters.value.httpRequests)
+            assertEquals("nenhum cdni.meta servido nesta conexão", 0, RequestLog.counters.value.cdniMetaServidos)
+
+            // Guarda de privacidade: o que se registra é o NOME do ClientHello — nada de requisição/payload.
+            assertFalse("linha de requisição não pode entrar no log", line.contains("GET /"))
+            assertFalse("nenhuma versão de protocolo no log de TLS", line.contains("HTTP/1.1"))
+            assertFalse("cabeçalho HTTP não pode entrar no log", line.contains("Host:"))
+            assertFalse(line.contains("Cookie"))
+            assertFalse(line.contains("Authorization"))
+            assertFalse("corpo jamais", line.contains("min_buildnum"))
+            // O lookup é chamado na falha (antes só existia chamada no sucesso) — é isso que torna o dado
+            // disponível para prod×dev. A contagem é exatamente uma por conexão atendida neste teste.
+            assertEquals("a leitura do SNI precisa acontecer no caminho de falha", 1, lookupCalls.get())
+        } finally {
+            instrumented.stop()
+        }
+    }
+
+    @Test
+    fun tlsFailureLineNeverDropsTheSniSilently() {
+        // Caminho REAL (sem injeção): onde a pilha TLS conseguir expor a sessão, o nome tem de aparecer;
+        // onde não conseguir, a linha precisa DIZER isso — o placeholder mudo `?` está banido, porque
+        // "não olhamos" e "o cliente não enviou SNI" são coisas diferentes e o log não pode confundi-las.
+        val client = untrustedConnectWithSni("dev.cdni.callofduty.com", port)
+        runCatching { client.startHandshake() }
+        runCatching { client.close() }
+
+        val line = awaitLine("FALHA no handshake TLS")
+        assertTrue("sni= precisa estar presente na linha de falha", line.contains("sni="))
+        assertTrue(
+            "ou o nome exato, ou a indisponibilidade declarada",
+            line.contains("sni=dev.cdni.callofduty.com") || line.contains("sni=INDISPONIVEL")
+        )
+        assertFalse("o '?' mudo não pode voltar", line.contains("sni=?") || line.contains("SNI=?"))
+    }
+
+    @Test
+    fun successfulHandshakeLineReportsTheSniOrSaysItIsUnavailable() {
+        val response = request("/manifest/build-selector-103.js")
+        assertTrue(response.startsWith("HTTP/1.1 200 OK"))
+
+        val line = awaitLine("[TLS] handshake OK")
+        assertTrue(
+            "regra do M8: nem no sucesso o SNI pode virar um silêncio",
+            line.contains("sni=prod.cdni.callofduty.com") || line.contains("sni=INDISPONIVEL")
+        )
+        assertFalse("placeholder mudo banido", line.contains("sni=?") || line.contains("SNI=?"))
     }
 }

@@ -24,6 +24,14 @@ data class TlsFailure(
         /** Cliente encerrou a conexão no meio do handshake. */
         const val PEER_CLOSED = "CLIENTE_ENCERROU"
 
+        /**
+         * O servidor não conseguiu abrir/descriptografar um registro TLS do cliente. **Não** é recusa de
+         * certificado, e não é aceitação: é a camada de registro. Observado no device (2026-10-08:
+         * `BAD_PACKET_LENGTH` + `DECRYPTION_FAILED_OR_BAD_RECORD_MAC` em 4 de 12 falhas) — antes disso
+         * essas falhas caíam em [UNKNOWN] e corriam o risco de ser lidas como mais uma recusa de cadeia.
+         */
+        const val RECORD_LAYER_INTEGRITY = "FALHA_REGISTRO_TLS"
+
         const val UNKNOWN = "DESCONHECIDO"
     }
 }
@@ -39,6 +47,10 @@ data class TlsFailure(
  *
  * Limite honesto: o alerta TLS visto pelo *servidor* não permite distinguir "CA não confiável"
  * de "pinning rejeitou" — os dois chegam como `certificate_unknown`/`bad_certificate`.
+ *
+ * E o complementar: uma falha da **camada de registro** ([TlsFailure.RECORD_LAYER_INTEGRITY]) também não
+ * permite concluir nada sobre confiança — por isso tem código próprio e nunca é dobrada em
+ * [TlsFailure.CLIENT_REJECTED_CERTIFICATE].
  * Ver docs/research/m3.2-apk-tls-trust-investigation.md.
  */
 object TlsTrust {
@@ -100,6 +112,26 @@ object TlsTrust {
                 }
                 TlsFailure(TlsFailure.CLIENT_REJECTED_CERTIFICATE, hint)
             }
+
+            // Camada de registro (M8): inserido depois do bloco de certificado de propósito — quando uma
+            // mensagem contém os dois sinais, o alerta de certificado é a evidência interpretável; aqui, não.
+            containsAny(
+                "bad_record_mac",
+                "bad record mac",
+                "record_layer_failure",
+                "bad_packet_length",
+                "decryption_failed",
+                "ssl_aead_ctx",
+                "decrypt_error"
+            ) -> TlsFailure(
+                TlsFailure.RECORD_LAYER_INTEGRITY,
+                "o servidor não conseguiu abrir o registro TLS recebido (BAD_PACKET_LENGTH / " +
+                    "DECRYPTION_FAILED_OR_BAD_RECORD_MAC). Isto NÃO é evidência de que o cliente recusou o " +
+                    "certificado, nem de que aceitou: as causas candidatas (cliente abortou antes da troca " +
+                    "de chaves, registro truncado/corrompido no caminho, estado de cifra divergente entre " +
+                    "as pontas) não são distinguíveis com o que este log tem — ver " +
+                    "docs/research/m7-cdni-meta-experimento-local.md"
+            )
 
             containsAny("hostname", "subject alternative", "no name matching", "not match") ->
                 TlsFailure(

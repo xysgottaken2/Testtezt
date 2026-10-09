@@ -114,3 +114,35 @@ O contrato byte-a-byte foi, portanto, validado por compilação + asserções re
 `Content-Length: 397`), não só pela simulação local do `trimIndent()` feita durante a edição.
 
 Resta **uma** coisa fora do alcance do CI: a observação no device (§4).
+
+## 7. M8 — o que o log de 2026-10-08 mudou no launcher (diagnóstico, nada de TLS)
+
+O export (157 linhas, `analysis` fora do repo) foi lido contra o código e produziu três lacunas de
+instrumentação, fechadas no incremento M8 sem tocar em TLS/pinning, TUN/VPN, DNS ou endpoints:
+
+| Lacuna | Correção | Consequência para a leitura |
+|---|---|---|
+| `sni` só era lido **no sucesso**, e por `getHandshakeSession()` — null depois de `startHandshake()` completar (por isso o handshake **válido** saiu `SNI=?`) | `LocalHttpsServer.resolveSni`/`sniOf`: sessão em construção → sessão estabelecida; `sni=` agora também nas duas linhas de **falha**, com `sni=INDISPONIVEL` declarado quando a pilha não expõe | prod × dev deixa de ser correlação temporal e passa a ser medida por conexão. Nenhuma das duas APIs garante acesso após handshake falho em todo fornecedor — por isso o `INDISPONIVEL` é um resultado, não um `?` |
+| 4 de 12 falhas (`BAD_PACKET_LENGTH` + `DECRYPTION_FAILED_OR_BAD_RECORD_MAC`) caíam em `DESCONHECIDO`, a um passo de serem lidas como mais uma recusa de cadeia | código `FALHA_REGISTRO_TLS` em `TlsTrust`, posicionado **depois** do ramo de certificado (alerta de certificado vence quando ambos aparecem), com hint dizendo que as causas candidatas não são distinguíveis aqui | a assinatura de camada de registro fica separada da de confiança: **nem** recusa, **nem** aceitação |
+| a linha `[DNS]` afirmava `RESPOSTA A=10.111.222.1` para **todo** tipo interceptado, inclusive AAAA (que o `DnsResponder` responde com NOERROR vazio) | texto por qtype (`RESPOSTA A=…` só para tipo A; `NOERROR sem respostas (…)` para 28/65) | os `(42 B)`/`(41 B)` do log param de parecer contradição; o comportamento do respondedor não mudou |
+
+**Correção a uma leitura que o log autoriza e o quadro de evidências sugere:** `tcp_para_o_alvo_cdni_443:
+UNKNOWN — SYN observado=0` **não** é um dado sobre o WZM. Como o destino é o próprio endereço do túnel
+(`CdnRouterConfig.REDIRECT_TO = VPN_ADDRESS`), a tabela `local` do kernel entrega o SYN ao listener e o pacote
+nunca aparece no fd do TUN — `tunTcpSyn=0`, `tunBounces=0`, `tunTcpPackets=0` junto de 13 conexões aceitas é o
+**esperado**. Pelo mesmo motivo `tunFluxosDestinoResolvido=0`: o join nome↔destino em `CdnVpnService` é
+`!header.isCdnTarget` por construção. Quem mede o cliente é a linha de aceite do listener (owner UID) e a
+linha `[TLS]`.
+
+**Testes do M8:** 6 novos (`LocalHttpsServerTest` +3 = T1; `TlsTrustTest` +3 = T2), suíte 32 arquivos /
+**275** `@Test`, nenhum removido nem enfraquecido. T1 inclui a guarda de privacidade (a linha de falha não
+pode conter `GET /`, `HTTP/1.1`, `Host:`, `Cookie`, `Authorization` nem o corpo) e T2 fixa que a assinatura de
+registro **não** é reportada como recusa de certificado.
+
+**Como reler o device depois disto:** a primeira coisa a olhar deixa de ser "quantas falhas" e passa a ser
+`sni=` e `motivo=` **por tentativa** — `sni=prod.cdni.callofduty.com` × `sni=dev.cdni.callofduty.com`, e
+`motivo=FALHA_REGISTRO_TLS` separado de `motivo=CLIENTE_RECUSOU_CERTIFICADO`. Se aparecer
+`sni=INDISPONIVEL` em todas as falhas, a conclusão é sobre o Conscrypt (a sessão não é acessível após a
+falha), não sobre o WZM: nesse caso o caminho seguinte é o D3 de `m6.1` (controle com três políticas de
+confiança no próprio launcher), não um hook. A pergunta do M7 (sai da tela?) segue `UNKNOWN` até o teste da
+CA de usuário (M5.4) ser executado no aparelho por você.

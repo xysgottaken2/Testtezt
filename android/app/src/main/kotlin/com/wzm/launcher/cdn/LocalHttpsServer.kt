@@ -13,6 +13,12 @@ import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
 
 /**
+ * Valor registrado quando o fornecedor da pilha TLS não expõe o SNI (ver [LocalHttpsServer.sniOf]).
+ * É um resultado **declarado**: distinguível de "não olhamos" e de "o cliente não enviou SNI".
+ */
+private const val SNI_INDISPONIVEL = "INDISPONIVEL"
+
+/**
  * Servidor HTTPS local (M3) — usa TCP/TLS do próprio kernel, com um certificado nosso.
  *
  * Endereços: SOMENTE endereços específicos do dispositivo (endereço do túnel e loopback).
@@ -52,7 +58,13 @@ class LocalHttpsServer(
     private val addressAssigned: (String) -> Boolean = { LocalHttpsServer.isAddressAssigned(it) },
     private val sleep: (Long) -> Unit = { millis -> Thread.sleep(millis) },
     /** Ponto de injeção do bind (testes em JVM simulam EADDRNOTAVAIL→sucesso sem tocar na rede). */
-    private val bindOverride: ((BindEndpoint) -> ServerSocket)? = null
+    private val bindOverride: ((BindEndpoint) -> ServerSocket)? = null,
+    /**
+     * Ponto de injeção da leitura do SNI (M8): permite travar em teste o que a linha de log faz com o
+     * nome **sem** depender do que cada pilha TLS expõe durante um handshake quebrado. `null` = usar a
+     * leitura real ([sniOf]). Nenhum payload, cabeçalho HTTP ou material de chave passa por aqui.
+     */
+    private val sniLookup: ((SSLSocket) -> String?)? = null
 ) {
 
     /** Papel do listener: o do túnel é o caminho principal; o de loopback é diagnóstico separado. */
@@ -339,10 +351,10 @@ class LocalHttpsServer(
             sslSocket.soTimeout = 15_000
             sslSocket.startHandshake()
             if (loopback) RequestLog.incTlsOkLoopback() else RequestLog.incTlsOkTunel(targetUidVerified)
-            val sni = sniOf(sslSocket)
+            val sni = resolveSni(sslSocket)
             log(
                 "TLS",
-                "handshake OK em $endpoint (peer=$peer, $roleNote, SNI=${sni ?: "?"}, " +
+                "handshake OK em $endpoint (peer=$peer, $roleNote, sni=${sni ?: SNI_INDISPONIVEL}, " +
                     "${sslSocket.session.protocol}) · $relation — o cliente aceitou o certificado local"
             )
             relay.serve(
@@ -354,10 +366,15 @@ class LocalHttpsServer(
             if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel(targetUidVerified)
             val message = e.message ?: ""
             val failure = TlsTrust.analyze(message)
+            // M8: o SNI é lido AQUI (antes de o socket ser fechado pelo chamador), porque é na falha que
+            // ele importa: é o único campo que separa tentativas contra prod.cdni × dev.cdni, já que as duas
+            // caem no mesmo listener e o DNS do túnel devolve o mesmo IP para os dois nomes.
+            val sni = resolveSni(sslSocket)
             // Linha com código estável (motivo=...) para leitura máquina/humana na tela VER LOGS.
             log(
                 "TLS",
-                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote): motivo=${failure.code} " +
+                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote, " +
+                    "sni=${sni ?: SNI_INDISPONIVEL}): motivo=${failure.code} " +
                     "(${e.javaClass.simpleName}: $message) — ${failure.hint} · $relation"
             )
             if (failure.code == TlsFailure.CLIENT_CLEARTEXT) {
@@ -365,18 +382,46 @@ class LocalHttpsServer(
             }
         } catch (e: Exception) {
             if (loopback) RequestLog.incTlsFailedLoopback() else RequestLog.incTlsFailedTunel(targetUidVerified)
+            val sni = resolveSni(sslSocket)
             log(
                 "TLS",
-                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote): " +
+                "FALHA no handshake TLS em $endpoint (peer=$peer, $roleNote, sni=${sni ?: SNI_INDISPONIVEL}): " +
                     "${e.javaClass.simpleName}: ${e.message} · $relation"
             )
         }
     }
 
-    private fun sniOf(socket: SSLSocket): String? = runCatching {
-        val session = socket.handshakeSession as? ExtendedSSLSession ?: return@runCatching null
-        session.requestedServerNames.filterIsInstance<SNIHostName>().firstOrNull()?.asciiName
-    }.getOrNull()
+    /** Aplica o ponto de injeção de teste quando existe; senão, a leitura real da pilha TLS. */
+    private fun resolveSni(socket: SSLSocket): String? =
+        sniLookup?.invoke(socket) ?: sniOf(socket)
+
+    /**
+     * SNI pedido pelo cliente — **somente o nome** (extensão do ClientHello). Nada de payload, cabeçalhos
+     * HTTP, certificados, chaves ou conteúdo de requisição: é o mesmo campo que já era logado no sucesso.
+     *
+     * Ordem de leitura e seu motivo (é isso que o `sni=INDISPONIVEL` significa):
+     *  1. `getHandshakeSession()` (API 24) — a sessão **em construção**, que é onde o ClientHello já foi
+     *     parseado; é a que funciona quando o handshake está no meio (o caso de uma falha de confiança).
+     *  2. `getSession()` — a sessão estabelecida; é a que tem o nome depois de o handshake **completar**
+     *     (o `getHandshakeSession()` da vida real devolve null nesse ponto — foi assim que a linha de
+     *     sucesso do device saiu sem SNI antes da M8).
+     *
+     * Limite declarado: nenhuma das duas APIs garante acesso ao nome depois de um handshake **falho** em
+     * todos os fornecedores (Conscrypt no aparelho, SunJSSE nos testes JVM). Quando nem a sessão em
+     * construção nem a estabelecida estiverem acessíveis, `runCatching` devolve null e a linha diz
+     * `sni=INDISPONIVEL` — isso não é "o cliente não enviou SNI", e o log não finge que é.
+     */
+    private fun sniOf(socket: SSLSocket): String? {
+        fun namesOf(session: javax.net.ssl.SSLSession?): String? =
+            (session as? ExtendedSSLSession)
+                ?.requestedServerNames
+                ?.filterIsInstance<SNIHostName>()
+                ?.firstOrNull()
+                ?.asciiName
+
+        val duringHandshake = runCatching { namesOf(socket.handshakeSession) }.getOrNull()
+        return duringHandshake ?: runCatching { namesOf(socket.session) }.getOrNull()
+    }
 
     private fun closeQuietly(socket: Socket) {
         try {

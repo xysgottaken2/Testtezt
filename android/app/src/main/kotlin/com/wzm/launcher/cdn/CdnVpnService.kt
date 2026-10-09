@@ -592,10 +592,20 @@ class CdnVpnService : VpnService() {
                 )
             }
             watchdog.onCdnDns(System.currentTimeMillis())
+            // M8: a linha dizia "RESPOSTA A=<ip>" para QUALQUER tipo interceptado, inclusive AAAA/HTTPS,
+            // que o respondente devolve com NOERROR **vazio** (DnsResponder.answer: só TYPE_A ganha
+            // registro). Resultado: um log que afirmava um registro A onde não havia nenhum. O texto agora
+            // segue o qtype — os tamanhos observados no device batem com isso (A=58/57 B; AAAA=42/41 B).
+            val resposta = if (type == DnsMessage.TYPE_A) {
+                "RESPOSTA A=${CdnRouterConfig.REDIRECT_TO}"
+            } else {
+                "NOERROR sem respostas (resposta vazia para tipo $type; o respondente virtual só " +
+                    "registra tipo A)"
+            }
             RequestLog.add(
                 "DNS",
                 "consulta: $name (tipo $type) $origin servidor=$serverClass -> " +
-                    "RESPOSTA A=${CdnRouterConfig.REDIRECT_TO} [DNS CDNI recebido e interceptado: sim] " +
+                    "$resposta [DNS CDNI recebido e interceptado: sim] " +
                     "(${intercepted.size} B)"
             )
             writePacket(
