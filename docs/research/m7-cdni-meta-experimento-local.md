@@ -139,6 +139,13 @@ linha `[TLS]`.
 pode conter `GET /`, `HTTP/1.1`, `Host:`, `Cookie`, `Authorization` nem o corpo) e T2 fixa que a assinatura de
 registro **não** é reportada como recusa de certificado.
 
+**Dado que o CI mediu (2026-10-08, run `37998930152`):** no JVM o alerta do cliente chega como
+`SSLProtocolException`, não `SSLHandshakeException`, e cai no `catch` genérico — que não escreve `motivo=`
+(escreve `sni=` desde o M8). No device, as 12 falhas do log vieram como `SSLHandshakeException`, ramo que
+classifica. Ou seja: `motivo=` é informação **do fornecedor**, não promessa; o que o código garante em ambos os
+ramos é `sni=`. Um teste que exigia `motivo=` no JVM falhou por especificar demais e foi corrigido para
+condicional — sem remover nem enfraquecer a exigência sobre o `sni=`.
+
 **Como reler o device depois disto:** a primeira coisa a olhar deixa de ser "quantas falhas" e passa a ser
 `sni=` e `motivo=` **por tentativa** — `sni=prod.cdni.callofduty.com` × `sni=dev.cdni.callofduty.com`, e
 `motivo=FALHA_REGISTRO_TLS` separado de `motivo=CLIENTE_RECUSOU_CERTIFICADO`. Se aparecer
