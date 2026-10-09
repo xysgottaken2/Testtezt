@@ -1,0 +1,516 @@
+package com.wzm.launcher.cdn
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.net.BindException
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.atomic.AtomicInteger
+import javax.net.ssl.SSLContext
+
+/**
+ * M3.4/M4.1: o listener precisa dizer (a) por qual endereço a conexão entrou, (b) owner UID sem alegar PID/processo,
+ * conectou, (c) por que um bind falhou e (d) como o retry limitado se comporta quando o endereço
+ * do túnel demora a existir — a falha exata (EADDRNOTAVAIL) da evidência de 2026-10-04.
+ */
+class LocalHttpsServerDiagnosticsTest {
+
+    private fun contextWithoutKeys(): SSLContext =
+        SSLContext.getInstance("TLS").apply { init(null, null, null) }
+
+    @Test
+    fun acceptLogCarriesEndpointPathAndOwner() {
+        RequestLog.clear()
+        val port = ServerSocket(0).use { it.localPort }
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=uid=10692 (com.activision.callofduty.warzone)" }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val snapshot = RequestLog.snapshot()
+            assertTrue("log deve citar a tentativa de conexão", snapshot.contains("tentativa de conexão em"))
+            assertTrue("log deve citar o endereço do listener", snapshot.contains("127.0.0.1:$port"))
+            assertTrue("log deve citar o caminho (via loopback)", snapshot.contains("via loopback"))
+            assertTrue("log deve citar o dono da conexão", snapshot.contains("dono=uid=10692"))
+            assertTrue(snapshot.contains("com.activision.callofduty.warzone"))
+            assertTrue("listener de loopback é separado", snapshot.contains("papel=LOOPBACK_DIAGNOSTICO"))
+            assertTrue(RequestLog.counters.value.tcpConnections >= 1)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun loopbackConnectionsAreCountedApartAndNeverAsWzmEvidence() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        val port = ServerSocket(0).use { it.localPort }
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=uid=10692 (com.activision.callofduty.warzone)" }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals("loopback conta em separado", 1, counters.tcpConnectionsLoopback)
+            assertEquals("nada de loopback pode virar conexão do túnel", 0, counters.tcpConnectionsTunel)
+            assertEquals("conexão feita depois do marcador", 1, counters.loopbackDepoisDoWzm)
+            assertEquals(0, counters.loopbackAntesDoWzm)
+
+            val snapshot = RequestLog.snapshot()
+            assertTrue("relação com o WZM é obrigatória", snapshot.contains("depois do marcador de lançamento"))
+            assertTrue(
+                "o log precisa dizer que loopback não é evidência",
+                snapshot.contains("NÃO conta como evidência de tráfego do WZM")
+            )
+            assertTrue(snapshot.contains("DIAGNÓSTICO SECUNDÁRIO"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    /**
+     * M3.5: durante o teste sintético, a conexão no listener do túnel é prova do CAMINHO feita pelo
+     * launcher (UID do launcher) — o log precisa dizer isso, e nunca atribuir a conexão ao WZM.
+     */
+    @Test
+    fun syntheticWindowMarksTunnelConnectionsAsPathOnly() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        var bound: ServerSocket? = null
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 1,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { },
+            addressAssigned = { true },
+            ownerLookup = {
+                ConnectionOwnership.Result(
+                    ConnectionOwnership.Outcome.RESOLVIDO,
+                    uid = 10692,
+                    packages = listOf("com.activision.callofduty.warzone")
+                )
+            },
+            targetUid = 10692,
+            bindOverride = { _ ->
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)).also { bound = it }
+            }
+        )
+        assertTrue(server.start())
+        RequestLog.markSyntheticTestStarted()
+        try {
+            val client = Socket(CdnRouterConfig.LOOPBACK_ADDRESS, checkNotNull(bound).localPort)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            // olha a LINHA da conexão (não o buffer inteiro): outras suítes deixam threads daemon
+            val line = RequestLog.snapshot().lines()
+                .firstOrNull { it.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443") }
+                ?: ""
+            assertTrue("a linha da conexão precisa existir: $line", line.isNotEmpty())
+            assertTrue("a janela do teste sintético é obrigatória: $line", line.contains("DURANTE a janela temporal do teste sintético"))
+            assertTrue("a janela é só correlação temporal: $line", line.contains("correlação apenas;"))
+            assertTrue("a conexão sintética deve ser excluída da atribuição mesmo com UID resolvido: $line", line.contains("janela-sintetica=true"))
+            assertEquals(1, RequestLog.counters.value.tcpConnectionsTunelSintetico)
+            assertEquals(0, RequestLog.counters.value.tcpConnectionsTunelUidAlvo)
+            assertFalse("dentro da janela o log não pode atribuir a conexão ao WZM: $line", line.contains("depois do marcador de lançamento"))
+        } finally {
+            RequestLog.markSyntheticTestFinished()
+            server.stop()
+        }
+        assertFalse(RequestLog.syntheticWindowOpen)
+    }
+
+    @Test
+    fun tunnelListenerCountsAndLogsTheTunnelPath() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        RequestLog.markWzmStarted(System.currentTimeMillis())
+
+        var bound: ServerSocket? = null
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 1,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { },
+            addressAssigned = { true },
+            ownerLookup = {
+                ConnectionOwnership.Result(
+                    ConnectionOwnership.Outcome.RESOLVIDO,
+                    uid = 10692,
+                    packages = listOf("com.activision.callofduty.warzone")
+                )
+            },
+            targetUid = 10692,
+            // :443 exige privilégio no runner; o socket real vai para uma porta efêmera do loopback,
+            // mas o PAPEL do endpoint continua sendo TUNEL_PRIMARIO (é o papel que decide a contagem).
+            bindOverride = { _ ->
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)).also { bound = it }
+            }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket(CdnRouterConfig.LOOPBACK_ADDRESS, checkNotNull(bound).localPort)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("dono=uid=10692")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals("conexão do listener do túnel", 1, counters.tcpConnectionsTunel)
+            assertEquals("nada de loopback nesta contagem", 0, counters.tcpConnectionsLoopback)
+            assertEquals("owner UID resolvido para o UID-alvo", 1, counters.tcpConnectionsTunelUidAlvo)
+
+            val snapshot = RequestLog.snapshot()
+            assertTrue(snapshot.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443"))
+            assertTrue(snapshot.contains("papel=TUNEL_PRIMARIO"))
+            assertTrue(snapshot.contains("owner-UID-alvo-confirmado=true"))
+            assertTrue("a relação temporal é obrigatória", snapshot.contains("depois do marcador de lançamento"))
+            assertFalse(
+                "o listener do túnel nunca pode ser rotulado como diagnóstico secundário",
+                snapshot.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443 (via túnel, " +
+                    "papel=TUNEL_PRIMARIO, DIAGNÓSTICO SECUNDÁRIO)")
+            )
+            assertFalse(
+                "a negação de evidência é exclusiva do loopback",
+                snapshot.contains("NÃO conta como evidência de tráfego do WZM")
+            )
+        } finally {
+            server.stop()
+        }
+    }
+
+
+    @Test
+    fun tunnelListenerWithoutTargetUidIsNotWarzoneEvidence() {
+        RequestLog.clear()
+        var bound: ServerSocket? = null
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 1,
+            addressAssigned = { true },
+            ownerLookup = {
+                ConnectionOwnership.Result(
+                    ConnectionOwnership.Outcome.INVALID_UID,
+                    detail = ConnectionOwnership.Outcome.INVALID_UID.hint
+                )
+            },
+            targetUid = 10692,
+            bindOverride = { _ ->
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS)).also { bound = it }
+            }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket(CdnRouterConfig.LOOPBACK_ADDRESS, checkNotNull(bound).localPort)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline &&
+                    !RequestLog.snapshot().contains("owner-UID-alvo-confirmado=false")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals(1, counters.tcpConnectionsTunel)
+            assertEquals("INVALID_UID permanece UNKNOWN", 0, counters.tcpConnectionsTunelUidAlvo)
+            val line = RequestLog.snapshot().lines().first { it.contains("conexão aceita em ${CdnRouterConfig.VPN_ADDRESS}:443") }
+            assertTrue(line.contains("INVALID_UID"))
+            assertTrue(line.contains("owner-UID-alvo-confirmado=false"))
+            assertFalse(line.contains("owner-UID-alvo-confirmado=true"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun loopbackBeforeTheWzmMarkerIsExplicitlyBefore() {
+        RequestLog.clear()
+        RequestLog.clearWzmMarker()
+        // Marcador no futuro: qualquer conexão agora é anterior ao evento de lançamento do launcher.
+        RequestLog.markWzmStarted(System.currentTimeMillis() + 60_000)
+
+        val port = ServerSocket(0).use { it.localPort }
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerDescription = { "dono=NAO_RESOLVIDO (getConnectionOwnerUid devolveu INVALID_UID)" }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline && !RequestLog.snapshot().contains("INVALID_UID")) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val counters = RequestLog.counters.value
+            assertEquals(1, counters.loopbackAntesDoWzm)
+            assertEquals(0, counters.loopbackDepoisDoWzm)
+            val snapshot = RequestLog.snapshot()
+            assertTrue(snapshot.contains("antes do marcador de lançamento"))
+            assertTrue(snapshot.contains("ordem temporal apenas"))
+            assertTrue("marcador não prova processo ausente", snapshot.contains("processo/helper pode já existir"))
+        } finally {
+            server.stop()
+        }
+        RequestLog.clearWzmMarker()
+    }
+
+    /**
+     * O coração da correção de ciclo de vida: o bind no endereço do túnel pode falhar no começo
+     * (EADDRNOTAVAIL) e funcionar depois. O retry é **limitado** e cada tentativa é registrada.
+     */
+    @Test
+    fun tunnelBindRetriesAreBoundedAndSucceedWhenAddressShowsUp() {
+        RequestLog.clear()
+        val port = ServerSocket(0).use { it.localPort }
+        var attempts = 0
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT)
+            ),
+            tunnelBindAttempts = 5,
+            tunnelBindRetryDelayMs = 1,
+            addressAssigned = { attempts >= 3 },
+            sleep = { },
+            bindOverride = { _ ->
+                attempts++
+                if (attempts < 3) {
+                    throw BindException("Cannot assign requested address")
+                }
+                // Porta efêmera: no runner do CI não há privilégio para bindar :443.
+                ServerSocket(0, 16, InetAddress.getByName(CdnRouterConfig.LOOPBACK_ADDRESS))
+            }
+        )
+        assertTrue("com retry limitado o listener do túnel precisa subir", server.start())
+        try {
+            assertTrue(server.boundEndpoints.any { it.role == LocalHttpsServer.EndpointRole.TUNEL_PRIMARIO })
+            val snapshot = RequestLog.snapshot()
+            assertTrue("cada tentativa falha precisa de motivo", snapshot.contains("motivo=ENDERECO_INDISPONIVEL"))
+            assertTrue("o retry precisa ser explícito no log", snapshot.contains("tentativa 2/5"))
+            assertTrue(snapshot.contains("tentativa 3/5"))
+            assertTrue(
+                "com o listener do túnel ativo não há limitação a registrar",
+                !snapshot.contains("LIMITAÇÃO DOCUMENTADA")
+            )
+            assertTrue(snapshot.contains("HTTPS local escutando em ${CdnRouterConfig.VPN_ADDRESS}:443"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun exhaustedTunnelBindStopsAndRegistersDocumentedLimitation() {
+        RequestLog.clear()
+        val port = ServerSocket(0).use { it.localPort }
+        var attempts = 0
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.VPN_ADDRESS, CdnRouterConfig.LOCAL_HTTPS_PORT),
+                LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)
+            ),
+            tunnelBindAttempts = 3,
+            tunnelBindRetryDelayMs = 1,
+            addressAssigned = { false },
+            sleep = { },
+            bindOverride = { endpoint ->
+                attempts++
+                if (endpoint.address == CdnRouterConfig.VPN_ADDRESS) {
+                    throw BindException("Cannot assign requested address")
+                }
+                ServerSocket(endpoint.port, 16, InetAddress.getByName(endpoint.address))
+            }
+        )
+        assertTrue("o loopback (caminho separado) deve subir mesmo sem o endereço do túnel", server.start())
+        try {
+            assertTrue("retry precisa parar no teto", attempts <= 4)
+            assertFalse(server.boundEndpoints.any { it.role == LocalHttpsServer.EndpointRole.TUNEL_PRIMARIO })
+            val snapshot = RequestLog.snapshot()
+            assertTrue("motivo exato do bind", snapshot.contains("motivo=ENDERECO_INDISPONIVEL"))
+            assertTrue("esgotamento precisa ser explícito", snapshot.contains("esgotado após as tentativas"))
+            assertTrue(
+                "quando o listener do túnel não sobe, a limitação fica DOCUMENTADA",
+                snapshot.contains("LIMITAÇÃO DOCUMENTADA")
+            )
+            assertTrue(
+                "e o estado não avança para ROUTER_READY",
+                snapshot.contains("NÃO avança para ROUTER_READY")
+            )
+            assertTrue(snapshot.contains("papel=LOOPBACK_DIAGNOSTICO"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun unassignableAddressIsReportedWithStableReasonCode() {
+        RequestLog.clear()
+        val port = ServerSocket(0).use { it.localPort }
+        // 192.0.2.0/24 é TEST-NET-1 (RFC 5737): nunca está atribuído → EADDRNOTAVAIL real.
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint("192.0.2.1", port)),
+            tunnelBindAttempts = 2,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { }
+        )
+        val started = server.start()
+        try {
+            assertFalse("sem nenhum listener o servidor não pode dizer que subiu", started)
+            val snapshot = RequestLog.snapshot()
+            assertTrue("bind falho precisa de motivo estável", snapshot.contains("motivo=ENDERECO_INDISPONIVEL"))
+            assertTrue(snapshot.contains("192.0.2.1:$port"))
+            assertTrue(snapshot.contains("NENHUM listener HTTPS local ativo"))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun acceptLogCarriesTheM41OriginVerdictAndItsCounter() {
+        // M4.1: o veredito de origem chega ao log com o nível de confiança e alimenta o contador.
+        // O veredito em si é testado puro em LoopbackOriginTest; aqui se prova a FIÇÃO no listener.
+        RequestLog.clear()
+        RequestLog.resetCounters()
+        val port = ServerSocket(0).use { it.localPort }
+        val roles = mutableListOf<LocalHttpsServer.EndpointRole>()
+        val ownerLookupCalls = AtomicInteger()
+        val originOwnerResults = mutableListOf<ConnectionOwnership.Result?>()
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            ownerLookup = {
+                ownerLookupCalls.incrementAndGet()
+                ConnectionOwnership.Result(ConnectionOwnership.Outcome.INVALID_UID)
+            },
+            originReport = { socket, role, ownerResult ->
+                roles += role
+                originOwnerResults += ownerResult
+                LoopbackOrigin.report(
+                    LoopbackOrigin.Facts(
+                        roleLoopback = role == LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO,
+                        peerAddress = socket.inetAddress.hostAddress ?: "?",
+                        peerPort = socket.port,
+                        peerOwnerResult = ownerResult,
+                        launcherUid = 10101,
+                        targetUid = 10692,
+                        duranteTesteSintetico = false,
+                        portVerdict = SelfPorts.PortVerdict.INDETERMINADO
+                    )
+                )
+            }
+        )
+        assertTrue(server.start())
+        try {
+            val client = Socket("127.0.0.1", port)
+            try {
+                val deadline = System.currentTimeMillis() + 8_000
+                while (System.currentTimeMillis() < deadline &&
+                    !RequestLog.snapshot().contains("origem-da-conexao=")
+                ) {
+                    Thread.sleep(50)
+                }
+            } finally {
+                runCatching { client.close() }
+            }
+            val snapshot = RequestLog.snapshot()
+            assertTrue("o log precisa carregar o veredito", snapshot.contains("origem-da-conexao=indeterminado"))
+            assertTrue("o nível de confiança vai no texto", snapshot.contains("UNKNOWN"))
+            assertTrue("loopback precisa permanecer diagnóstico, não evidência de tráfego WZM", snapshot.contains("loopback=DIAGNOSTICO_NAO_PROVA_TRAFEGO_WZM"))
+            assertEquals(
+                listOf(LocalHttpsServer.EndpointRole.LOOPBACK_DIAGNOSTICO),
+                roles
+            )
+            assertEquals("owner lookup ocorre só uma vez por socket aceito", 1, ownerLookupCalls.get())
+            assertEquals("o mesmo resultado é passado à origem", 1, originOwnerResults.size)
+            assertEquals(ConnectionOwnership.Outcome.INVALID_UID, originOwnerResults.single()?.outcome)
+            assertEquals(
+                "uma conexão de origem indeterminada incrementa exatamente um contador",
+                1,
+                RequestLog.counters.value.loopbackIndeterminado
+            )
+            assertEquals(0, RequestLog.counters.value.loopbackMesmoProcesso)
+            assertEquals(0, RequestLog.counters.value.loopbackOutroUid)
+        } finally {
+            server.stop()
+            RequestLog.resetCounters()
+        }
+    }
+
+    @Test
+    fun loopbackEndpointIsNeverRetried() {
+        RequestLog.clear()
+        val port = ServerSocket(0).use { it.localPort }
+        var attempts = 0
+        val server = LocalHttpsServer(
+            tlsContextOverride = contextWithoutKeys(),
+            endpoints = listOf(LocalHttpsServer.BindEndpoint(CdnRouterConfig.LOOPBACK_ADDRESS, port)),
+            tunnelBindAttempts = 8,
+            tunnelBindRetryDelayMs = 1,
+            sleep = { },
+            bindOverride = { endpoint ->
+                attempts++
+                ServerSocket(endpoint.port, 16, InetAddress.getByName(endpoint.address))
+            }
+        )
+        assertTrue(server.start())
+        try {
+            assertTrue("loopback sobe na primeira tentativa", attempts == 1)
+            assertTrue(!RequestLog.snapshot().contains("tentativa 2/8"))
+        } finally {
+            server.stop()
+        }
+    }
+}

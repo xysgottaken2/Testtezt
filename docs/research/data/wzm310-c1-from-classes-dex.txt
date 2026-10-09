@@ -1,0 +1,647 @@
+=== C1 (classes.dex de classes.dex) — 6513 classes, 33892 métodos, 29455 com corpo ===
+
+## C1-1/C1-2  sítios de WebView (criação/config/bridge/load*), por alvo
+  Landroid/webkit/ConsoleMessage$MessageLevel;->values   (1 sítios)
+     Ly5/e;::<clinit>()V  +0x0000  {}
+  Landroid/webkit/ConsoleMessage;->lineNumber   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x0012  {v1}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x0012  {v1}
+     Lp5/a;::onConsoleMessage(B)Z  +0x002a  {v6}
+  Landroid/webkit/ConsoleMessage;->message   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x0066  {v2}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x0066  {v2}
+     Lp5/a;::onConsoleMessage(B)Z  +0x0012  {v6}
+  Landroid/webkit/ConsoleMessage;->messageLevel   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x004a  {v1}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x004a  {v1}
+     Lp5/a;::onConsoleMessage(B)Z  +0x0000  {v6}
+  Landroid/webkit/ConsoleMessage;->sourceId   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x002e  {v1}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;::invoke()Ljava/lang/String;  +0x002e  {v1}
+     Lp5/a;::onConsoleMessage(B)Z  +0x0042  {v6}
+  Landroid/webkit/CookieManager;->flush   (1 sítios)
+     Lcom/activision/game/MainActivity;::clearCookies()V  +0x004a  {v1}
+  Landroid/webkit/CookieManager;->getInstance   (2 sítios)
+     Lcom/activision/game/MainActivity;::clearCookies()V  +0x0032  {}
+     Lcom/activision/game/MainActivity;::clearCookies()V  +0x0042  {}
+  Landroid/webkit/CookieManager;->removeAllCookies   (1 sítios)
+     Lcom/activision/game/MainActivity;::clearCookies()V  +0x003c  {v1, v0}
+  Landroid/webkit/SafeBrowsingResponse;->showInterstitial   (1 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onSafeBrowsingHit(BBBLa2/a;)V  +0x005c  {v0, v2}
+  Landroid/webkit/ValueCallback;->onReceiveValue   (5 sítios)
+     Lp5/a;::onShowFileChooser(BBB)Z  +0x001c  {v5, v1}
+     Lr5/o;::onActivityResult(BBB)V  +0x0064  {v4, v5}
+     Lr5/o;::onActivityResult(BBB)V  +0x007c  {v3, v2}
+     Lw5/l;::onActivityResult(BBB)V  +0x005e  {v4, v5}
+     Lw5/l;::onActivityResult(BBB)V  +0x0076  {v3, v2}
+  Landroid/webkit/WebChromeClient$FileChooserParams;->createIntent   (1 sítios)
+     Lp5/a;::onShowFileChooser(BBB)Z  +0x0048  {v7}
+  Landroid/webkit/WebChromeClient$FileChooserParams;->getAcceptTypes   (1 sítios)
+     Lp5/a;::onShowFileChooser(BBB)Z  +0x005a  {v7}
+  Landroid/webkit/WebChromeClient$FileChooserParams;->parseResult   (1 sítios)
+     Li6/h;::a(BB)[Landroid/net/Uri;  +0x0014  {v4, v3}
+  Landroid/webkit/WebChromeClient;-><init>   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1;::<init>()V  +0x0000  {v0}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::<init>(BB)V  +0x0008  {v0}
+     Lp5/a;::<init>(BB)V  +0x0000  {v0}
+  Landroid/webkit/WebChromeClient;->onConsoleMessage   (1 sítios)
+     Lp5/a;::onConsoleMessage(B)Z  +0x00a4  {v5, v6}
+  Landroid/webkit/WebChromeClient;->onCreateWindow   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x0022  {v8, v9, v10, v11, v12}
+  Landroid/webkit/WebResourceError;->getDescription   (1 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x010c  {v7}
+  Landroid/webkit/WebResourceError;->getErrorCode   (3 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x007e  {v0}
+     Lcom/activision/game/WebViewDialog$a;::onReceivedError(BBB)V  +0x0000  {v3}
+     Lw5/m;::onReceivedError(BBB)V  +0x0014  {v3}
+  Landroid/webkit/WebResourceRequest;->getMethod   (2 sítios)
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0000  {v5}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0000  {v5}
+  Landroid/webkit/WebResourceRequest;->getRequestHeaders   (1 sítios)
+     Li6/d;::a(BB)Landroid/webkit/WebResourceResponse;  +0x002c  {v30}
+  Landroid/webkit/WebResourceRequest;->getUrl   (17 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x0162  {v6}
+     Lcom/activision/game/WebViewDialog$a;::shouldOverrideUrlLoading(BB)Z  +0x0000  {v3}
+     Lcom/activision/game/WebViewDialog$a;::shouldOverrideUrlLoading(BB)Z  +0x0028  {v3}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0012  {v5}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0094  {v5}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x00b6  {v5}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0102  {v5}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0124  {v5}
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::shouldOverrideUrlLoading(BB)Z  +0x0026  {v5}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0008  {v2}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::shouldOverrideUrlLoading(BB)Z  +0x0014  {v3}
+     Li6/d;::a(BB)Landroid/webkit/WebResourceResponse;  +0x0004  {v30}
+     Li6/d;::a(BB)Landroid/webkit/WebResourceResponse;  +0x001c  {v30}
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x003a  {v5}
+     ... +3 sítios
+  Landroid/webkit/WebResourceRequest;->isForMainFrame   (2 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x0024  {v6}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0006  {v5}
+  Landroid/webkit/WebResourceResponse;-><init>   (3 sítios)
+     Lf1/c$a;::a(B)Landroid/webkit/WebResourceResponse;  +0x0084  {v3, v2, v1, v5}
+     Lf1/c$a;::a(B)Landroid/webkit/WebResourceResponse;  +0x00da  {v5, v1, v1, v1}
+     Li6/d;::a(BB)Landroid/webkit/WebResourceResponse;  +0x0528  {v22, v23, v24, v25, v26, v27, v28}
+  Landroid/webkit/WebResourceResponse;->getMimeType   (2 sítios)
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x00be  {v3}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x00be  {v3}
+  Landroid/webkit/WebResourceResponse;->getStatusCode   (3 sítios)
+     Lcom/activision/game/WebViewDialog$a;::onReceivedHttpError(BBB)V  +0x0000  {v3}
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x00a6  {v3}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x00a6  {v3}
+  Landroid/webkit/WebSettings;->getUserAgentString   (1 sítios)
+     Ly1/y;::run()V  +0x0076  {v4}
+  Landroid/webkit/WebSettings;->setAlgorithmicDarkeningAllowed   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00d0  {v0, v3}
+  Landroid/webkit/WebSettings;->setAllowFileAccess   (4 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0046  {v0, v1}
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x007a  {v0, v2}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x00b2  {v0, v5}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0042  {v2, v3}
+  Landroid/webkit/WebSettings;->setBuiltInZoomControls   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x0082  {v0, v3}
+  Landroid/webkit/WebSettings;->setCacheMode   (2 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0054  {v0, v2}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x003c  {v2, v0}
+  Landroid/webkit/WebSettings;->setDisplayZoomControls   (2 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x009a  {v0, v2}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x00a6  {v0, v5}
+  Landroid/webkit/WebSettings;->setDomStorageEnabled   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00a0  {v0, v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x00ac  {v0, v4}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x002e  {v2, v3}
+  Landroid/webkit/WebSettings;->setForceDark   (2 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00d8  {v0, v1}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x0106  {v0, v1}
+  Landroid/webkit/WebSettings;->setJavaScriptCanOpenWindowsAutomatically   (1 sítios)
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0022  {v2, v3}
+  Landroid/webkit/WebSettings;->setJavaScriptEnabled   (4 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0040  {v0, v1}
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x0088  {v0, v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x0092  {v0, v4}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x001c  {v2, v3}
+  Landroid/webkit/WebSettings;->setLoadWithOverviewMode   (2 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x0094  {v0, v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x009e  {v0, v4}
+  Landroid/webkit/WebSettings;->setMediaPlaybackRequiresUserGesture   (1 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x004c  {v0, v6}
+  Landroid/webkit/WebSettings;->setMixedContentMode   (1 sítios)
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0036  {v2, v0}
+  Landroid/webkit/WebSettings;->setSupportMultipleWindows   (2 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x01e2  {v1, v4}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0028  {v2, v3}
+  Landroid/webkit/WebSettings;->setUseWideViewPort   (2 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x008e  {v0, v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x0098  {v0, v4}
+  Landroid/webkit/WebView$HitTestResult;->getExtra   (4 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x00c0  {v9}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x00ea  {v9}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x0122  {v9}
+     Lp5/a;::onCreateWindow(BBBLa2/a;)Z  +0x0018  {v3}
+  Landroid/webkit/WebView$HitTestResult;->getType   (3 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$4;::invoke()Ljava/lang/String;  +0x0012  {v2}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x008a  {v9}
+     Lp5/a;::onCreateWindow(BBBLa2/a;)Z  +0x0010  {v3}
+  Landroid/webkit/WebView$WebViewTransport;->setWebView   (1 sítios)
+     Lp5/a;::onCreateWindow(BBBLa2/a;)Z  +0x00ba  {v1, v3}
+  Landroid/webkit/WebView;-><init>   (4 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0026  {v0, v6}
+     Lcom/braze/ui/inappmessage/views/InAppMessageWebView;::<init>(BB)V  +0x000a  {v1, v2, v3}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0000  {v1, v2, v3}
+     Lp5/a;::onCreateWindow(BBBLa2/a;)Z  +0x0092  {v3, v2}
+  Landroid/webkit/WebView;->addJavascriptInterface   (5 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0088  {v3, v0, v4}
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlFullViewFactory;::createInAppMessageView(BB)Lcom/braze/ui/inappmessage/views/InAppMessageHtmlFullView;  +0x00ec  {v10, v2, v11}
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlViewFactory;::createInAppMessageView(BB)Lcom/braze/ui/inappmessage/views/InAppMessageHtmlView;  +0x0100  {v1, v0, v2}
+     Lr5/o;::B()V  +0x016c  {v1, v2, v0}
+     Lw5/l;::onViewCreated(BB)V  +0x029e  {v12, v13, v0}
+  Landroid/webkit/WebView;->canGoBack   (2 sítios)
+     Lcom/helpshift/activities/HSMainActivity;::onBackPressed()V  +0x0064  {v5}
+     Lcom/helpshift/activities/HSMainActivity;::onBackPressed()V  +0x0104  {v4}
+  Landroid/webkit/WebView;->destroy   (3 sítios)
+     Lcom/activision/game/WebViewDialog;::dismiss()V  +0x004a  {v0}
+     Lr5/o;::onDestroy()V  +0x0076  {v1}
+     Lw5/l;::onDestroy()V  +0x008a  {v0}
+  Landroid/webkit/WebView;->dispatchKeyEvent   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageWebView;::dispatchKeyEvent(B)Z  +0x0046  {v2, v3}
+  Landroid/webkit/WebView;->evaluateJavascript   (6 sítios)
+     Lcom/activision/game/WebViewDialog$b;::onGlobalLayout()V  +0x006a  {v2, v1, v0}
+     Lcom/activision/game/WebViewDialog;::b(B)V  +0x005c  {v3, v4, v0}
+     Lcom/activision/game/WebViewDialog;::onBackPressed()V  +0x000a  {v2, v0, v1}
+     Lk0/b;::run()V  +0x0128  {v0, v2, v1}
+     Lr5/p;::run()V  +0x004c  {v0, v4, v5}
+     Lw5/l$a;::run()V  +0x0014  {v0, v2, v1}
+  Landroid/webkit/WebView;->getHitTestResult   (2 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x0054  {v9}
+     Lp5/a;::onCreateWindow(BBBLa2/a;)Z  +0x0008  {v2}
+  Landroid/webkit/WebView;->getSettings   (6 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0036  {v0}
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x0066  {v6}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x007e  {v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x01da  {v3}
+     Lcom/helpshift/views/HSWebView;::<init>(BB)V  +0x0012  {v1}
+     Ly1/y;::run()V  +0x006e  {v4}
+  Landroid/webkit/WebView;->getWebViewClassLoader   (1 sítios)
+     Lg1/h;::a()Ljava/lang/reflect/InvocationHandler;  +0x0000  {}
+  Landroid/webkit/WebView;->goBack   (2 sítios)
+     Lcom/helpshift/activities/HSMainActivity;::onBackPressed()V  +0x0084  {v7}
+     Lcom/helpshift/activities/HSMainActivity;::onBackPressed()V  +0x0124  {v7}
+  Landroid/webkit/WebView;->loadDataWithBaseURL   (3 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::setWebViewContent(BB)V  +0x0020  {v0, v1, v2, v3, v4, v5}
+     Lr5/o;::B()V  +0x0184  {v1, v2, v3, v4, v5, v6}
+     Lw5/l;::onViewCreated(BB)V  +0x02b6  {v2, v3, v4, v5, v6, v7}
+  Landroid/webkit/WebView;->loadUrl   (5 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x011e  {v6, v5}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::appendBridgeJavascript(B)V  +0x003e  {v4, v3}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::finishWebViewDisplay()V  +0x002a  {v0, v1}
+     Lw5/m;::shouldOverrideUrlLoading(BB)Z  +0x002c  {v2, v3}
+     Ly1/u;::run()V  +0x005a  {v3, v1}
+  Landroid/webkit/WebView;->onKeyDown   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageWebView;::onKeyDown(BB)Z  +0x0032  {v1, v2, v3}
+  Landroid/webkit/WebView;->onPause   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::finishWebViewDisplay()V  +0x0030  {v0}
+  Landroid/webkit/WebView;->reload   (1 sítios)
+     Lw5/l;::onClick(B)V  +0x0044  {v1}
+  Landroid/webkit/WebView;->setBackgroundColor   (2 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x00c6  {v0, v6}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x00be  {v3, v5}
+  Landroid/webkit/WebView;->setLayerType   (3 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x00d2  {v0, v2, v3}
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x0060  {v6, v1, v0}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x00b8  {v3, v1, v2}
+  Landroid/webkit/WebView;->setWebChromeClient   (4 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00e6  {v6, v0}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x0220  {v3, v1}
+     Lr5/o;::B()V  +0x0130  {v4, v2}
+     Lw5/l;::onViewCreated(BB)V  +0x026a  {v0, v12}
+  Landroid/webkit/WebView;->setWebContentsDebuggingEnabled   (1 sítios)
+     Lcom/activision/game/MainActivity;::onCreate(B)V  +0x01b4  {v2}
+  Landroid/webkit/WebView;->setWebViewClient   (5 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0068  {v0, v3}
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00f4  {v6, v0}
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::setInAppMessageWebViewClient(B)V  +0x0018  {v0, v2}
+     Lr5/o;::B()V  +0x014c  {v2, v4}
+     Lw5/l;::onViewCreated(BB)V  +0x0282  {v12, v0}
+  Landroid/webkit/WebView;->stopLoading   (1 sítios)
+     Lcom/activision/game/WebViewDialog;::dismiss()V  +0x0040  {v0}
+  Landroid/webkit/WebViewClient;-><init>   (5 sítios)
+     Landroidx/webkit/WebViewClientCompat;::<init>()V  +0x0000  {v0}
+     Lcom/activision/game/WebViewDialog$a;::<init>(B)V  +0x0004  {v0}
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::<init>(B)V  +0x0004  {v0}
+     Lr5/s;::<init>(BB)V  +0x0000  {v0}
+     Lw5/m;::<init>(BB)V  +0x0000  {v0}
+  Landroid/webkit/WebViewClient;->onReceivedError   (2 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x0172  {v4, v5, v0, v7, v6}
+     Lw5/m;::onReceivedError(BBB)V  +0x0000  {v0, v1, v2, v3}
+  Landroid/webkit/WebViewClient;->shouldInterceptRequest   (6 sítios)
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0018  {v3, v4, v5}
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0056  {v3, v4, v5}
+     Lr5/s;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x006e  {v3, v4, v5}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0018  {v3, v4, v5}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x0056  {v3, v4, v5}
+     Lw5/m;::shouldInterceptRequest(BB)Landroid/webkit/WebResourceResponse;  +0x006e  {v3, v4, v5}
+  Landroid/webkit/WebViewClient;->shouldOverrideUrlLoading   (3 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::shouldOverrideUrlLoading(BB)Z  +0x0056  {v3, v4, v5}
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::shouldOverrideUrlLoading(BB)Z  +0x003c  {v2, v3, v4}
+     Lw5/m;::shouldOverrideUrlLoading(BB)Z  +0x0022  {v1, v2, v3}
+  Landroidx/webkit/WebViewClientCompat;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::<init>(BBBF)V  +0x0014  {v2}
+  Landroidx/webkit/WebViewClientCompat;->onReceivedError   (2 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x000a  {v1, v2, v3, v0}
+     Landroidx/webkit/WebViewClientCompat;::onReceivedError(BBB)V  +0x000a  {v1, v2, v3, v0}
+  Landroidx/webkit/WebViewClientCompat;->onSafeBrowsingHit   (2 sítios)
+     Landroidx/webkit/WebViewClientCompat;::onSafeBrowsingHit(BBBLa2/a;)V  +0x000a  {v1, v2, v3, v4, v0}
+     Landroidx/webkit/WebViewClientCompat;::onSafeBrowsingHit(BBBLa2/a;)V  +0x000a  {v1, v2, v3, v4, v0}
+  Lcom/activision/game/WebViewDialog$a;-><init>   (1 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0062  {v3, v5}
+  Lcom/activision/game/WebViewDialog$b;-><init>   (1 sítios)
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x0148  {v0, v5}
+  Lcom/activision/game/WebViewDialog;-><init>   (1 sítios)
+     Lcom/activision/game/MainActivity;::n()Lcom/activision/game/WebViewDialog;  +0x000c  {v0, v3}
+  Lcom/activision/game/WebViewDialog;->a   (2 sítios)
+     Lcom/activision/game/WebViewDialog$a;::onReceivedError(BBB)V  +0x000e  {v0, v2, v1, v3}
+     Lcom/activision/game/WebViewDialog$a;::onReceivedHttpError(BBB)V  +0x000e  {v0, v2, v3, v1}
+  Lcom/activision/game/WebViewDialog;->b   (2 sítios)
+     Lcom/activision/game/WebViewDialog$a;::onPageFinished(BB)V  +0x002c  {v0, v1}
+     Ly1/t;::run()V  +0x00a8  {v4, v1}
+  Lcom/activision/game/WebViewDialog;->c   (9 sítios)
+     Lcom/activision/game/WebViewDialog$a;::onPageFinished(BB)V  +0x000e  {}
+     Lcom/activision/game/WebViewDialog$a;::onPageStarted(BBB)V  +0x000e  {}
+     Lcom/activision/game/WebViewDialog;::<init>(B)V  +0x000c  {}
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0156  {}
+     Lcom/activision/game/WebViewDialog;::b(B)V  +0x0000  {}
+     Lcom/activision/game/WebViewDialog;::dismiss()V  +0x0000  {}
+     Lcom/activision/game/WebViewDialog;::show()V  +0x0000  {}
+     Ly1/u;::run()V  +0x0028  {}
+     Ly1/w;::run()V  +0x001a  {}
+  Lcom/activision/game/WebViewDialog;->dismiss   (1 sítios)
+     Ly1/w;::run()V  +0x0050  {v0}
+  Lcom/activision/game/WebViewDialog;->dlogError   (1 sítios)
+     Lcom/activision/game/WebViewDialog;::a(BBBLandroid/app/Application$ActivityLifecycleCallbacks;)V  +0x0150  {v5, v6}
+  Lcom/activision/game/WebViewDialog;->show   (2 sítios)
+     Lcom/activision/game/WebViewDialog$a;::onPageFinished(BB)V  +0x0072  {v0}
+     Ly1/v;::run()V  +0x0020  {v1}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;-><init>   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1;::onConsoleMessage(B)Z  +0x0016  {v5, v9}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;->invoke   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1$onConsoleMessage$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebChromeClient$1;-><init>   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::createWebChromeClient()Landroid/webkit/WebChromeClient;  +0x0004  {v0}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$handleUrlOverride$1;-><init>   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::handleUrlOverride(BB)Ljava/lang/Boolean;  +0x0084  {v3, v7}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$handleUrlOverride$1;->invoke   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$handleUrlOverride$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$onRenderProcessGone$1;-><init>   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$onRenderProcessGone$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$onRenderProcessGone$1;->invoke   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1$onRenderProcessGone$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;-><init>   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::createWebViewClient()Landroid/webkit/WebViewClient;  +0x0004  {v0, v1}
+  Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;->handleUrlOverride   (2 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::shouldOverrideUrlLoading(BB)Z  +0x0040  {v3, v0, v1}
+     Lcom/braze/ui/BrazeWebViewActivity$createWebViewClient$1;::shouldOverrideUrlLoading(BB)Z  +0x0026  {v2, v0, v4}
+  Lcom/braze/ui/BrazeWebViewActivity;->createWebChromeClient   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00de  {v5}
+  Lcom/braze/ui/BrazeWebViewActivity;->createWebViewClient   (1 sítios)
+     Lcom/braze/ui/BrazeWebViewActivity;::onCreate(B)V  +0x00ec  {v5}
+  Lcom/braze/ui/actions/UriAction$getWebViewActivityIntent$webViewActivityIntent$1;-><init>   (1 sítios)
+     Lcom/braze/ui/actions/UriAction;::getWebViewActivityIntent(BBB)Landroid/content/Intent;  +0x005c  {v6, v0}
+  Lcom/braze/ui/actions/UriAction$getWebViewActivityIntent$webViewActivityIntent$1;->invoke   (1 sítios)
+     Lcom/braze/ui/actions/UriAction$getWebViewActivityIntent$webViewActivityIntent$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivity$1;-><init>   (1 sítios)
+     Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivity$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivity$1;->invoke   (1 sítios)
+     Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivity$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivityFromPush$1;-><init>   (1 sítios)
+     Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivityFromPush$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivityFromPush$1;->invoke   (1 sítios)
+     Lcom/braze/ui/actions/UriAction$openUriWithWebViewActivityFromPush$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/actions/brazeactions/steps/OpenLinkInWebViewStep;-><init>   (1 sítios)
+     Lcom/braze/ui/actions/brazeactions/steps/OpenLinkInWebViewStep;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;-><init>   (2 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;::<init>(B)V  +0x0000  {v0}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::<clinit>()V  +0x0006  {v0, v1}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;->logHtmlInAppMessageClick   (3 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCloseAction(BBB)V  +0x003c  {v1, v9, v11}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onNewsfeedAction(BBB)V  +0x006a  {v0, v9, v11}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x0070  {v1, v9, v11}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;->parseCustomEventNameFromQueryBundle   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCustomEventAction(BBB)V  +0x0086  {v9, v11}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;->parsePropertiesFromQueryBundle   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCustomEventAction(BBB)V  +0x00ac  {v9, v11}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$Companion;->parseUseWebViewFromQueryBundle   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x00a4  {v1, v9, v11}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x0056  {v5, v10}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$3;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x009c  {v5, v10}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$3;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$3;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$4;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x00e8  {v5, v10}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$4;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$4;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$5;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x010e  {v5, v2, v10}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$5;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$5;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/InAppMessageManagerBase;::<init>()V  +0x0010  {v0}
+  Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;->getInAppMessageManager   (13 sítios)
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCloseAction(BBB)V  +0x0042  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCloseAction(BBB)V  +0x0052  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCustomEventAction(BBB)V  +0x0038  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCustomEventAction(BBB)V  +0x0066  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onCustomEventAction(BBB)V  +0x00b4  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onNewsfeedAction(BBB)V  +0x0038  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onNewsfeedAction(BBB)V  +0x0070  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onNewsfeedAction(BBB)V  +0x0094  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onNewsfeedAction(BBB)V  +0x00c0  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x0038  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x0076  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x011e  {v8}
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener;::onOtherUrlAction(BBB)V  +0x012c  {v8}
+  Lcom/braze/ui/inappmessage/listeners/IInAppMessageWebViewClientListener;->onCloseAction   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x00d4  {v0, v1, v10, v8}
+  Lcom/braze/ui/inappmessage/listeners/IInAppMessageWebViewClientListener;->onCustomEventAction   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x0118  {v0, v1, v10, v8}
+  Lcom/braze/ui/inappmessage/listeners/IInAppMessageWebViewClientListener;->onNewsfeedAction   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x00f6  {v0, v1, v10, v8}
+  Lcom/braze/ui/inappmessage/listeners/IInAppMessageWebViewClientListener;->onOtherUrlAction   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x016a  {v0, v1, v10, v8}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$Companion;-><init>   (2 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$Companion;::<init>(B)V  +0x0000  {v0}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::<clinit>()V  +0x0006  {v0, v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$Companion;->getBundleFromUrl   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x005a  {v1, v10}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$appendBridgeJavascript$javascriptString$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$appendBridgeJavascript$javascriptString$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$appendBridgeJavascript$javascriptString$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$appendBridgeJavascript$javascriptString$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$3;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x012c  {v4, v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$3;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$3;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$4;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::handleUrlOverride(B)Z  +0x014e  {v4, v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$4;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$4;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$markPageFinished$1$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$markPageFinished$1$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$markPageFinished$1$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$markPageFinished$1$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onPageFinished$1$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onPageFinished$1$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onPageFinished$1$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onPageFinished$1$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onRenderProcessGone$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onRenderProcessGone$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onRenderProcessGone$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$onRenderProcessGone$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;-><init>   (2 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;::create(BB)Ln6/d;  +0x0008  {v1, v0, v2}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;::invokeSuspend(B)Ljava/lang/Object;  +0x0042  {v1, v3, v4}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;->create   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;::invoke(BB)Ljava/lang/Object;  +0x0000  {v0, v1, v2}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;::invoke(BB)Ljava/lang/Object;  +0x0008  {v0, v1, v2}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;->invokeSuspend   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;::invoke(BB)Ljava/lang/Object;  +0x0010  {v0, v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;-><init>   (2 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;::create(B)Ln6/d;  +0x0008  {v0, v1, v2}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::setWebViewClientStateListener(B)V  +0x0046  {v4, v7, v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;->create   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;::invoke(B)Ljava/lang/Object;  +0x0000  {v0, v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;::invoke(B)Ljava/lang/Object;  +0x0004  {v0, v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;->invokeSuspend   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1;::invoke(B)Ljava/lang/Object;  +0x0010  {v0, v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;-><init>   (3 sítios)
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlFullViewFactory;::createInAppMessageView(BB)Lcom/braze/ui/inappmessage/views/InAppMessageHtmlFullView;  +0x00d0  {v3, v11, v12, v10, v1}
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlViewFactory;::createInAppMessageView(BB)Lcom/braze/ui/inappmessage/views/InAppMessageHtmlView;  +0x00e4  {v13, v14, v15, v16, v17, v18, v19}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::<init>(BBBFLbo/app/g1$f;Lbo/app/p5$f;)V  +0x000a  {v0, v1, v2, v3, v4}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;->access$markPageFinished   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$setWebViewClientStateListener$1$1;::invokeSuspend(B)Ljava/lang/Object;  +0x0012  {v1}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;->appendBridgeJavascript   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::onPageFinished(BB)V  +0x0014  {v8, v9}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;->handleUrlOverride   (2 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::shouldOverrideUrlLoading(BB)Z  +0x002e  {v1, v2}
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::shouldOverrideUrlLoading(BB)Z  +0x0014  {v1, v3}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;->markPageFinished   (1 sítios)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;::access$markPageFinished(B)V  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient;->setWebViewClientStateListener   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::setHtmlPageFinishedListener(B)V  +0x0008  {v0, v1}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$finishWebViewDisplay$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$finishWebViewDisplay$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$finishWebViewDisplay$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$finishWebViewDisplay$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$3;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x005c  {v3, v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$3;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$3;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$4;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$4;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$4;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$4;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$5;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$5;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$5;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$5;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$6;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$6;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$6;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$6;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onConsoleMessage(B)Z  +0x001a  {v5, v9}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onConsoleMessage$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$2;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$2;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$2;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$2;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$3;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x0074  {v4, v9}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$3;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$3;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$4;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;::onCreateWindow(BBBLa2/a;)Z  +0x00ae  {v4, v9}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$4;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7$onCreateWindow$4;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$messageWebView$7;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x021a  {v1, v12, v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$setWebViewContent$1;-><init>   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$setWebViewContent$1;::<clinit>()V  +0x0004  {v0}
+  Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$setWebViewContent$1;->invoke   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView$setWebViewContent$1;::invoke()Ljava/lang/Object;  +0x0000  {v0}
+  Lorg/chromium/support_lib_boundary/WebSettingsBoundaryInterface;->getForceDarkBehavior   (1 sítios)
+     Lf/f;::onCreateView(BBBLandroid/graphics/Paint$FontMetricsInt;)Landroid/view/View;  +0x045e  {v25431, v25432, v25433, v25434, v25435, v25436, v25437, v25438, v25439, v25440, v25441, v25442, v25443, v25444, v25445, v25446, v25447, v25448, v25449, v25450, v25451, v25452, v25453, v25454, v25455, v25456, v25457, v25458, v25459, v25460, v25461, v25462, v25463, v25464, v25465, v25466, v25467, v25468, v25469, v25470, v25471, v25472, v25473, v25474, v25475, v25476, v25477, v25478, v25479, v25480, v25481, v25482, v25483, v25484, v25485, v25486, v25487, v25488, v25489, v25490, v25491, v25492, v25493, v25494, v25495, v25496, v25497, v25498, v25499, v25500, v25501, v25502, v25503, v25504, v25505, v25506, v25507, v25508, v25509, v25510, v25511, v25512, v25513, v25514, v25515, v25516, v25517, v25518, v25519, v25520, v25521, v25522, v25523, v25524, v25525}
+  Lorg/chromium/support_lib_boundary/WebSettingsBoundaryInterface;->setForceDark   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x013a  {v2, v1}
+  Lorg/chromium/support_lib_boundary/WebSettingsBoundaryInterface;->setForceDarkBehavior   (1 sítios)
+     Lcom/braze/ui/inappmessage/views/InAppMessageHtmlBaseView;::getMessageWebView()Landroid/webkit/WebView;  +0x018c  {v0, v4}
+  Lorg/chromium/support_lib_boundary/WebViewProviderFactoryBoundaryInterface;->getSupportedFeatures   (1 sítios)
+     Lg1/j;::b()[Ljava/lang/String;  +0x0008  {v0}
+  Lorg/chromium/support_lib_boundary/WebViewProviderFactoryBoundaryInterface;->getWebkitToCompatConverter   (1 sítios)
+     Lg1/j;::getWebkitToCompatConverter()Lorg/chromium/support_lib_boundary/WebkitToCompatConverterBoundaryInterface;  +0x0008  {v1}
+
+## C1-3  métodos com @JavascriptInterface e o que chamam
+   total métodos expostos: 0
+
+## C1-5/6/7  palavras-chave: onde a string é carregada (const-string)
+  'loadUrl': 1 sítio(s)
+     Ly1/u;::run()V  'WebViewDialog.loadUrl called from non-main thread'
+  'bootstrap/': 1 sítio(s)
+     Lcom/activision/game/MainActivity;::f(B)V  'file:///android_asset/bootstrap/splash.html?locale='
+  'WebViewAssetLoader': 1 sítio(s)
+     Lf1/c$a;::a(B)Landroid/webkit/WebResourceResponse;  'WebViewAssetLoader'
+  'shouldOverrideUrlLoading': 1 sítio(s)
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;::invoke()Ljava/lang/String;  'InAppMessageWebViewClient.shouldOverrideUrlLoading was given blank url. Returning true.'
+  'cdn': 12 sítio(s)
+     Lcom/appsflyer/internal/AFd1cSDK;::afRDLog()Lcom/appsflyer/internal/AFd1dSDK;  "CFG: Can't create CDN token, domain or version is not provided."
+     Lcom/appsflyer/internal/AFd1cSDK;::afRDLog()Lcom/appsflyer/internal/AFd1dSDK;  "CFG: can't create CDN token, skipping fetch config"
+     Lcom/appsflyer/internal/AFd1cSDK;::afRDLog()Lcom/appsflyer/internal/AFd1dSDK;  'CFG: failed to fetch remote config from CDN with status code: '
+     Lcom/appsflyer/internal/AFd1hSDK;::AFInAppEventParameterName(B)V  'cdn_token'
+     Lcom/appsflyer/internal/AFd1hSDK;::AFInAppEventParameterName(B)V  'cdn_cache_status'
+     Lcom/appsflyer/internal/AFd1tSDK;::<clinit>()V  'RC_CDN'
+     Lcom/appsflyer/internal/AFd1ySDK;::<clinit>()V  'https://%scdn-%ssettings.%s/android/v1/%s/settings'
+     Lcom/appsflyer/internal/AFd1ySDK;::<clinit>()V  'https://%scdn-%stestsettings.%s/android/v1/%s/settings'
+     Lcom/appsflyer/internal/AFe1uSDK;::valueOf()Z  'CFG: active config is missing - fetching from CDN'
+     Lcom/braze/enums/BrazeSdkMetadata;::<clinit>()V  'WEBCDN'
+     ... +2
+  'http://': 1 sítio(s)
+     Lw5/m;::shouldOverrideUrlLoading(BB)Z  'http://'
+  'https://localhost': 2 sítio(s)
+     Lr5/o;::B()V  'https://localhost/'
+     Lw5/l;::onViewCreated(BB)V  'https://localhost'
+  'file://': 1 sítio(s)
+     Lcom/activision/game/MainActivity;::f(B)V  'file:///android_asset/bootstrap/splash.html?locale='
+  'asset': 55 sítio(s)
+     Lbo/app/a7;::a(B)V  'remoteAssetToLocalAssetPaths'
+     Lbo/app/i3$i;::a()Ljava/lang/String;  'In-app message has no remote assets for prefetch. Returning empty list.'
+     Lbo/app/i3$j;::a()Ljava/lang/String;  'Failed to return remote paths to assets for type: '
+     Lbo/app/m6$a$a;::a()Ljava/lang/String;  'Local triggered asset directory contains files: '
+     Lbo/app/m6$a$b;::a()Ljava/lang/String;  "Deleting obsolete asset '"
+     Lbo/app/m6$a$c;::a()Ljava/lang/String;  'Exception while deleting obsolete assets from filesystem.'
+     Lbo/app/m6$a$g;::a()Ljava/lang/String;  ' for remote asset url: '
+     Lbo/app/m6$a$h;::a()Ljava/lang/String;  "Retrieving trigger local asset path '"
+     Lbo/app/m6$a$i;::a()Ljava/lang/String;  "Encountered unexpected exception while parsing stored triggered action local assets on re
+     Lbo/app/m6$a$j;::a()Ljava/lang/String;  '. Not pre-fetching assets.'
+     ... +45
+  'WebViewClient': 11 sítio(s)
+     Lcom/braze/configuration/BrazeConfig$Builder;::toString()Ljava/lang/String;  ', inAppMessageWebViewClientMaxOnPageFinishedWaitMs='
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlFullViewFactory;::<init>(B)V  'inAppMessageWebViewClientListener'
+     Lcom/braze/ui/inappmessage/factories/DefaultInAppMessageHtmlViewFactory;::<init>(B)V  'inAppMessageWebViewClientListener'
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$1;::invoke()Ljava/lang/String;  'IInAppMessageWebViewClientListener.onCloseAction called.'
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCloseAction$2;::invoke()Ljava/lang/String;  'IInAppMessageWebViewClientListener.onCloseAction finished.'
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onCustomEventAction$1;::invoke()Ljava/lang/String;  'IInAppMessageWebViewClientListener.onCustomEventAction called.'
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onNewsfeedAction$1;::invoke()Ljava/lang/String;  'IInAppMessageWebViewClientListener.onNewsfeedAction called.'
+     Lcom/braze/ui/inappmessage/listeners/DefaultInAppMessageWebViewClientListener$onOtherUrlAction$1;::invoke()Ljava/lang/String;  'IInAppMessageWebViewClientListener.onOtherUrlAction called.'
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$1;::invoke()Ljava/lang/String;  'InAppMessageWebViewClient was given null IInAppMessageWebViewClientListener listener. Ret
+     Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$handleUrlOverride$2;::invoke()Ljava/lang/String;  'InAppMessageWebViewClient.shouldOverrideUrlLoading was given blank url. Returning true.'
+     ... +1
+  'SharedPreferences': 8 sítio(s)
+     Lbo/app/l;::a(B)Ljava/util/Map;  'sharedPreferences'
+     Lcom/braze/managers/BrazeGeofenceManager$Companion;::retrieveBrazeGeofencesFromLocalStorage(B)Ljava/util/List;  'sharedPreferences'
+     Lcom/google/android/gms/internal/measurement/t4;::<init>(BBB)V  'Must pass a valid SharedPreferences file name or ContentProvider URI'
+     Lcom/google/android/gms/internal/measurement/t4;::<init>(BBB)V  'Must pass one of SharedPreferences file name or ContentProvider URI'
+     Lz3/u4;::a()Landroid/os/Bundle;  'Error reading value from SharedPreferences. Value dropped'
+     Lz3/u4;::a()Landroid/os/Bundle;  'Error loading bundle from SharedPreferences. Values will be lost'
+     Lz3/u4;::b(B)V  'Cannot serialize bundle value to SharedPreferences. Type'
+     Lz3/u4;::b(B)V  'Cannot serialize bundle value to SharedPreferences'
+  'Semaphore': 16 sítio(s)
+     Lcom/activision/game/MainActivity;::e(B)V  'Region Detection: Pre-Engine semaphore acquired: '
+     Lcom/activision/game/MainActivity;::e(B)V  'Splash semaphore acquired: '
+     Lcom/activision/game/MainActivity;::e(B)V  'Meta Fetch: Pre-Engine semaphore acquired: '
+     Lcom/activision/game/MainActivity;::e(B)V  'Meta Fetch: Failed to acquire Pre-Engine semaphore: 5000 ms'
+     Lcom/activision/game/MainActivity;::e(B)V  'Meta Fetch: Pre-Engine semaphore interrupted'
+     Lcom/activision/game/MainActivity;::e(B)V  'Region Detection: Failed to acquire Pre-Engine semaphore: 5000 ms'
+     Lcom/activision/game/MainActivity;::e(B)V  'Region Detection: Pre-Engine semaphore interrupted'
+     Lcom/activision/game/MainActivity;::e(B)V  'Failed to acquire splash semaphore: 500 ms'
+     Lcom/activision/game/MainActivity;::e(B)V  'Splash semaphore interrupted'
+     Lcom/activision/game/preenginetasks/MetaFetchTask;::b(B)V  'Meta Fetch Passed release semaphore, task succeeded: '
+     ... +6
+  'dispatch': 64 sítio(s)
+     Landroidx/lifecycle/q;::b(B)V  'androidx.lifecycle.LifecycleDispatcher.report_fragment_tag'
+     Landroidx/recyclerview/widget/a;::d(B)V  'should not dispatch add or move for pre layout'
+     Landroidx/recyclerview/widget/a;::e(BB)V  'only remove and update ops can be dispatched in first pass'
+     Landroidx/work/impl/background/systemalarm/SystemAlarmService;::a()V  'A completion listener for SystemAlarmDispatcher already exists.'
+     Landroidx/work/impl/background/systemalarm/SystemAlarmService;::b()V  'All commands completed in dispatcher'
+     Landroidx/work/impl/background/systemalarm/SystemAlarmService;::onStartCommand(BBB)I  'Re-initializing SystemAlarmDispatcher after a request to shut-down.'
+     Landroidx/work/impl/background/systemalarm/d;::<clinit>()V  'SystemAlarmDispatcher'
+     Landroidx/work/impl/background/systemalarm/d;::d()V  'Destroying SystemAlarmDispatcher'
+     Landroidx/work/impl/foreground/a;::<clinit>()V  'SystemFgDispatcher'
+     Lbo/app/a1;::<init>(BB)V  'dispatchDataProvider'
+     ... +54
+
+## métodos nativos por classe (candidatos a JNI da ponte)
+  Lcom/activision/game/ActivityStateHandler;: nativeOnAppClose()V, nativeOnAppResume()V, nativeOnAppSuspend()V
+  Lcom/activision/game/JsBridge;: nativeLocalize(B)Ljava/lang/String;, nativePost(BB)V, nativeQuery(BBB)V, nativeSaveBoolean(BBB)Z, nativeSubscribe(BBB)J, nativeUnsubscribe(BBBLandroid/app/NotificationChannel;)Z
+  Lcom/activision/game/MainActivity;: initializeJni()V, isAdrenoGpu()Z, nativeBootstrapPermissionsResult(B)V, nativeCDNiANRHandler(B)V, nativeCallKeyboardCallback(B)V, nativeCallKeyboardCallbackCancelled(B)V, nativeDiskSpaceReceiver(BBB)V, nativeHeightOfEditText(B)V, nativeInitEventDispatcher()V, nativeOnTrimMemory(B)V, nativePhoneCapabilitiesResult(B)V, nativeRequestPermissionResult(BB)V
+  Lcom/activision/game/WebViewDialog;: dlogError(BB)V
+  Lcom/activision/game/preenginetasks/MetaFetchTask;: nativeGetCDNiMetaUrl()Ljava/lang/String;
+  Lcom/google/androidgamesdk/GameActivity;: getDlError()Ljava/lang/String;, initializeNativeCode(BBBLandroid/app/NotificationChannel;La3/b;Landroid/app/NotificationChannel;)J, onConfigurationChangedNative(BB)V, onContentRectChangedNative(BBBJB)V, onKeyDownNative(BB)Z, onKeyUpNative(BB)Z, onPauseNative(B)V, onResumeNative(B)V, onSaveInstanceStateNative(B)[B, onStartNative(B)V, onStopNative(B)V, onSurfaceChangedNative(BBBJB)V
+
+## C1-5  sincronização em métodos que também tocam WebView/bridge
+  Lcom/activision/game/JsBridge;::callJavascriptFunction: android.view.View->post
+  Lcom/activision/game/WebViewDialog$a;::onPageFinished: java.util.concurrent.Semaphore->release
+
+## subclasses de WebView (quem É um WebView)
+  androidx.webkit.WebViewClientCompat  campos=sSupportedFeatures:[Ljava/lang/String;
+  com.activision.game.WebViewDialog$a  campos=a:Lcom/activision/game/WebViewDialog;
+  com.braze.ui.BrazeWebViewActivity$createWebViewClient$1  campos=this$0:Lcom/braze/ui/BrazeWebViewActivity;
+  com.braze.ui.inappmessage.utils.InAppMessageWebViewClient  campos=Companion:Lcom/braze/ui/inappmessage/utils/InAppMessageWebViewClient$Companion;, assetLoader:Lf1/c;, context:Landroid/content/Context;, hasCalledPageFinishedOnListener:Ljava/util/concurrent/atomic/AtomicBoolean;, hasPageFinishedLoading:Z, inAppMessage:Lcom/braze/models/inappmessage/IInAppMessage;
+  com.braze.ui.inappmessage.views.InAppMessageWebView  campos=
+  com.helpshift.views.HSWebView  campos=
+  r5.s  campos=a:Lq5/a;, b:Z, c:Lp5/d;
+  w5.m  campos=a:Lq5/a;, b:Z, c:Lw5/k;
+   total subclasses de WebView: 8

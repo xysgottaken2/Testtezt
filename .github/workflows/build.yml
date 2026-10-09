@@ -1,0 +1,82 @@
+name: build
+on:
+  push:
+    branches: [main, "arena/**", "research/**", "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            warzone-offline/server/package.json
+            warzone-offline/launcher/package.json
+      - name: Install server
+        working-directory: warzone-offline/server
+        run: npm ci || npm install
+      - name: Install launcher
+        working-directory: warzone-offline/launcher
+        run: npm ci || npm install
+      - name: Typecheck server
+        working-directory: warzone-offline/server
+        run: npx tsc --noEmit
+      - name: Typecheck launcher
+        working-directory: warzone-offline/launcher
+        run: npx tsc --noEmit
+      - name: Check docs
+        run: bash scripts/check-docs.sh
+      # ATENÇÃO: este artifact é TÉCNICO (código-fonte/documentação) e NÃO contém APK.
+      # O APK debug é publicado como artifact SEPARADO `wzm-offline-launcher-debug` pelo job `apk`
+      # deste MESMO run (que chama o workflow reutilizável `android-build.yml`); ele também é
+      # publicado no run do workflow `android-build`.
+      - name: Upload artifact técnico (M1 — sem APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: warzone-offline-M1
+          path: |
+            warzone-offline/server/src
+            warzone-offline/launcher/src
+            warzone-offline/tools/apk-analysis/endpoint-scanner.js
+            docs/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Garantir que o artifact técnico não leve APK
+        run: |
+          set -euo pipefail
+          # Reúne o mesmo conjunto de caminhos enviado ao artifact e reprova se houver binário de app.
+          mkdir -p /tmp/technical-set
+          cp -r warzone-offline/server/src /tmp/technical-set/ 2>/dev/null || true
+          cp -r warzone-offline/launcher/src /tmp/technical-set/ 2>/dev/null || true
+          cp warzone-offline/tools/apk-analysis/endpoint-scanner.js /tmp/technical-set/ 2>/dev/null || true
+          cp -r docs /tmp/technical-set/ 2>/dev/null || true
+          if find /tmp/technical-set -type f \( -name "*.apk" -o -name "*.xapk" -o -name "*.apkm" -o -name "*.obb" -o -name "*.shard" \) | grep -q .; then
+            echo "::error title=apk-no-artifact-tecnico::o artifact técnico conteria um APK — remova-o"
+            find /tmp/technical-set -type f \( -name "*.apk" -o -name "*.xapk" -o -name "*.shard" \)
+            exit 1
+          fi
+          echo "OK: warzone-offline-M1 é só código/documentação (sem APK)"
+          echo "::notice title=onde-esta-o-apk::O APK debug está NESTE MESMO run (job 'apk') e também no run do workflow 'android-build' → artifact 'wzm-offline-launcher-debug' (app-debug.apk + app-debug.apk.sha256)"
+          {
+            echo "## Artifacts"
+            echo
+            echo "| artifact | conteúdo | onde |"
+            echo "|---|---|---|"
+            echo "| \`wzm-offline-launcher-debug\` | **app-debug.apk** + app-debug.apk.sha256 | **este mesmo run** (job \`apk\`) e também o workflow \`android-build\` |"
+            echo "| \`warzone-offline-M1\` | código-fonte + docs (sem APK) | este workflow (\`build\`) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Publica o APK debug no MESMO run do artifact técnico, chamando o workflow reutilizável
+  # `android-build.yml` (fonte da verdade: ./gradlew assembleDebug → android/app/build/outputs/apk/
+  # debug/app-debug.apk). Assim o run do `build` lista, na seção Artifacts:
+  #   - wzm-offline-launcher-debug  (app-debug.apk + app-debug.apk.sha256)  <- o APK
+  #   - warzone-offline-M1          (código-fonte + docs, sem APK)
+  apk:
+    name: APK debug (wzm-offline-launcher-debug)
+    uses: ./.github/workflows/android-build.yml

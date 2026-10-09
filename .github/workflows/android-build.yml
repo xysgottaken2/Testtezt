@@ -1,0 +1,282 @@
+name: android-build
+
+# Publica SEMPRE o artifact do APK debug: `wzm-offline-launcher-debug`
+# (app-debug.apk + app-debug.apk.sha256 na raiz do artifact).
+#
+# Este arquivo é a ÚNICA fonte da verdade do APK e roda de duas formas:
+#   1. sozinho em todo push/PR (sem filtro de `paths`) — workflow `android-build`;
+#   2. como workflow reutilizável (`workflow_call`) chamado pelo workflow `build`, para que o
+#      artifact do APK apareça TAMBÉM no mesmo run do artifact técnico `warzone-offline-M1`.
+# Assim o APK nunca depende de o usuário adivinhar qual workflow abrir: o run do `build` e o run
+# do `android-build` listam `wzm-offline-launcher-debug` lado a lado com o artifact técnico, que
+# NÃO contém APK e não o substitui.
+on:
+  push:
+    branches: [main, "arena/**", "research/**", "feature/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      apk_sha: ${{ steps.apk_meta.outputs.sha256 }}
+      apk_size: ${{ steps.apk_meta.outputs.size }}
+      apk_file: ${{ steps.apk_meta.outputs.file }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK (preinstalled ubuntu-latest)
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMANAGER=""
+          if command -v sdkmanager >/dev/null 2>&1; then SDKMANAGER="sdkmanager"; fi
+          if [ -z "$SDKMANAGER" ] && [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"; fi
+          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n 1)"; fi
+          echo "SDKMANAGER=$SDKMANAGER"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -n 10 || true
+          fi
+          echo "sdk.dir=$SDK" > android/local.properties
+          cat android/local.properties
+          ls -la "$SDK/platforms/" || true
+          ls -la "$SDK/build-tools/" || true
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Generate Gradle Wrapper (strict, falha se não gerar)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Wrapper jar missing/empty — regenerating"
+            gradle wrapper --gradle-version 8.7 --no-daemon
+          fi
+          ls -lh gradle/wrapper/
+          test -s gradle/wrapper/gradle-wrapper.jar
+          echo "wrapper jar OK"
+
+      - name: Preflight — sintaxe Kotlin (aspas raw + comentário aninhado)
+        run: python3 scripts/check-kotlin-preflight.py --dir android
+
+      - name: Preflight — literais Kotlin fechados na mesma linha
+        run: python3 scripts/check-kotlin-literals.py android
+
+      - name: Generate local CDNI certificate (throwaway, not versioned)
+        run: |
+          bash scripts/generate-local-cdni-cert.sh
+          ls -l android/app/src/main/assets/
+          test -s android/app/src/main/assets/cdn_local.p12
+          test -s android/app/src/main/assets/cdn_local_ca.pem
+          echo "certificado local OK"
+
+      - name: Run unit tests
+        id: unit_tests
+        working-directory: android
+        run: |
+          set +e
+          ./gradlew :app:testDebugUnitTest --stacktrace 2>&1 | tee ../gradle-test.log
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+          echo "TEST_EXIT=$TEST_EXIT" >> "$GITHUB_ENV"
+          echo "--- last 120 lines of gradle-test.log ---"
+          tail -n 120 ../gradle-test.log || true
+          exit 0
+
+      - name: Report Gradle failure as annotations (legível via API)
+        if: env.TEST_EXIT != '0'
+        run: |
+          LOG=gradle-test.log
+          echo "== gradle-test.log (tail 80) =="
+          tail -n 80 "$LOG" 2>/dev/null || echo "(no log)"
+          if [ -f "$LOG" ]; then
+            grep -n -E "FAILURE:|What went wrong|Caused by|error:|e: |Could not|not found|Execution failed|Unsupported|FAILED|BUILD FAILED|Plugin \[id" "$LOG" \
+              | head -n 30 > /tmp/errlines.txt || true
+            n=0
+            while IFS= read -r line; do
+              n=$((n+1))
+              esc=$(printf '%s' "$line" | tr -d '\r' | cut -c1-900 | sed 's/%/%25/g')
+              echo "::error title=gradle-error-$n::$esc"
+            done < /tmp/errlines.txt
+            echo "annotations emitted: $n"
+          else
+            echo "::error title=gradle-log-missing::gradle-test.log not found"
+          fi
+
+      - name: Report unit test failures as annotations (XML -> check-run, legível via API)
+        if: always()
+        run: |
+          python3 scripts/ci-report-test-failures.py \
+            --dir android/app/build/test-results/testDebugUnitTest || true
+
+      # Contagem visível nos annotations (o blob do Actions não é acessível de todo ambiente):
+      # é a evidência de quantos testes JVM rodaram nesta build.
+      - name: Report JVM test count as annotation
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          files = glob.glob("android/app/build/test-results/testDebugUnitTest/*.xml")
+          for path in files:
+              root = ET.parse(path).getroot()
+              tests += int(root.get("tests", 0))
+              failures += int(root.get("failures", 0))
+              errors += int(root.get("errors", 0))
+              skipped += int(root.get("skipped", 0))
+          print(f"files={len(files)} tests={tests} failures={failures} errors={errors} skipped={skipped}")
+          print(f"::notice title=testes-jvm::arquivos={len(files)} testes={tests} falhas={failures} erros={errors} pulados={skipped}")
+          PY
+
+      - name: Upload test logs and reports on failure
+        if: env.TEST_EXIT != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-logs
+          path: |
+            gradle-test.log
+            android/app/build/reports/
+            android/app/build/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail if unit tests failed
+        if: env.TEST_EXIT != '0'
+        run: |
+          echo "Unit tests failed with exit code $TEST_EXIT"
+          exit 1
+
+      # ---------- APK debug ----------
+      - name: Build debug APK (./gradlew assembleDebug)
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Stage artifact contents (exatamente o que será publicado)
+        id: apk_meta
+        working-directory: android
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "::error title=apk-missing::$APK não foi gerado pelo assembleDebug"; exit 1; }
+          rm -rf ../artifact-staging
+          mkdir -p ../artifact-staging
+          cp "$APK" ../artifact-staging/app-debug.apk
+          sha256sum ../artifact-staging/app-debug.apk | tee ../artifact-staging/app-debug.apk.sha256
+          SHA=$(cut -d' ' -f1 ../artifact-staging/app-debug.apk.sha256)
+          SIZE=$(stat -c%s ../artifact-staging/app-debug.apk)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "file=app-debug.apk" >> "$GITHUB_OUTPUT"
+          echo "--- arquivos preparados para o artifact ---"
+          find ../artifact-staging -type f -printf '%P | %s bytes\n' | sort
+
+      - name: Guard — apenas o NOSSO APK entra no artifact (nunca o do jogo)
+        working-directory: android
+        run: |
+          set -euo pipefail
+          APK="../artifact-staging/app-debug.apk"
+          AAPT=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name aapt2 -type f 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$AAPT" ] && [ -x "$AAPT" ]; then
+            PKG=$("$AAPT" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)
+            echo "package do APK publicado: $PKG"
+            case "$PKG" in
+              com.wzm.launcher*) echo "OK: é o launcher (não é o APK do Warzone Mobile)" ;;
+              *) echo "::error title=apk-errado::pacote inesperado no artifact: $PKG"; exit 1 ;;
+            esac
+          else
+            echo "::warning title=aapt2-ausente::aapt2 não encontrado; verificação de pacote ignorada"
+          fi
+          # nenhum asset proprietário de jogo pode estar empacotado
+          if unzip -l "$APK" | grep -Eiq '\.(obb|pak|ucas|utoc|shard|xapk)$'; then
+            echo "::error title=artefato-proprietario::o APK contém assets proprietários do jogo"
+            unzip -l "$APK" | grep -Ei '\.(obb|pak|ucas|utoc|shard|xapk)$' | head -10
+            exit 1
+          fi
+          echo "OK: nenhum asset proprietário empacotado"
+
+      - name: Upload debug APK artifact (wzm-offline-launcher-debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wzm-offline-launcher-debug
+          path: |
+            artifact-staging/app-debug.apk
+            artifact-staging/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check no proprietary assets in repo
+        run: |
+          echo "Checking for forbidden proprietary files..."
+          if find . -type f \( -name "*.apk" -o -name "*.xapk" -o -name "*.shard" \) -not -path "./android/app/build/*" -not -path "./artifact-staging/*" -not -path "./artifact-verify/*" -not -path "./.git/*" | grep -q .; then
+            echo "Found proprietary files outside build dir!"
+            find . -type f \( -name "*.apk" -o -name "*.xapk" -o -name "*.shard" \) -not -path "./android/app/build/*" -not -path "./artifact-staging/*" -not -path "./artifact-verify/*" -not -path "./.git/*"
+            exit 1
+          else
+            echo "No proprietary files found outside build — OK"
+          fi
+
+  verify-artifact:
+    name: verify-artifact (baixa o artifact publicado e confere)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact — wzm-offline-launcher-debug
+        uses: actions/download-artifact@v4
+        with:
+          name: wzm-offline-launcher-debug
+          path: artifact-verify
+
+      - name: Verify layout + hash and report (artifact, caminho, tamanho, sha256)
+        run: |
+          set -euo pipefail
+          echo "== conteúdo real do artifact publicado (baixado de volta) =="
+          find artifact-verify -type f -printf '%P | %s bytes\n' | sort
+
+          test -f artifact-verify/app-debug.apk || { echo "::error title=artifact-layout::app-debug.apk não está na RAIZ do artifact"; exit 1; }
+          test -f artifact-verify/app-debug.apk.sha256 || { echo "::error title=artifact-layout::app-debug.apk.sha256 não está na RAIZ do artifact"; exit 1; }
+
+          COUNT=$(find artifact-verify -type f | wc -l)
+          if [ "$COUNT" -ne 2 ]; then
+            echo "::error title=artifact-extra::esperados exatamente 2 arquivos no artifact, encontrados $COUNT"
+            exit 1
+          fi
+
+          RECOMPUTED=$(sha256sum artifact-verify/app-debug.apk | cut -d' ' -f1)
+          FILE_SHA=$(cut -d' ' -f1 artifact-verify/app-debug.apk.sha256)
+          SIZE=$(stat -c%s artifact-verify/app-debug.apk)
+
+          [ "$RECOMPUTED" = "$FILE_SHA" ] || { echo "::error title=artifact-sha-interno::sha256 recomputado ($RECOMPUTED) != app-debug.apk.sha256 ($FILE_SHA)"; exit 1; }
+          [ "$RECOMPUTED" = "${{ needs.build.outputs.apk_sha }}" ] || { echo "::error title=artifact-sha-build::sha256 do artifact != sha256 do build (${{ needs.build.outputs.apk_sha }})"; exit 1; }
+          [ "$SIZE" = "${{ needs.build.outputs.apk_size }}" ] || { echo "::error title=artifact-size::tamanho do artifact ($SIZE) != tamanho do build (${{ needs.build.outputs.apk_size }})"; exit 1; }
+
+          echo "OK: artifact contém app-debug.apk + app-debug.apk.sha256 na raiz, com hash/tamanho idênticos ao build"
+          echo "::notice title=artifact-verificado::artifact=wzm-offline-launcher-debug caminho-no-artifact=app-debug.apk (+app-debug.apk.sha256) arquivos=2 size=$SIZE sha256=$RECOMPUTED"
+          {
+            echo "## APK debug publicado e verificado"
+            echo
+            echo "| campo | valor |"
+            echo "|---|---|"
+            echo "| artifact | \`wzm-offline-launcher-debug\` |"
+            echo "| arquivos | \`app-debug.apk\` (raiz) + \`app-debug.apk.sha256\` (raiz) |"
+            echo "| tamanho | $SIZE bytes |"
+            echo "| sha256 | \`$RECOMPUTED\` |"
+            echo "| origem | \`./gradlew assembleDebug\` → \`android/app/build/outputs/apk/debug/app-debug.apk\` |"
+            echo
+            echo "O artifact técnico \`warzone-offline-M1\` (workflow \`build\`) **não** contém APK."
+            echo
+            echo "Onde encontrar o APK: **Actions → run do \`build\` (mesmo run, artifact ao lado do técnico) ou run do \`android-build\` → Artifacts → \`wzm-offline-launcher-debug\` → \`app-debug.apk\`**."
+          } >> "$GITHUB_STEP_SUMMARY"

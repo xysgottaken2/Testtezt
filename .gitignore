@@ -1,0 +1,91 @@
+# Warzone Mobile Offline Server — .gitignore
+# Preservação / pesquisa / interoperabilidade
+
+# Secrets & credentials
+# NOTA (M3): o certificado TLS LOCAL do launcher NÃO é versionado por esta regra — ele é
+# descartável e gerado no build por scripts/generate-local-cdni-cert.sh (não é credencial de
+# terceiros e não tem valor de segurança).
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+credentials.json
+secrets.env
+.env
+.env.*
+.tokens
+cookies.txt
+activision*.json
+
+# Proprietary game files — never commit
+*.apk
+*.xapk
+*.apkm
+*.obb
+*.shard
+*.pak
+*.ucas
+*.utoc
+*.sig
+*.xpak
+split_asset_pack/
+obb/
+assets/shard/
+warzone-assets/
+dumps/
+memory-dumps/
+*.logcat
+
+# Build / dependencies
+node_modules/
+dist/
+build/
+out/
+target/
+__pycache__/
+.venv/
+*.egg-info/
+coverage/
+.nyc_output/
+.next/
+.turbo/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local server data
+warzone-offline/server/data/
+warzone-offline/server/*.db
+warzone-offline/server/*.sqlite*
+server.db
+local-profile.json
+*.pid
+
+# Logs sensitive
+logs/sensitive/
+pcaps/*.pcap
+pcaps/*.pcapng
+
+# Tools outputs
+tools-output/
+jadx-output/
+apktool-output/
+ghidra-*/
+
+# Temp
+tmp/
+temp/
+*.tmp
+*.bak
+
+# M5.0 — logs do servidor local (contêm IPs/hosts da sua rede)
+warzone-offline/local-server/logs/
+*.srl

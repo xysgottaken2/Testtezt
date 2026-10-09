@@ -1,0 +1,16 @@
+{
+  "_comment": "Rotas mínimas do servidor local do WZM (M5.0). Só entra aqui o que foi verificado; tudo o mais cai no handler 404, que é registrado como candidato a próxima etapa.",
+  "routes": [
+    {
+      "path": "/wzm/shard_cdn/android/_manifest/cdni.meta",
+      "methods": ["GET", "HEAD"],
+      "status": 200,
+      "content_type": "application/json",
+      "file": "data/cdni.meta.json",
+      "note": "VERIFIED — corpo real capturado do WZM 3.10.0 (min_buildnum=19854920); nenhum byte inventado",
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    }
+  ]
+}
